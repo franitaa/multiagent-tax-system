@@ -9,4 +9,11 @@ example: ProvenanceRecord = {
     "tool": "calculate_standard_deduction",
 }
 
-print(example)
+required_fields = {"value", "formula", "inputs", "source", "tool"}
+
+assert set(example.keys()) == required_fields
+assert example["value"] == 15750
+assert example["inputs"]["filing_status"] == "single"
+
+print("All provenance record tests passed!")
+
