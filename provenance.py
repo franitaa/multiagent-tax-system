@@ -1,4 +1,3 @@
-
 from typing import Any, TypedDict
 
 class ProvenanceRecord(TypedDict):
