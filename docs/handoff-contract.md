@@ -61,10 +61,11 @@ Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_
 adds `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` itself.
 When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
 and pauses the thread. The call returns `result["__interrupt__"][0].value` =
-`{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields}`.
+`{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields,
+also_pending}` (plus `error` if the previous answer was rejected).
 A volunteer answers on the same `thread_id` with
 `graph.invoke(Command(resume={"decision": ..., "note": ..., "resolution": {...}}), config)`
-(the value must be a dict).
+(the value must be a dict; `Command(resume=None)` crashes inside LangGraph).
 
 | Condition | Allowed decisions |
 |---|---|
@@ -93,11 +94,14 @@ read it): if an entry with your condition exists, carry on. If Rules returns
   (`view["documents"]` has one entry). Return `extracted` containing only that document's record,
   keyed by its id. Do not read or depend on other documents; results are merged by `doc_id`,
   independent of finishing order. Parallel workers may each set `escalation`; none is lost (the most
-  severe is shown first, the rest are queued and shown in turn).
+  severe is shown first, the rest are queued and shown in turn: `also_pending` lists the conditions
+  still waiting in the payload, and each decision records `also_raised` in `human_decisions`. If the
+  human stops the case, the queued conditions are recorded there and not shown separately).
 - **Review loop.** Review returns `review = {"verdict": "pass" | "fail", "findings": [...],
   "send_back_to": "computation"}`; any other verdict is an error. On `fail` the orchestrator clears
   the old verdict, counts a round, and sends the work to **Computation** (the only supported target
-  for now). Computation then sees `pending_revision = {"target", "round", "findings"}` in its view and
+  for now; a request for `rules` or anything else is routed to Computation anyway and logged in
+  `review_history` as `requested` vs `sent_to`). Computation then sees `pending_revision = {"target", "round", "findings"}` in its view and
   must address those findings. Review runs again from scratch. At most `max_revisions` rounds (input
   field, default 3); after that the orchestrator raises `REVIEW_BOUND_EXCEEDED` (stop-only).
 - **Loop guard.** If an agent's output changes nothing the router looks at (for example `{}`), or the
