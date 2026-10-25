@@ -18,11 +18,20 @@ Every agent can also read `escalation` and `human_decisions`, and write `escalat
 | Agent | Reads | Writes |
 |---|---|---|
 | Orchestrator | compact routing view (flags, counts; no documents or chat) | control fields only (`next_agent`, `status`, `step`, `handoff_log`, ...) |
-| Intake | `messages`, `facts`, `session_summary` | `messages`, `facts`, `pending_question`, `intake_complete` |
+| Intake | `messages` (**last 6 only**), `facts` (all), `session_summary` | `messages`, `facts`, `pending_question`, `intake_complete` |
 | Extraction | `documents` | `extracted` (keyed by `doc_id`) |
 | Rules | `facts`, `extracted`, `session_summary` | `eligibility` |
-| Computation | `facts`, `extracted`, `eligibility`, `pending_revision` | `computed` (line -> ProvenanceRecord) |
+| Computation | `facts` (**numeric values only**), `extracted`, `eligibility` (**`filing_status` only**), `pending_revision` | `computed` (line -> ProvenanceRecord) |
 | Review | `computed`, `eligibility`, `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything |
+
+**Your view is narrower than the table suggests, on purpose** (`docs/decisions/001-context-strategy.md`):
+- **Intake's chat window is not memory.** You see only the last 6 messages. Anything you must remember
+  (an early statement, a correction, a worry about pressure) has to be written to `facts` the turn you
+  hear it. `facts` is all you get of older turns.
+- `session_summary` is a one-line, orchestrator-built list of milestones and human decisions. It never
+  contains amounts or chat text; do not rely on it for values.
+- Need a field you are not shown? Change `POLICY`/`TRANSFORMS` by PR (tag Person 1); do not work around it.
+- Whole-state mode for comparison: `--no-context-strategy` / `build_graph(context_strategy=False)`.
 
 ## Handoff request
 Return `"handoff_request": {"to": "<next>", "reason": "<short text>"}`. `to` is one of
