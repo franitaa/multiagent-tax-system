@@ -51,6 +51,8 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
         "revision_count": state.get("revision_count", 0),
         "max_revisions": state.get("max_revisions", DEFAULT_MAX_REVISIONS),
         "has_pending_revision": bool(state.get("pending_revision")),
+        "n_human_decisions": len(state.get("human_decisions", [])),
+        "guard": state.get("guard") or {},
         "last_handoffs": [
             {"step": e["step"], "to": e["to"], "reason": e["reason"][:MAX_REASON_CHARS]}
             for e in state.get("handoff_log", [])[-MAX_HANDOFFS_IN_VIEW:]
