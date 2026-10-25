@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from langgraph.errors import GraphInterrupt
+
 from src.orchestration.access import POLICY, AccessViolation, ToolBox
 from src.orchestration.context import view_for
 from src.orchestration.tokens import TOKEN_SOURCE, estimate_tokens
@@ -27,35 +29,42 @@ class Runner:
         view = view_for(name, state, self.scoped)
         tools = ToolBox(name)
         started = time.perf_counter()
-        update = dict(fn(view, tools) or {})
-        duration_ms = round((time.perf_counter() - started) * 1000, 3)
+        ctx = (thread_id, name, state.get("step", 0), view, tools, started)
+        try:
+            update = dict(fn(view, tools) or {})
+        except GraphInterrupt:
+            # The human gate paused the graph. Trace it (condition code only), then re-raise.
+            condition = (view.get("escalation") or {}).get("condition")
+            handoff = {"from": name, "to": "orchestrator", "reason": "paused: awaiting human decision"}
+            self._write(thread_id, {**self._record(*ctx, {}, []), "handoff": handoff,
+                                    "interrupted": True, "interrupted_on": condition})
+            raise
 
         if update.get("handoff_request"):
             update["handoff_request"] = {**update["handoff_request"], "from": name}
         violations = sorted(set(update) - POLICY[name].writes)
-
-        self._write(
-            thread_id,
-            {
-                "ts": datetime.now(timezone.utc).isoformat(),
-                "thread_id": thread_id,
-                "step": state.get("step", 0),
-                "agent": name,
-                "handoff": self._handoff(name, update),
-                "fields_read": sorted(view),
-                "fields_written": sorted(update),
-                "tools_called": tools.calls,
-                "duration_ms": duration_ms,
-                "input_tokens": estimate_tokens(view),
-                "output_tokens": estimate_tokens(update),
-                "token_source": TOKEN_SOURCE,
-                "context_mode": "scoped" if self.scoped else "full",
-                "violations": violations,
-            },
-        )
+        self._write(thread_id, self._record(*ctx, update, violations))
         if violations:
             raise AccessViolation(f"{name} wrote outside its allow-list: {violations}")
         return update
+
+    def _record(self, thread_id, name, step, view, tools, started, update, violations) -> dict:
+        return {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "thread_id": thread_id,
+            "step": step,
+            "agent": name,
+            "handoff": self._handoff(name, update),
+            "fields_read": sorted(view),
+            "fields_written": sorted(update),
+            "tools_called": tools.calls,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+            "input_tokens": estimate_tokens(view),
+            "output_tokens": estimate_tokens(update),
+            "token_source": TOKEN_SOURCE,
+            "context_mode": "scoped" if self.scoped else "full",
+            "violations": violations,
+        }
 
     @staticmethod
     def _handoff(name: str, update: dict) -> dict:

@@ -18,18 +18,30 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
     no chat, no id lists, so its size does not grow with the length of the session."""
     review = state.get("review") or {}
     extracted = state.get("extracted", {})
+    escalation = state.get("escalation") or {}
+    eligibility = state.get("eligibility") or {}
     pending_docs = [d for d in state.get("documents", []) if d["id"] not in extracted]
     return {
         "status": state.get("status", "running"),
         "done": state.get("done", False),
         "step": state.get("step", 0),
-        "escalation": state.get("escalation"),
+        # condition code only; the free-text reason stays out of the orchestrator's view
+        "escalation": (
+            {"pending": bool(escalation.get("pending")), "condition": escalation.get("condition")}
+            if escalation
+            else None
+        ),
+        # conditions a human already resolved with "continue" (at most 8 distinct values)
+        "resolved_conditions": sorted(
+            {d["condition"] for d in state.get("human_decisions", []) if d["decision"] == "continue"}
+        ),
         "n_messages": len(state.get("messages", [])),
         "has_pending_question": bool(state.get("pending_question")),
         "awaiting_since_msgs": state.get("awaiting_since_msgs"),
         "intake_complete": state.get("intake_complete", False),
         "n_docs_pending": len(pending_docs),
-        "has_eligibility": bool(state.get("eligibility")),
+        "has_eligibility": bool(eligibility),
+        "in_scope": eligibility.get("in_scope"),
         "has_computed": bool(state.get("computed")),
         "review_verdict": review.get("verdict"),
         "last_handoffs": [

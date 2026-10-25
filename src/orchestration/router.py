@@ -3,13 +3,16 @@
 route(view) -> Route(next, reason, update). No I/O and no state mutation, so the decision
 table is unit-testable. The orchestrator node applies `update` to state.
 
-Phase 1 implements the clean path only. Escalation, loop-guard and review-fail rows are
-added in phases 2-3 and raise NotImplementedError until then so nothing fails silently.
+Implemented: escalation, yield-to-user, the clean path, and the out-of-scope check. The
+loop-guard and review-fail rows arrive in phase 3 and raise NotImplementedError until then
+so nothing fails silently.
 """
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from src.state import AWAITING_USER, COMPLETE, END_KEY, RUNNING
+from src.state import (
+    AWAITING_HUMAN, AWAITING_USER, COMPLETE, END_KEY, HUMAN_KEY, OUT_OF_SCOPE, RUNNING,
+)
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,13 @@ def route(view: Mapping[str, Any]) -> Route:
         # The taxpayer replied since we yielded: clear the wait.
         base = {"awaiting_since_msgs": None, "pending_question": None, "status": RUNNING}
 
+    escalation = view.get("escalation")
+    if escalation and escalation.get("pending"):
+        return Route(
+            HUMAN_KEY,
+            f"escalation raised: {escalation['condition']}",
+            {**base, "status": AWAITING_HUMAN},
+        )
     if view["done"]:
         return Route(END_KEY, "already complete", base)
     if since is not None and not answered:
@@ -43,6 +53,21 @@ def route(view: Mapping[str, Any]) -> Route:
         return Route("extraction", "documents not yet extracted", base)
     if not view["has_eligibility"]:
         return Route("rules", "eligibility not decided", base)
+    if view["in_scope"] is False and OUT_OF_SCOPE not in view["resolved_conditions"]:
+        return Route(
+            HUMAN_KEY,
+            "rules found the return out of scope",
+            {
+                **base,
+                "status": AWAITING_HUMAN,
+                "escalation": {
+                    "pending": True,
+                    "condition": OUT_OF_SCOPE,
+                    "reason": "Eligibility & Rules marked the return out of scope",
+                    "raised_by": "orchestrator",
+                },
+            },
+        )
     if not view["has_computed"]:
         return Route("computation", "no computed lines", base)
     if view["review_verdict"] is None:
