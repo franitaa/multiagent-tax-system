@@ -59,7 +59,18 @@ Set a flag; do not stop or work around it. The orchestrator performs the interru
 Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_REQUEST`,
 `FILING_STATUS_AMBIGUITY`, `EXPLOITATION_SIGNS` (constants in `src/state.py`). The orchestrator
 adds `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` itself.
-**Status: the flag is stored today, but the orchestrator acts on it from Phase 2 (in progress).**
+When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
+and pauses the thread. The call returns `result["__interrupt__"][0].value` =
+`{case_id, condition, reason, raised_by, options}`. A volunteer's decision is sent as
+`graph.invoke(Command(resume={"decision": "continue" | "stop", "note": "..."}), config)` on the same
+`thread_id`. `continue` records the condition in `human_decisions` and the run goes on; `stop` ends the
+case with `status == "halted_by_human"`. UI rule: while a thread is interrupted, show the taxpayer a
+neutral waiting message (not the reason) and accept no new messages until it is resumed.
+
+**Do not raise a condition again once a human resolved it.** Check `human_decisions` (every agent can
+read it): if an entry with your condition exists, carry on. Otherwise a `continue` would loop.
+If Rules returns `eligibility.in_scope == False` without a flag, the orchestrator raises
+`OUT_OF_SCOPE` itself.
 
 ## Replacing a stub with a real agent
 1. Edit only `src/agents/<your_agent>.py`. Keep `run(view, tools) -> dict`. Do not rename the module or touch `src/agents/__init__.py`.
