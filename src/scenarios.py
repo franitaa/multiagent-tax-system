@@ -56,3 +56,19 @@ def escalation_case(condition: str, when=None) -> dict:
     """Agent overrides (for build_graph(agents=...)) that raise `condition` in a clean case."""
     agent, reason = CONDITION_SOURCES[condition]
     return {agent: raising(AGENTS[agent], agent, condition, reason, when)}
+
+
+def spouse_died_case(case_id: str = "spouse-died-1") -> tuple[dict, dict]:
+    """Eval case 2: the taxpayer says their spouse died during the tax year, so the filing
+    status is ambiguous. Returns (graph input, agent overrides). Intake raises the flag."""
+    case = {
+        "case_id": case_id,
+        "messages": [
+            user("Hi, I need help with my 2025 return."),
+            user("My husband passed away in March, and I am not sure how to file."),
+        ],
+        "documents": [document()],
+    }
+    reason = "TEST: taxpayer says their spouse died during the tax year"
+    agents = {"intake": raising(AGENTS["intake"], "intake", S.FILING_STATUS_AMBIGUITY, reason)}
+    return case, agents
