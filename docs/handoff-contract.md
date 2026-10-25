@@ -88,6 +88,22 @@ A volunteer answers on the same `thread_id` with
 read it): if an entry with your condition exists, carry on. If Rules returns
 `eligibility.in_scope == False` without a flag, the orchestrator raises `OUT_OF_SCOPE` itself.
 
+## Parallelism, the review loop, and the loop guard
+- **Extraction runs in parallel**, one worker per document, each receiving exactly one document
+  (`view["documents"]` has one entry). Return `extracted` containing only that document's record,
+  keyed by its id. Do not read or depend on other documents; results are merged by `doc_id`,
+  independent of finishing order. Parallel workers may each set `escalation`; none is lost (the most
+  severe is shown first, the rest are queued and shown in turn).
+- **Review loop.** Review returns `review = {"verdict": "pass" | "fail", "findings": [...],
+  "send_back_to": "computation"}`; any other verdict is an error. On `fail` the orchestrator clears
+  the old verdict, counts a round, and sends the work to **Computation** (the only supported target
+  for now). Computation then sees `pending_revision = {"target", "round", "findings"}` in its view and
+  must address those findings. Review runs again from scratch. At most `max_revisions` rounds (input
+  field, default 3); after that the orchestrator raises `REVIEW_BOUND_EXCEEDED` (stop-only).
+- **Loop guard.** If an agent's output changes nothing the router looks at (for example `{}`), or the
+  same agent is dispatched more than 3 times in a row, the orchestrator raises `LOOP_GUARD`
+  (stop-only). So always make progress: set your output fields, or escalate.
+
 ## Replacing a stub with a real agent
 1. Edit only `src/agents/<your_agent>.py`. Keep `run(view, tools) -> dict`. Do not rename the module or touch `src/agents/__init__.py`.
 2. Read only from `view`; write only the fields in your table row. If you need another field, open a PR that changes `POLICY` in `access.py` and `SilverState` in `state.py`, and tag Person 1. Do not work around it.
