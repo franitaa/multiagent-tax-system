@@ -24,7 +24,8 @@ def _check_request(request: dict | None, routed_to: str) -> dict:
 
 
 def orchestrate(view: dict, tools: ToolBox) -> dict:
-    decision = apply_guard(view, route(view))
+    inputs = {**view, **getattr(view, "control", {})}  # control: deterministic-only inputs
+    decision = apply_guard(inputs, route(inputs))
     step = view.get("step", 0) + 1
     entry = {
         "step": step,

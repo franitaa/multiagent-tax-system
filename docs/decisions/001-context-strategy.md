@@ -17,14 +17,24 @@ entries and id lists that grow with the number of documents. The orchestrator is
 agent, so any growth in its view is paid on every hop. Bounding it keeps its per-call cost constant
 regardless of session length or batch size.
 
-Result (estimated tokens, orchestrator calls only, clean case): Phase 1 unbounded view 83 to 223 and
-rising; after bounding, 78 to 146 and flat once the 3-handoff window is full. Later phases added
-the loop guard's fingerprint history (8 hex chars each, capped at 24) and, only while a failed
-review is being routed, its findings. Current figures: 115 to about 203 for a clean run, up to about
-240 across a three-round review loop. Both are bounded by constants (3 handoffs, 24 fingerprints),
-and a run with 12 documents gives exactly the same numbers as one with 1 document.
-`test_orchestrator_view_is_bounded` checks that the view does not grow with 500 documents, a
-400-entry log, or 200 messages.
+### Deterministic-only inputs stay out of the view
+The orchestrator is deterministic Python (the router plus the loop guard), not a model. Two things
+it needs would bloat a model-facing view and are useless to a model: the loop guard's fingerprint
+history (up to 24 hashes) and a failed review's findings (copied, uninterpreted, into the revision
+request). They reach the code through a separate `control` channel (`View.control`,
+`context.control_view`). It is not a key of the view, so it is not counted in the token estimate,
+and the trace lists it separately (`control_fields_read`). If the orchestrator ever becomes
+model-driven it should be given only the flags in the routing view, which already carry everything a
+routing decision needs (verdict, round count, escalation condition).
+
+Result (estimated tokens, orchestrator calls only, Phase 1 clean case unless noted):
+unbounded view 83 to 223 and rising; bounded (3 handoffs, counts instead of id lists) 78 to 146;
+after the loop guard and review loop were added with their data in the view 115 to about 240;
+after moving them to the control channel 106 to 174 for a clean run and at most 174 across a
+three-round review loop. The figures are identical for 1 and 12 documents (107 vs 106 at the first
+call). `test_orchestrator_view_is_bounded` checks that the view does not grow with 500 documents,
+a 400-entry log, or 200 messages; `test_orchestrator_view_excludes_deterministic_only_inputs`
+checks the split.
 
 Trade-off: the orchestrator cannot see which specific documents are pending. It does not need to; the
 extraction fan-out reads the document list from graph state, not from the orchestrator's view.
