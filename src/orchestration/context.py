@@ -7,6 +7,7 @@ per-document extraction view arrive in later phases. With scoped=False (the
 from typing import Any, Mapping
 
 from src.orchestration.access import ALWAYS_READ, POLICY
+from src.state import DEFAULT_MAX_REVISIONS
 
 
 MAX_HANDOFFS_IN_VIEW = 3
@@ -40,6 +41,16 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
         "in_scope": eligibility.get("in_scope"),
         "has_computed": bool(state.get("computed")),
         "review_verdict": review.get("verdict"),
+        # carried only while a failed review is being routed (the single call that must
+        # copy its findings to the revision request), so the view stays small otherwise
+        "review_fail": (
+            {"send_back_to": review.get("send_back_to"), "findings": review.get("findings", [])}
+            if review.get("verdict") == "fail"
+            else None
+        ),
+        "revision_count": state.get("revision_count", 0),
+        "max_revisions": state.get("max_revisions", DEFAULT_MAX_REVISIONS),
+        "has_pending_revision": bool(state.get("pending_revision")),
         "last_handoffs": [
             {"step": e["step"], "to": e["to"], "reason": e["reason"][:MAX_REASON_CHARS]}
             for e in state.get("handoff_log", [])[-MAX_HANDOFFS_IN_VIEW:]
