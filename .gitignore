@@ -1,2 +1,8 @@
 __pycache__/
 *.py[cod]
+.venv/
+.env
+.pytest_cache/
+*.sqlite
+*.db
+traces/*.jsonl
