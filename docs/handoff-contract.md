@@ -61,16 +61,32 @@ Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_
 adds `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` itself.
 When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
 and pauses the thread. The call returns `result["__interrupt__"][0].value` =
-`{case_id, condition, reason, raised_by, options}`. A volunteer's decision is sent as
-`graph.invoke(Command(resume={"decision": "continue" | "stop", "note": "..."}), config)` on the same
-`thread_id`. `continue` records the condition in `human_decisions` and the run goes on; `stop` ends the
-case with `status == "halted_by_human"`. UI rule: while a thread is interrupted, show the taxpayer a
-neutral waiting message (not the reason) and accept no new messages until it is resumed.
+`{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields}`.
+A volunteer answers on the same `thread_id` with
+`graph.invoke(Command(resume={"decision": ..., "note": ..., "resolution": {...}}), config)`
+(the value must be a dict).
+
+| Condition | Allowed decisions |
+|---|---|
+| `OUT_OF_SCOPE`, `FORM_1099R_BOX_2B`, `EXPLOITATION_SIGNS` | `stop` only (a human cannot take responsibility for work the system must not attempt) |
+| `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED` (raised by the orchestrator) | `stop` only |
+| `SOURCE_CONFLICT`, `FILING_STATUS_AMBIGUITY`, `TAX_ADVICE_REQUEST` | `continue` or `stop` |
+
+- `continue` **requires a non-empty `note`**; it is stored in `human_decisions` (the audit record).
+- `continue` may carry a `resolution`: `FILING_STATUS_AMBIGUITY` takes `{"filing_status": <single |
+  married_filing_jointly | married_filing_separately | head_of_household | qualifying_surviving_spouse>}`;
+  `SOURCE_CONFLICT` takes `{fact_name: value}`. It is written to `facts` as
+  `{"value": ..., "source": "human:<CONDITION>"}`, so read it from `facts` like any other fact.
+  `TAX_ADVICE_REQUEST` takes none: put the question in the note for the volunteer.
+- `stop` ends the case with `status == "halted_by_human"`; the note is optional.
+- An invalid answer does not raise: the call returns another interrupt whose payload has an `error`
+  string. Show it and let the volunteer answer again.
+- UI rule: while a thread is interrupted, show the taxpayer a neutral waiting message (not the
+  reason) and accept no new messages until it is resumed.
 
 **Do not raise a condition again once a human resolved it.** Check `human_decisions` (every agent can
-read it): if an entry with your condition exists, carry on. Otherwise a `continue` would loop.
-If Rules returns `eligibility.in_scope == False` without a flag, the orchestrator raises
-`OUT_OF_SCOPE` itself.
+read it): if an entry with your condition exists, carry on. If Rules returns
+`eligibility.in_scope == False` without a flag, the orchestrator raises `OUT_OF_SCOPE` itself.
 
 ## Replacing a stub with a real agent
 1. Edit only `src/agents/<your_agent>.py`. Keep `run(view, tools) -> dict`. Do not rename the module or touch `src/agents/__init__.py`.

@@ -31,10 +31,6 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
             if escalation
             else None
         ),
-        # conditions a human already resolved with "continue" (at most 8 distinct values)
-        "resolved_conditions": sorted(
-            {d["condition"] for d in state.get("human_decisions", []) if d["decision"] == "continue"}
-        ),
         "n_messages": len(state.get("messages", [])),
         "has_pending_question": bool(state.get("pending_question")),
         "awaiting_since_msgs": state.get("awaiting_since_msgs"),

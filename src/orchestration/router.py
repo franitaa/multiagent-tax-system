@@ -53,7 +53,7 @@ def route(view: Mapping[str, Any]) -> Route:
         return Route("extraction", "documents not yet extracted", base)
     if not view["has_eligibility"]:
         return Route("rules", "eligibility not decided", base)
-    if view["in_scope"] is False and OUT_OF_SCOPE not in view["resolved_conditions"]:
+    if view["in_scope"] is False:
         return Route(
             HUMAN_KEY,
             "rules found the return out of scope",

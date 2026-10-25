@@ -38,14 +38,8 @@ TABLE = [
     ("5 documents pending", st(), "extraction"),
     ("6 no eligibility", st(extracted=EXTRACTED), "rules"),
     ("7 out of scope", st(extracted=EXTRACTED, eligibility={"in_scope": False}), "human"),
-    ("7 out of scope, human already resolved", st(
-        extracted=EXTRACTED, eligibility={"in_scope": False},
-        human_decisions=[{"condition": S.OUT_OF_SCOPE, "decision": "continue", "note": ""}]),
-     "computation"),
-    ("7 human said stop is not 'resolved'", st(
-        extracted=EXTRACTED, eligibility={"in_scope": False},
-        human_decisions=[{"condition": S.OUT_OF_SCOPE, "decision": "stop", "note": ""}]),
-     "human"),
+    ("7 out of scope then human stop ends the case", st(
+        extracted=EXTRACTED, eligibility={"in_scope": False}, done=True), "end"),
     ("8 no computed lines", st(extracted=EXTRACTED, eligibility=ELIGIBLE), "computation"),
     ("9 not reviewed", st(extracted=EXTRACTED, eligibility=ELIGIBLE, computed=LINES), "review"),
     ("12 review passed", st(extracted=EXTRACTED, eligibility=ELIGIBLE, computed=LINES,
