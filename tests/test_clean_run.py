@@ -133,4 +133,4 @@ def test_orchestrator_view_excludes_deterministic_only_inputs(tmp_path):
     graph.invoke(clean_case(), cfg("t-ctl"))
     orchestrator = [r for r in read_trace(tmp_path, "t-ctl") if r["agent"] == "orchestrator"]
     assert all("guard" not in r["fields_read"] for r in orchestrator)
-    assert all(r["control_fields_read"] == ["guard", "review_fail"] for r in orchestrator)
+    assert all(r["control_fields_read"] == ["guard", "human_summary", "review_fail"] for r in orchestrator)
