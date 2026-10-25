@@ -36,6 +36,17 @@ EXPLOITATION_SIGNS = "EXPLOITATION_SIGNS"
 # raised by the orchestrator itself
 LOOP_GUARD = "LOOP_GUARD"
 REVIEW_BOUND_EXCEEDED = "REVIEW_BOUND_EXCEEDED"
+# Most severe first. Decides which of several simultaneous escalations a human sees first.
+ESCALATION_PRIORITY = (
+    EXPLOITATION_SIGNS,
+    OUT_OF_SCOPE,
+    FORM_1099R_BOX_2B,
+    FILING_STATUS_AMBIGUITY,
+    SOURCE_CONFLICT,
+    TAX_ADVICE_REQUEST,
+    LOOP_GUARD,
+    REVIEW_BOUND_EXCEEDED,
+)
 AGENT_CONDITIONS = (
     OUT_OF_SCOPE,
     SOURCE_CONFLICT,
@@ -79,6 +90,7 @@ class Escalation(TypedDict, total=False):
     condition: str  # one of the conditions above
     reason: str
     raised_by: str
+    queued: list  # other escalations raised at the same moment; shown to the human in turn
 
 
 # ---- reducers -------------------------------------------------------------------
@@ -111,6 +123,40 @@ def merge_extracted(old: dict | None, new: dict | None) -> dict:
     return merged
 
 
+def merge_request(old: dict | None, new: dict | None) -> dict | None:
+    """handoff_request. The orchestrator clears it with None after each hop. If parallel
+    workers each return one, keep the canonical-max so the result ignores arrival order."""
+    if new is None or old is None:
+        return new
+    return max((old, new), key=_canonical)
+
+
+def _severity(esc: dict) -> tuple:
+    condition = esc.get("condition")
+    rank = ESCALATION_PRIORITY.index(condition) if condition in ESCALATION_PRIORITY else len(ESCALATION_PRIORITY)
+    return rank, _canonical({k: v for k, v in esc.items() if k != "queued"})
+
+
+def merge_escalation(old: dict | None, new: dict | None) -> dict | None:
+    """escalation. Parallel workers may each raise a flag; none may be lost and the result
+    must not depend on arrival order. The most severe becomes the active flag and the rest
+    go in its `queued` list, sorted. None clears. {..., "replace": True} overwrites (used by
+    the human gate to promote the next queued flag)."""
+    if new is None:
+        return None
+    if new.get("replace"):
+        return {k: v for k, v in new.items() if k != "replace"}
+    if not old or not old.get("pending"):
+        return new
+    if not new.get("pending"):
+        return old
+    flags = [{k: v for k, v in e.items() if k != "queued"}
+             for e in (old, *old.get("queued", []), new, *new.get("queued", []))]
+    unique = {_canonical(f): f for f in flags}.values()
+    first, *rest = sorted(unique, key=_severity)
+    return {**first, "queued": rest} if rest else first
+
+
 class SilverState(TypedDict, total=False):
     # --- input / identity
     case_id: str
@@ -133,9 +179,9 @@ class SilverState(TypedDict, total=False):
     revision_count: int
     max_revisions: int
     # --- Handoffs / escalation (any agent may set `escalation`; only the orchestrator clears)
-    handoff_request: Handoff | None
+    handoff_request: Annotated[Handoff | None, merge_request]
     handoff_log: Annotated[list[dict[str, Any]], append_list]
-    escalation: Escalation | None
+    escalation: Annotated[Escalation | None, merge_escalation]
     human_decisions: Annotated[list[dict[str, Any]], append_list]  # phase 2
     # --- Orchestrator-owned control fields
     status: str

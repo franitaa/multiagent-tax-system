@@ -24,7 +24,7 @@ from langgraph.types import interrupt
 
 from src.orchestration.access import ToolBox
 from src.state import (
-    FILING_STATUS_AMBIGUITY, HALTED_BY_HUMAN, RUNNING, SOURCE_CONFLICT, TAX_ADVICE_REQUEST,
+    AWAITING_HUMAN, FILING_STATUS_AMBIGUITY, HALTED_BY_HUMAN, RUNNING, SOURCE_CONFLICT, TAX_ADVICE_REQUEST,
 )
 
 CONTINUABLE = frozenset({SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST})
@@ -77,6 +77,7 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
         "case_id": view.get("case_id"),
         "condition": condition,
         "reason": escalation.get("reason", ""),
+        "also_pending": [q["condition"] for q in escalation.get("queued") or []],
         "raised_by": escalation.get("raised_by"),
         "options": list(allowed_decisions(condition)),
         "note_required_for_continue": True,
@@ -101,6 +102,9 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
         "escalation": None,
         "status": RUNNING,
     }
+    queued = escalation.get("queued") or []
+    if queued:
+        update["human_decisions"][0]["also_raised"] = [q["condition"] for q in queued]
     if resolution:
         update["facts"] = {
             name: {"value": value, "source": f"human:{condition}"}
@@ -108,4 +112,9 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
         }
     if decision == "stop":
         update.update(status=HALTED_BY_HUMAN, done=True)
+    elif queued:
+        # promote the next flag raised at the same moment; the human sees it next
+        first, *rest = queued
+        update["escalation"] = {**first, **({"queued": rest} if rest else {}), "replace": True}
+        update["status"] = AWAITING_HUMAN
     return update
