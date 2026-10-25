@@ -1,4 +1,5 @@
 from tax_math import (
+    calculate_income_tax,
     calculate_standard_deduction,
     calculate_senior_deduction,
     calculate_taxable_social_security,
@@ -137,6 +138,15 @@ def test_taxable_social_security_upper_range():
         filing_status="single",
     )
     assert result["value"] == 3850
+
+def test_income_tax_single():
+    result = calculate_income_tax(
+        taxable_income=10000,
+        filing_status="single",
+    )
+    assert result["value"] == 1000
+    assert result["tool"] == "calculate_income_tax"
+    assert result["inputs"]["taxable_income"] == 10000
 
 # Run all tests when this file is executed directly
 
