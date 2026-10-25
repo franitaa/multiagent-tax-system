@@ -39,7 +39,7 @@ def route(view: Mapping[str, Any]) -> Route:
         )
     if not view["intake_complete"]:
         return Route("intake", "intake not complete", base)
-    if set(view["doc_ids"]) - set(view["extracted_ids"]):
+    if view["n_docs_pending"] > 0:
         return Route("extraction", "documents not yet extracted", base)
     if not view["has_eligibility"]:
         return Route("rules", "eligibility not decided", base)

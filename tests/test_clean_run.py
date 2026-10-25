@@ -91,3 +91,26 @@ def test_multi_turn_intake_same_thread(tmp_path):
     assert final["status"] == "complete"
     assert final["pending_question"] is None
     assert final["handoff_log"][-1]["to"] == "end"
+
+
+def test_orchestrator_view_is_bounded():
+    from src.orchestration.context import MAX_HANDOFFS_IN_VIEW, MAX_REASON_CHARS, routing_view
+    from src.orchestration.tokens import estimate_tokens
+    from src.scenarios import document
+
+    def state(n_docs, n_log):
+        return {
+            "documents": [document(f"doc-{i}") for i in range(n_docs)],
+            "handoff_log": [
+                {"step": i, "from": "orchestrator", "to": "intake", "reason": "x" * 500}
+                for i in range(n_log)
+            ],
+            "messages": [user("hello")] * 200,
+        }
+
+    small, big = routing_view(state(1, 1)), routing_view(state(500, 400))
+    assert len(big["last_handoffs"]) == MAX_HANDOFFS_IN_VIEW
+    assert all(len(h["reason"]) <= MAX_REASON_CHARS for h in big["last_handoffs"])
+    assert big["n_docs_pending"] == 500
+    # size does not grow with documents, log length or chat length
+    assert estimate_tokens(big) - estimate_tokens(small) < 80

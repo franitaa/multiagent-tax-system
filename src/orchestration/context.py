@@ -9,9 +9,16 @@ from typing import Any, Mapping
 from src.orchestration.access import ALWAYS_READ, POLICY
 
 
+MAX_HANDOFFS_IN_VIEW = 3
+MAX_REASON_CHARS = 60
+
+
 def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
-    """Compact view for the orchestrator: flags, counts, ids. No documents, no chat."""
+    """Compact, bounded view for the orchestrator: flags and counts only. No documents,
+    no chat, no id lists, so its size does not grow with the length of the session."""
     review = state.get("review") or {}
+    extracted = state.get("extracted", {})
+    pending_docs = [d for d in state.get("documents", []) if d["id"] not in extracted]
     return {
         "status": state.get("status", "running"),
         "done": state.get("done", False),
@@ -21,12 +28,14 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
         "has_pending_question": bool(state.get("pending_question")),
         "awaiting_since_msgs": state.get("awaiting_since_msgs"),
         "intake_complete": state.get("intake_complete", False),
-        "doc_ids": sorted(d["id"] for d in state.get("documents", [])),
-        "extracted_ids": sorted(state.get("extracted", {})),
+        "n_docs_pending": len(pending_docs),
         "has_eligibility": bool(state.get("eligibility")),
         "has_computed": bool(state.get("computed")),
         "review_verdict": review.get("verdict"),
-        "last_handoffs": state.get("handoff_log", [])[-3:],
+        "last_handoffs": [
+            {"step": e["step"], "to": e["to"], "reason": e["reason"][:MAX_REASON_CHARS]}
+            for e in state.get("handoff_log", [])[-MAX_HANDOFFS_IN_VIEW:]
+        ],
         "handoff_request": state.get("handoff_request"),
     }
 
