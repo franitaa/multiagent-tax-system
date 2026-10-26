@@ -86,3 +86,21 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
 **Limits I am aware of**
 - Sessions are kept only while the app runs until Shruti's saved-session store is plugged in.
 - My real Intake is not switched on in the main system yet (waiting for Phase 3 to merge).
+
+### Supriya Patil — Mon Oct 26, 2026 (afternoon addition, ~1.5 hours)
+**What the AI helped with**
+- Drafted my report section (`docs/report-intake-guardrails.md`) from the work and notes
+  already in the repo; I read it before it was saved.
+- Before opening my pull request: merged the latest main into my branch and ran every
+  team test together (427 passing), then drafted the PR description (PR #9).
+- Compared the new Rules agent with my Intake and found that they use different answer
+  names, and that Intake's "no" would be read as true for blindness.
+
+**What I decided or checked myself**
+- Asked whether the mismatch meant redoing my work; decided to keep the team's shared
+  names (PR #8) and asked Matthew to align Rules, while accepting that yes/no/not sure and
+  "no filing status from Intake" cannot change because of the brief.
+- Worked out what I needed to tell the team, in a clear and simple form (which answer
+  names differ, why yes/no/not sure must stay, and why Intake cannot send a filing
+  status), then sent the messages to Matthew and Francesca.
+- Chose a shorter, simpler PR description and opened PR #9 myself.
