@@ -26,8 +26,13 @@ What it can do today:
     that must NOT raise an alarm. A real-looking SSN typed inside a sentence is replaced
     with "[number removed]" before anything is saved.
 
+  - SSN nobody asked for (INT-4): removed from the reply before anything reads it, never
+    saved, and the person is thanked and told it was not needed; the rest of their
+    answer still counts. How and why: docs/intake-script.md.
+
 What is still missing:
-  - Fuller handling of a volunteered SSN (INT-4) and the chat page (INT-6).
+  - The chat page (INT-6). It should also remove an SSN from a message before it enters
+    the chat history, which Intake cannot do itself.
   - It uses keyword matching, not AI, so unusual wording can be missed. When in doubt it
     points the person to "go back" or a volunteer.
 
@@ -95,6 +100,12 @@ DONE = "Thank you. That was my last question. I'll now look at your documents."
 REAL_SSN = (
     "That looks like a real Social Security number. To keep you safe, I did not save it. "
     "Please use a practice number that starts with 9, like 900-12-3456."
+)
+# A Social Security number given when Intake did not ask for one (INT-4).
+SSN_NOT_NEEDED = "Thank you, but I don't need a Social Security number here, so I did not save it."
+SSN_NOT_NEEDED_REAL = (
+    "Thank you, but I don't need a Social Security number here, so I did not save it. "
+    "To keep you safe, please don't type your real number in this chat."
 )
 HINTS = {
     YES_NO: "Please answer yes, no, or not sure.",
@@ -296,6 +307,9 @@ _YES_WORDS = {"yes", "y", "yeah", "yep", "yup", "correct", "sure", "true"}
 _NO_WORDS = {"no", "n", "nope", "nah", "never", "false", "not"}
 _DATE_FORMATS = ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y",
                  "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y")
+_DATE_INSIDE_TEXT = re.compile(
+    r"[A-Za-z]{3,9} \d{1,2},? \d{4}|\d{1,2} [A-Za-z]{3,9} \d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}"
+)
 _SSN_PATTERN = re.compile(r"^(\d{3})[- ]?(\d{2})[- ]?(\d{4})$")
 _SSN_INSIDE_TEXT = re.compile(r"\b(\d{3})[- ]?(\d{2})[- ]?(\d{4})\b")
 SSN_REMOVED = "[number removed]"
@@ -304,6 +318,16 @@ SSN_REMOVED = "[number removed]"
 def redact_ssn(text: str) -> str:
     """Replace any real-looking SSN inside a sentence; practice numbers (9XX) are left alone."""
     return _SSN_INSIDE_TEXT.sub(lambda m: m.group(0) if m.group(1).startswith("9") else SSN_REMOVED, text)
+
+
+def strip_volunteered_ssn(text: str) -> tuple[str, str | None]:
+    """Remove every SSN-like number, real or practice, from a reply to a question that did
+    not ask for one. Returns (cleaned text, None / "practice" / "real")."""
+    found = [m.group(1) for m in _SSN_INSIDE_TEXT.finditer(text)]
+    if not found:
+        return text, None
+    kind = "practice" if all(first.startswith("9") for first in found) else "real"
+    return _SSN_INSIDE_TEXT.sub(SSN_REMOVED, text), kind
 
 
 _GO_BACK_EXACT = {"back", "go back", "previous", "previous question", "undo"}
@@ -481,12 +505,14 @@ def parse_date(text: str) -> str | None:
         return NOT_SURE
     cleaned = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", text.strip().rstrip("."))
     cleaned = re.sub(r"\s+", " ", cleaned)
-    for fmt in _DATE_FORMATS:
-        try:
-            parsed = datetime.strptime(cleaned, fmt).date()
-        except ValueError:
-            continue
-        return parsed.isoformat() if 1900 <= parsed.year <= 2025 else None
+    # the whole reply first, then a date inside a sentence ("I was born on March 4, 1950")
+    for candidate in [cleaned, *(m.group(0) for m in _DATE_INSIDE_TEXT.finditer(cleaned))]:
+        for fmt in _DATE_FORMATS:
+            try:
+                parsed = datetime.strptime(candidate, fmt).date()
+            except ValueError:
+                continue
+            return parsed.isoformat() if 1900 <= parsed.year <= 2025 else None
     return None
 
 
@@ -501,7 +527,9 @@ def parse_amount(text: str) -> float | None:
 def parse_text(text: str) -> str | None:
     if is_not_sure(text):
         return NOT_SURE
-    cleaned = redact_ssn(text.strip())
+    # any SSN is dropped from a free-text answer, e.g. "Ana Lopez 123-45-6789" -> "Ana Lopez"
+    cleaned = redact_ssn(text).replace(SSN_REMOVED, " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.;:")
     return cleaned if re.search(r"[A-Za-z]", cleaned) else None
 
 
@@ -727,6 +755,11 @@ def run(view, tools):
     reply = _latest_reply(messages)
     if reply is None:
         return _ask(question.text, _progress_fact(question.key, answered))
+    # An SSN nobody asked for is removed before anything else reads the reply (INT-4).
+    ssn_given = None
+    if question.kind != SSN:
+        reply, ssn_given = strip_volunteered_ssn(reply)
+    ssn_note = {None: "", "practice": f"{SSN_NOT_NEEDED} ", "real": f"{SSN_NOT_NEEDED_REAL} "}[ssn_given]
     alarm = safety_check(reply, question)
     if alarm:
         note = _safety_note(question, alarm[1], reply, facts)
@@ -754,6 +787,8 @@ def run(view, tools):
     if value is None:
         if topic:  # not an answer, but names an earlier question (e.g. "my date of birth")
             return _revisit(question_for_key(topic, facts), "No problem, let's fix that.", answered, facts)
+        if ssn_given:  # the message was only a number: explain, then ask again
+            return _ask(f"{ssn_note}{question.text}")
         if is_correction(reply):
             return _ask(WHICH_ANSWER)
         return _ask(f"Sorry, I didn't quite understand. {HINTS[question.kind]} {GO_BACK_TIP} {question.text}")
@@ -769,6 +804,7 @@ def run(view, tools):
         progress = _progress_fact(following.key if following else None, answered)
         return _raise_alarm(alarm, {**saved, **note, **progress}, intake_complete=following is None)
     prefix = f"{VOLUNTEER_ACK} " if reason else f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
+    prefix = ssn_note + prefix
     if following is None:
         return {
             "messages": [{"role": "assistant", "content": f"{prefix}{DONE}"}],

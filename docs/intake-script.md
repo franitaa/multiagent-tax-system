@@ -15,11 +15,14 @@ It also listens for trouble and calls a volunteer (GRD-1, GRD-2): a request for 
 advice, a spouse who died in 2025, someone else answering without permission, or
 pressure about money or the refund account. These alarms are tested against a list of
 tricky messages in `tests/test_guardrails.py` (GRD-3).
+A Social Security number nobody asked for is removed and never saved (INT-4); see
+"Volunteered Social Security numbers" below for how and why.
 It is not plugged in yet: `src/agents/intake.py` is still the placeholder that the
 orchestration tests use.
 
 **What is still missing (and the card for each):**
-- Safely handling a Social Security number the person offers unasked (INT-4)
+- Removing a volunteered SSN from the chat history itself: the chat page will do this
+  before a message enters the system (INT-6)
 - The large-type, screen-reader friendly chat page (INT-6)
 
 **What teammates need from this file:**
@@ -101,8 +104,40 @@ Intake does not check or add them up.
 
 ## Always-available phrases
 - "I'm not sure": "That's okay. I'll note this for a volunteer to help with."
-- Asking for advice: "I can't give tax advice, but I'll note your question for the volunteer."
+- Asking for advice: "I'm here to help fill in your tax form, so I can't give tax advice. I'll note your question for the volunteer."
 - "Go back": repeat the previous question and keep the earlier answer until a new one is given.
+
+## Volunteered Social Security numbers (card INT-4): how and why
+The brief asks us not to collect an SSN we do not need, and to handle one deliberately
+if it is offered anyway. Intake asks for an SSN in exactly one place: Q12, a practice
+number for each dependent, because the form lists one.
+
+**What Intake does when someone types an SSN it did not ask for** (for example, at
+"Were you married?" they type "No, and my number is 123-45-6789"):
+1. It removes the number from the message before anything else reads it, so it can
+   never reach the answers, the volunteer notes, or the safety alarms.
+2. It still uses the rest of the message. "No, and my number is ..." is saved as "no".
+3. It says kindly: "Thank you, but I don't need a Social Security number here, so I did
+   not save it." If the number looked real (not starting with 9), it adds: "To keep you
+   safe, please don't type your real number in this chat."
+4. If the message was only a number, it asks the same question again.
+
+**What happens at Q12 (when Intake does ask):** only practice numbers starting with 9
+(900-999) are accepted. A real-looking number is refused, never saved, and never
+repeated back.
+
+**Why we chose this:**
+- *Collect only what we need.* A number given at the wrong moment is not needed for any
+  line of the form, so even a practice number is not kept there.
+- *Never punish the person.* Older taxpayers may share an SSN out of habit or trust.
+  Intake thanks them, explains in one sentence, and keeps the rest of their answer, so
+  they do not have to start again or feel they did something wrong.
+- *Safe by default.* Removing the number first means no later step can accidentally
+  store or log it. Alarm reasons are generic and traces store only field names.
+
+**Known limit:** the person's own message is still kept in the chat history, because
+the system adds it before Intake runs. The chat page (INT-6) will remove the number
+before the message is sent in, so it is never stored at all.
 
 ## Answer names (shared contract for `facts`)
 Every answer is saved in `facts` as `{"value": ..., "source": "user"}`.

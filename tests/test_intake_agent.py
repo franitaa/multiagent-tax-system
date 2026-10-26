@@ -67,6 +67,7 @@ def test_parse_yes_no(text, expected):
     ("March 4, 1950", "1950-03-04"), ("march 4 1950", "1950-03-04"), ("Mar 4th, 1950", "1950-03-04"),
     ("4 March 1950", "1950-03-04"), ("1950-03-04", "1950-03-04"), ("03/04/1950", "1950-03-04"),
     ("not sure", ia.NOT_SURE), ("sometime in 1950", None), ("March 4, 2030", None),
+    ("I was born on March 4, 1950", "1950-03-04"), ("it's 4 March 1950 I think", "1950-03-04"),
 ])
 def test_parse_date(text, expected):
     assert ia.parse_date(text) == expected
@@ -420,6 +421,61 @@ def test_answering_later_resolves_the_note():
     chat.say("no")
     assert chat.value("married_dec31") == "no"
     assert chat.value(ia.NOTES)[0]["resolved"] is True
+
+
+# ---- a Social Security number nobody asked for (INT-4) ----------------------------
+
+
+def test_strip_volunteered_ssn():
+    assert ia.strip_volunteered_ssn("no") == ("no", None)
+    assert ia.strip_volunteered_ssn("no, it's 123-45-6789") == (f"no, it's {ia.SSN_REMOVED}", "real")
+    assert ia.strip_volunteered_ssn("901 23 4567") == (ia.SSN_REMOVED, "practice")
+    assert ia.strip_volunteered_ssn("901-23-4567 and 123456789")[1] == "real"
+    assert ia.strip_volunteered_ssn("March 4, 1950")[1] is None
+    assert ia.strip_volunteered_ssn("555-123-4567")[1] is None  # a phone number is not an SSN
+
+
+def test_real_ssn_given_alone_is_not_saved_and_question_repeats():
+    chat = Chat()
+    update = chat.say("123-45-6789")
+    assert update["pending_question"] == f"{ia.SSN_NOT_NEEDED_REAL} {ia.BEFORE_DEPENDENTS[0].text}"
+    assert set(chat.facts) == {ia.PROGRESS}
+    assert "123-45-6789" not in str(chat.facts)
+
+
+def test_ssn_inside_an_answer_is_dropped_and_the_answer_kept():
+    chat = Chat()
+    update = chat.say("No, and my social security number is 123-45-6789")
+    assert chat.value("married_dec31") == "no"
+    assert update["pending_question"].startswith(ia.SSN_NOT_NEEDED_REAL)
+    assert "123-45-6789" not in str(chat.facts) and "123-45-6789" not in update["pending_question"]
+
+
+def test_practice_ssn_given_unasked_is_not_saved_either():
+    chat = Chat()
+    for answer in ["no", "single"]:
+        chat.say(answer)
+    update = chat.say("March 4, 1950. My number is 912-34-5678")
+    assert chat.value("taxpayer_birth_date") == "1950-03-04"
+    assert update["pending_question"].startswith(ia.SSN_NOT_NEEDED + " ")
+    assert "912-34-5678" not in str(chat.facts)
+
+
+def test_ssn_inside_a_name_is_dropped_from_the_name():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "no", "yes"]:
+        chat.say(answer)
+    chat.say("Ana Lopez 123-45-6789")
+    assert chat.value("dependents")[0]["name"] == "Ana Lopez"
+
+
+def test_ssn_question_still_accepts_a_practice_number():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "no", "yes", "Ana Lopez", "granddaughter"]:
+        chat.say(answer)
+    update = chat.say("900-11-2222")
+    assert chat.value("dependents")[0]["ssn"] == "900-11-2222"
+    assert ia.SSN_NOT_NEEDED not in update["pending_question"]
 
 
 # ---- safety alarms (GRD-1, GRD-2) -------------------------------------------------
