@@ -232,3 +232,97 @@ def calculate_taxable_social_security(
         ),
         "tool": "calculate_taxable_social_security",
     }
+
+def calculate_income_tax(
+    taxable_income: float,
+    filing_status: str,
+) -> ProvenanceRecord:
+    """Calculate 2025 federal income tax using ordinary tax brackets.
+
+    This simplified calculation is for ordinary taxable income only.
+    Qualified dividends, capital gains, and other special tax situations
+    are not handled by this function.
+    """
+    if taxable_income < 0:
+        raise ValueError("taxable_income cannot be negative")
+
+    brackets = {
+        "single": [
+            (11925, 0.10),
+            (48350, 0.12),
+            (103350, 0.22),
+            (197300, 0.24),
+            (250525, 0.32),
+            (626350, 0.35),
+            (float("inf"), 0.37),
+        ],
+        "married_filing_jointly": [
+            (23850, 0.10),
+            (96700, 0.12),
+            (206700, 0.22),
+            (394600, 0.24),
+            (501050, 0.32),
+            (751600, 0.35),
+            (float("inf"), 0.37),
+        ],
+        "married_filing_separately": [
+            (11925, 0.10),
+            (48350, 0.12),
+            (103350, 0.22),
+            (197300, 0.24),
+            (250525, 0.32),
+            (375800, 0.35),
+            (float("inf"), 0.37),
+        ],
+        "head_of_household": [
+            (17000, 0.10),
+            (64850, 0.12),
+            (103350, 0.22),
+            (197300, 0.24),
+            (250500, 0.32),
+            (626350, 0.35),
+            (float("inf"), 0.37),
+        ],
+        "qualifying_surviving_spouse": [
+            (23850, 0.10),
+            (96700, 0.12),
+            (206700, 0.22),
+            (394600, 0.24),
+            (501050, 0.32),
+            (751600, 0.35),
+            (float("inf"), 0.37),
+        ],
+    }
+
+    if filing_status not in brackets:
+        raise ValueError(f"Unsupported filing status: {filing_status}")
+
+    remaining_income = taxable_income
+    previous_limit = 0
+    tax = 0.0
+
+    for upper_limit, rate in brackets[filing_status]:
+        amount_in_bracket = min(
+            remaining_income,
+            upper_limit - previous_limit,
+        )
+        tax += amount_in_bracket * rate
+        remaining_income -= amount_in_bracket
+
+        if remaining_income <= 0:
+            break
+
+        previous_limit = upper_limit
+
+    tax = round(tax, 2)
+
+    return {
+        "value": tax,
+        "formula": "2025 ordinary income tax brackets",
+        "inputs": {
+            "taxable_income": taxable_income,
+            "filing_status": filing_status,
+        },
+        "source": "2025 IRS tax rate schedules",
+        "tool": "calculate_income_tax",
+    }
