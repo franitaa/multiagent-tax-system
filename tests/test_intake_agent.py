@@ -917,3 +917,29 @@ def test_spouse_can_be_claimed_only_when_married():
                    "paper check", "no"]:
         chat.say(answer)
     assert chat.question == "Can another person claim your spouse as a dependent on their tax return?"
+
+
+# ---- one shared SSN rule, and telling the person when a number was removed -----------
+
+
+def test_intake_uses_the_security_owners_validator(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ia, "is_fake_ssn", lambda digits: calls.append(digits) or True)
+    assert ia.parse_ssn("123-45-6789") == ("123-45-6789", False)  # whatever security.py decides
+    assert calls == ["123456789"]
+
+
+def test_number_removed_by_the_chat_page_is_explained():
+    chat = Chat()
+    update = chat.say(f"no, my number is {ia.SSN_REMOVED}")
+    assert update["pending_question"].startswith(ia.SSN_NOT_NEEDED_REAL)
+    assert chat.value("married_dec31") == "no"
+
+
+def test_number_removed_by_the_chat_page_at_the_ssn_question():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopez", "granddaughter"]:
+        chat.say(answer)
+    update = chat.say(ia.SSN_REMOVED)
+    assert update["pending_question"].startswith(ia.REAL_SSN)
+    assert "ssn" not in chat.value("dependents")[0]

@@ -143,14 +143,22 @@ number for each dependent, because the form lists one.
 1. It removes the number from the message before anything else reads it, so it can
    never reach the answers, the volunteer notes, or the safety alarms.
 2. It still uses the rest of the message. "No, and my number is ..." is saved as "no".
-3. It says kindly: "Thank you, but I don't need a Social Security number here, so I did
-   not save it." If the number looked real (not starting with 9), it adds: "To keep you
-   safe, please don't type your real number in this chat."
+3. It tells the person kindly what happened, instead of removing it silently (wording
+   suggested by Francesca): "I removed a number that looked like a real Social Security
+   number, to keep you safe. I did not save it, and I don't need one here. For this
+   practice system, please only use test numbers that start with 9." A practice number
+   given at the wrong moment gets: "Thank you, but I don't need a Social Security number
+   here, so I did not save it."
 4. If the message was only a number, it asks the same question again.
 
 **What happens at Q12 (when Intake does ask):** only practice numbers starting with 9
 (900-999) are accepted. A real-looking number is refused, never saved, and never
 repeated back.
+
+**One shared rule:** "is this a practice number?" is always decided by the Security
+owner's validator, `is_fake_ssn()` in `security.py`, so the team has only one rule to
+maintain. Intake only finds SSN-shaped numbers in a sentence and joins the digits first,
+so "912 34 5678" is checked the same as "912-34-5678".
 
 **Why we chose this:**
 - *Collect only what we need.* A number given at the wrong moment is not needed for any
@@ -162,8 +170,10 @@ repeated back.
   store or log it. Alarm reasons are generic and traces store only field names.
 
 **On the chat page (INT-6):** a real-looking number is removed from the message before
-it is sent into the system, so it is never stored at all, not even in the chat history.
-Practice numbers (900-999) are kept, because Q12 needs them.
+it is sent into the system, so it is never stored or logged at all, not even in the chat
+history. Intake sees "[number removed]" and still tells the person kindly what happened.
+Practice numbers (900-999) are kept, because Q12 needs them. Intake uses no AI model, so
+nothing is ever sent to one.
 
 ## Answer names (shared contract for `facts`)
 Every answer is saved in `facts` as `{"value": ..., "source": "user"}`.
@@ -218,6 +228,11 @@ Eligibility & Rules decides it from the answers above, and a volunteer may set i
 the human gate (source `human:FILING_STATUS_AMBIGUITY`).
 
 ## Decisions taken (no instructor Q&A available)
+- Possible exploitation is "stop" only (agreed with Francesca): the brief says notice and
+  stop, not judge. The message to the taxpayer stays gentle and never accuses anyone; the
+  volunteer's note records why. If a helper really is authorised (for example a daughter
+  with power of attorney), the volunteer sorts it out outside the system.
+  *Future improvement:* let a volunteer restart the case with the authority documented.
 - Names and SSNs at the top of the form: the brief only requires dependents' SSNs (3.1) and
   says not to ask for SSNs we do not need (4.3). So Intake asks for the taxpayer's name
   (and the spouse's name on a joint return), but never for the taxpayer's or spouse's SSN.

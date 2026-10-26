@@ -55,6 +55,8 @@ def test_real_ssn_never_enters_the_graph(graph):
     state = graph.get_state({"configurable": {"thread_id": "SF-000-003"}}).values
     assert "123-45-6789" not in str(state)
     assert ia.SSN_REMOVED in chat.transcript(graph, "SF-000-003")[-2]["content"]
+    # the person is told kindly what happened (Francesca's dignity point)
+    assert chat.transcript(graph, "SF-000-003")[-1]["content"].startswith(ia.SSN_NOT_NEEDED_REAL)
 
 
 def test_practice_ssn_is_kept_for_the_dependent_question():

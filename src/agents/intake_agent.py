@@ -33,8 +33,9 @@ What it can do today:
     with "[number removed]" before anything is saved.
 
   - SSN nobody asked for (INT-4): removed from the reply before anything reads it, never
-    saved, and the person is thanked and told it was not needed; the rest of their
-    answer still counts. How and why: docs/intake-script.md.
+    saved, and the person is told kindly what happened; the rest of their answer still
+    counts. "Practice or real?" is always decided by the Security owner's is_fake_ssn()
+    (security.py), so there is one shared rule. How and why: docs/intake-script.md.
 
 What is still missing:
   - The chat page (INT-6). It should also remove an SSN from a message before it enters
@@ -55,6 +56,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Callable
 
+from security import is_fake_ssn  # the Security owner's 900-999 validator (one shared rule)
 from src.state import EXPLOITATION_SIGNS, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST
 
 NOT_SURE = "not_sure"
@@ -106,8 +108,9 @@ ALARM_PRESSURE = "taxpayer mentioned pressure or an unfamiliar refund account"
 ALARM_REFUND_ACCOUNT = "refund would go to a bank account not in the taxpayer's name"
 DONE = "Thank you. That was my last question. I'll now look at your documents."
 REAL_SSN = (
-    "That looks like a real Social Security number. To keep you safe, I did not save it. "
-    "Please use a practice number that starts with 9, like 900-12-3456."
+    "I removed a number that looked like a real Social Security number, to keep you safe, and I "
+    "did not save it. For this practice system, please only use test numbers that start with 9, "
+    "like 900-12-3456."
 )
 # Dates are always read back before they are saved, and never guessed when they could be
 # read two ways (03/04/1950 is March 4 in the US but 3 April in many other countries).
@@ -124,8 +127,9 @@ CHANGE_PREFIX = "I'd like to change this answer: "
 # A Social Security number given when Intake did not ask for one (INT-4).
 SSN_NOT_NEEDED = "Thank you, but I don't need a Social Security number here, so I did not save it."
 SSN_NOT_NEEDED_REAL = (
-    "Thank you, but I don't need a Social Security number here, so I did not save it. "
-    "To keep you safe, please don't type your real number in this chat."
+    "I removed a number that looked like a real Social Security number, to keep you safe. I did not "
+    "save it, and I don't need one here. For this practice system, please only use test numbers "
+    "that start with 9."
 )
 HINTS = {
     YES_NO: "Please answer yes, no, or not sure.",
@@ -401,19 +405,26 @@ _SSN_INSIDE_TEXT = re.compile(r"\b(\d{3})[- ]?(\d{2})[- ]?(\d{4})\b")
 SSN_REMOVED = "[number removed]"
 
 
+def _is_practice(match: re.Match) -> bool:
+    """One shared rule for the whole team: the Security owner's validator (security.py).
+    Digits are joined first, so "912 34 5678" is checked the same as "912-34-5678"."""
+    return is_fake_ssn("".join(match.groups()))
+
+
 def redact_ssn(text: str) -> str:
-    """Replace any real-looking SSN inside a sentence; practice numbers (9XX) are left alone."""
-    return _SSN_INSIDE_TEXT.sub(lambda m: m.group(0) if m.group(1).startswith("9") else SSN_REMOVED, text)
+    """Replace any real-looking SSN inside a sentence; practice numbers (900-999) are left alone."""
+    return _SSN_INSIDE_TEXT.sub(lambda m: m.group(0) if _is_practice(m) else SSN_REMOVED, text)
 
 
 def strip_volunteered_ssn(text: str) -> tuple[str, str | None]:
     """Remove every SSN-like number, real or practice, from a reply to a question that did
-    not ask for one. Returns (cleaned text, None / "practice" / "real")."""
-    found = [m.group(1) for m in _SSN_INSIDE_TEXT.finditer(text)]
+    not ask for one. Returns (cleaned text, None / "practice" / "real"). A number the chat
+    page already removed ("[number removed]") counts as "real", so the person is told why."""
+    found = list(_SSN_INSIDE_TEXT.finditer(text))
     if not found:
-        return text, None
-    kind = "practice" if all(first.startswith("9") for first in found) else "real"
-    return _SSN_INSIDE_TEXT.sub(SSN_REMOVED, text), kind
+        return text, ("real" if SSN_REMOVED in text else None)
+    real = SSN_REMOVED in text or not all(_is_practice(m) for m in found)
+    return _SSN_INSIDE_TEXT.sub(SSN_REMOVED, text), ("real" if real else "practice")
 
 
 _GO_BACK_EXACT = {"back", "go back", "previous", "previous question", "undo"}
@@ -658,10 +669,12 @@ def parse_ssn(text: str) -> tuple[str | None, bool]:
     """(practice number as 9XX-XX-XXXX or None, looks_real). A real-looking number is never returned."""
     if is_not_sure(text):
         return NOT_SURE, False
+    if SSN_REMOVED in text:  # the chat page already removed a real-looking number
+        return None, True
     match = _SSN_PATTERN.match(text.strip())
     if not match:
         return None, False
-    if not match.group(1).startswith("9"):
+    if not _is_practice(match):
         return None, True
     return "-".join(match.groups()), False
 
