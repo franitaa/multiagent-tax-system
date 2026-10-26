@@ -11,9 +11,15 @@ What it can do today:
     unclear. Answers are saved in `facts` under the shared names. Amounts are saved as
     "direct user input". Only practice SSNs starting with 9 are accepted; real-looking
     ones are refused and never saved or repeated.
+  - Dates: forgiving about how they are typed ("dec, 4,1950"), but always read back first
+    ("Just to check: you were born on December 4, 1950. Is that right?") and only saved
+    after "yes". Numbers that could be two dates (03/04/1950: March 4 or 3 April) are never
+    guessed; the person is asked to type the month as a word.
   - Go back and change answers (INT-3): "go back", or a simple correction like "actually
     I was married", re-asks that question. Old answers are kept in `history`, never lost.
-    "I don't understand" gets a plain-words explanation of the question.
+    "I don't understand" gets a plain-words explanation of the question. `answers_so_far()`
+    feeds the chat page's "Your answers so far" list, whose Change buttons jump straight to
+    any earlier question and then carry on where the person left off.
   - "I'm not sure" (INT-5): always accepted, noted for a volunteer in `volunteer_notes`.
     The conversation carries on.
   - Safety alarms (GRD-1, GRD-2): a request for tax advice, a spouse who died in 2025,
@@ -46,7 +52,7 @@ Notes for teammates:
 """
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Callable
 
 from src.state import EXPLOITATION_SIGNS, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST
@@ -59,6 +65,7 @@ DATE = "date"
 TEXT = "text"
 AMOUNT = "amount"
 SSN = "ssn"
+YEAR = "year"
 
 WELCOME = (
     "Hello. I will ask you some questions about your 2025 taxes, one at a time. "
@@ -66,7 +73,7 @@ WELCOME = (
 )
 GO_BACK_FIRST = "We are at the first question, so there is nothing to go back to."
 NOT_SURE_OK = "If you're not sure, that's fine, just say \"not sure\"."
-GO_BACK_TIP ="If you want to change an earlier answer, just say \"go back\"."
+GO_BACK_TIP = "If you want to change an earlier answer, just say \"go back\"."
 WHICH_ANSWER = (
     "Which answer would you like to change? You can name it, for example \"my date of birth\", "
     "or say \"go back\"."
@@ -96,11 +103,24 @@ ALARM_ADVICE = "taxpayer asked for tax advice"
 ALARM_SPOUSE_DIED = "taxpayer says a spouse died in 2025"
 ALARM_THIRD_PARTY = "someone else is answering without stated authority"
 ALARM_PRESSURE = "taxpayer mentioned pressure or an unfamiliar refund account"
+ALARM_REFUND_ACCOUNT = "refund would go to a bank account not in the taxpayer's name"
 DONE = "Thank you. That was my last question. I'll now look at your documents."
 REAL_SSN = (
     "That looks like a real Social Security number. To keep you safe, I did not save it. "
     "Please use a practice number that starts with 9, like 900-12-3456."
 )
+# Dates are always read back before they are saved, and never guessed when they could be
+# read two ways (03/04/1950 is March 4 in the US but 3 April in many other countries).
+DATE_AMBIGUOUS = (
+    "I want to be sure I get this right. Please type the month as a word, for example: March 4, 1950."
+)
+DATE_RETYPE = "No problem. Please type it again."
+CONFIRM_HINT = "Please answer yes or no."
+CONFIRM_PHRASE = {"Q4": "you were born on", "Q6": "your spouse was born on"}
+AMBIGUOUS_DATE = "ambiguous_date"
+# Sent by the "Change" buttons on the chat page, followed by the question's text.
+CHANGE_PREFIX = "I'd like to change this answer: "
+
 # A Social Security number given when Intake did not ask for one (INT-4).
 SSN_NOT_NEEDED = "Thank you, but I don't need a Social Security number here, so I did not save it."
 SSN_NOT_NEEDED_REAL = (
@@ -110,16 +130,36 @@ SSN_NOT_NEEDED_REAL = (
 HINTS = {
     YES_NO: "Please answer yes, no, or not sure.",
     CHOICE: "Please answer single, widowed, or taking care of someone. You can also say not sure.",
-    DATE: "Please type the date like this: March 4, 1950.",
+    DATE: "Please type the month as a word, then the day and the year, for example: March 4, 1950.",
     TEXT: "Please type a short answer.",
     AMOUNT: "Please type the amount as a number, like 1200.",
     SSN: "Please type a number that starts with 9, like 900-12-3456.",
+    YEAR: "Please type the year as a number, for example 2023.",
 }
 
 
 # Plain-words help for each question, used when the person says they do not understand.
 # They explain what the question means, never a tax rule or advice.
 EXPLANATIONS = {
+    "Q0": "Please type your first and last name, as they appear on your tax forms.",
+    "Q2b": "Please type your husband's or wife's first and last name, as they appear on their tax forms.",
+    "Q2c": "Some people list each of their costs, like medical bills, on their tax return instead of "
+           "taking one set amount. This asks if your spouse will do that on their own return.",
+    "Q3a": "Please type the year your husband or wife died, for example 2023.",
+    "Q17a": "Other forms include a 1099-NEC (pay for freelance or contract work), a 1099-MISC (other "
+            "income) or a 1099-B (sales of stocks or funds).",
+    "Q17b": "This asks if you sold any shares, funds, land or a house during 2025.",
+    "Q17c": "This asks if you were paid for work you did for yourself, not as an employee, or if "
+            "someone paid you rent.",
+    "Q17d": "This asks if you earned money in another country, or had a bank account or investments there.",
+    "Q17e": "Digital assets are things like Bitcoin or other cryptocurrency. This asks if you got, sold "
+            "or swapped any in 2025.",
+    "Q20b": "If you paid more tax than you owed, the IRS sends the extra back. This asks if you want it "
+            "paid into a bank account or mailed to you as a paper check.",
+    "Q20c": "This asks if the bank account belongs to you. An account you share with your husband or "
+            "wife counts as yours.",
+    "Q21b": "This asks if someone else, such as a son or daughter, lists your husband or wife on their "
+            "own tax return because they support them.",
     "Q1": "This asks whether you had a husband or wife on December 31, 2025, the last day of the year. "
           "If you were separated or it feels complicated, you can say \"not sure\".",
     "Q2": "Married couples can send in one shared tax return for both of them, or one each. "
@@ -187,6 +227,7 @@ class Question:
     choices: dict = field(default_factory=dict)  # saved value -> words that mean it
     part: str | None = None  # for dependent questions: name / relationship / ssn / another
     index: int | None = None  # for dependent questions: which dependent (0 = first)
+    hint: str | None = None  # what to type, if not the usual hint for this kind of question
 
     @property
     def key(self) -> str:
@@ -196,23 +237,44 @@ class Question:
 
 MARRIED = _when("married_dec31", "yes")
 
+
+def _filing_separately(facts: dict) -> bool:
+    return _value(facts, "married_dec31") == "yes" and _value(facts, "file_jointly") == "no"
+
+
+def _widowed_with_dependents(facts: dict) -> bool:
+    return _value(facts, "household_situation") == "widowed" and _value(facts, "has_dependents") == "yes"
+
 BEFORE_DEPENDENTS = [
+    Question("Q0", "taxpayer_name", TEXT, "What is your full name?"),
     Question("Q1", "married_dec31", YES_NO, "On December 31, 2025, were you married?"),
     Question("Q2", "file_jointly", YES_NO,
              "Do you and your spouse plan to file one tax return together?", MARRIED),
+    Question("Q2b", "spouse_name", TEXT, "What is your spouse's full name?", _when("file_jointly", "yes")),
+    Question("Q2c", "spouse_itemizing", YES_NO,
+             "Will your spouse list their deductions one by one on their own tax return, instead of "
+             "taking the standard amount?", _filing_separately),
     Question("Q3", "household_situation", CHOICE,
              "Which of these fits you best: single, widowed, or taking care of someone who lives with you?",
              _when("married_dec31", "no"),
-             {"single": ("single",), "widowed": ("widow",), "caring_for_someone": ("care", "caring")}),
-    Question("Q4", "taxpayer_birth_date", DATE, "What is your date of birth? For example: March 4, 1950."),
+             {"single": ("single",), "widowed": ("widow",), "caring_for_someone": ("care", "caring")},
+             hint="Please answer single, widowed, or taking care of someone. You can also say not sure."),
+    Question("Q4", "taxpayer_birth_date", DATE,
+             "What is your date of birth? Please type the month as a word, then the day and the year, "
+             "for example: March 4, 1950."),
     Question("Q5", "taxpayer_blind", YES_NO, "Are you legally blind?"),
-    Question("Q6", "spouse_birth_date", DATE, "What is your spouse's date of birth?", MARRIED),
+    Question("Q6", "spouse_birth_date", DATE,
+             "What is your spouse's date of birth? Please type the month as a word, then the day and the "
+             "year, for example: June 1, 1952.", MARRIED),
     Question("Q7", "spouse_blind", YES_NO, "Is your spouse legally blind?", MARRIED),
     Question("Q8", "has_dependents", YES_NO,
              "Does anyone depend on you for support, such as a child or a relative?"),
 ]
 
 AFTER_DEPENDENTS = [
+    # only for a widowed person with someone depending on them (Rules needs the year)
+    Question("Q3a", "spouse_death_year", YEAR, "In what year did your husband or wife pass away?",
+             _widowed_with_dependents),
     Question("Q13", "has_w2", YES_NO, "Did you get a W-2 form from a job this year?"),
     Question("Q14", "has_ssa_1099", YES_NO,
              "Did you get a Social Security benefits statement, called an SSA-1099?"),
@@ -220,6 +282,17 @@ AFTER_DEPENDENTS = [
              "Did you get a form for money paid out of a pension or retirement account, called a 1099-R?"),
     Question("Q16", "has_1099_int", YES_NO, "Did you get a form showing bank interest, called a 1099-INT?"),
     Question("Q17", "has_1099_div", YES_NO, "Did you get a form showing dividends, called a 1099-DIV?"),
+    # Out-of-scope screening (assignment section 3.3): Intake only records; Rules decides.
+    Question("Q17a", "has_other_tax_forms", YES_NO,
+             "Did you get any other tax forms for 2025, such as a 1099-NEC, 1099-MISC or 1099-B?"),
+    Question("Q17b", "sold_stocks_or_property", YES_NO,
+             "During 2025, did you sell any stocks, funds or property?"),
+    Question("Q17c", "business_or_rental_income", YES_NO,
+             "During 2025, did you earn money from your own business, freelance work, or renting out property?"),
+    Question("Q17d", "foreign_income_or_accounts", YES_NO,
+             "During 2025, did you have any income, bank accounts or investments outside the United States?"),
+    Question("Q17e", "digital_assets", YES_NO,
+             "During 2025, did you receive, sell or trade any digital assets, such as cryptocurrency?"),
     Question("Q18", "made_estimated_payments", YES_NO,
              "During 2025, did you send any tax payments to the IRS yourself?"),
     Question("Q19", "estimated_payments_amount", AMOUNT, "About how much did you send in total?",
@@ -228,8 +301,19 @@ AFTER_DEPENDENTS = [
              "Do you have any adjustments to your income that you want to include?"),
     Question("Q20a", "adjustments_amount", AMOUNT, "What is the total amount of those adjustments?",
              _when("has_adjustments", "yes")),
+    # The refund: a refund sent to an account the person cannot describe is a warning sign (4.4)
+    Question("Q20b", "refund_method", CHOICE,
+             "If you get a refund, would you like it paid into a bank account or sent as a paper check?",
+             choices={"bank_account": ("bank", "account", "deposit", "direct"),
+                      "paper_check": ("check", "cheque", "paper", "mail")},
+             hint="Please answer bank account or paper check. You can also say not sure."),
+    Question("Q20c", "refund_account_own_name", YES_NO,
+             "Is that bank account in your own name? An account you share with your spouse counts as yes.",
+             _when("refund_method", "bank_account")),
     Question("Q21", "can_be_claimed_as_dependent", YES_NO,
              "Can another person claim you as a dependent on their tax return?"),
+    Question("Q21b", "spouse_can_be_claimed", YES_NO,
+             "Can another person claim your spouse as a dependent on their tax return?", MARRIED),
     Question("Q22", "spouse_died_2025", YES_NO, "Did a spouse pass away during 2025?"),
     Question("Q23", "us_resident_all_year", YES_NO, "Did you live in the United States for all of 2025?"),
     Question("Q24", "answering_for_self", YES_NO, "Are you answering these questions yourself today?"),
@@ -249,7 +333,8 @@ def _dependent(question_id: str, index: int, facts: dict) -> Question:
     name = current.get("name", NOT_SURE)
     name = name if name != NOT_SURE else "this person"
     if question_id == "Q9":
-        return Question("Q9", "dependents", TEXT, "What is this person's full name?", part="name", index=index)
+        who = "this person" if index == 0 else "the next person"  # each question text is unique
+        return Question("Q9", "dependents", TEXT, f"What is {who}'s full name?", part="name", index=index)
     if question_id == "Q10":
         return Question("Q10", "dependents", TEXT, f"How is {name} related to you?",
                         part="relationship", index=index)
@@ -302,14 +387,15 @@ def next_question(facts: dict) -> Question | None:
 # ---- understanding answers --------------------------------------------------------
 
 _NOT_SURE_PHRASES = ("not sure", "unsure", "don't know", "dont know", "do not know", "no idea",
-                     "not certain", "maybe")
+                     "not certain", "maybe", "can't remember", "cant remember", "cannot remember",
+                     "can not remember", "don't remember", "dont remember", "do not remember",
+                     "forgot", "no clue", "dunno", "idk")
 _YES_WORDS = {"yes", "y", "yeah", "yep", "yup", "correct", "sure", "true"}
 _NO_WORDS = {"no", "n", "nope", "nah", "never", "false", "not"}
-_DATE_FORMATS = ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y",
-                 "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y")
-_DATE_INSIDE_TEXT = re.compile(
-    r"[A-Za-z]{3,9} \d{1,2},? \d{4}|\d{1,2} [A-Za-z]{3,9} \d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{4}"
-)
+_WORD_DATE_FORMATS = ("%B %d %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y")
+_WORD_DATE = re.compile(r"[a-z]{3,9} \d{1,2} \d{4}|\d{1,2} [a-z]{3,9} \d{4}")
+_NUMERIC_DATE = re.compile(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b")
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")
 _SSN_PATTERN = re.compile(r"^(\d{3})[- ]?(\d{2})[- ]?(\d{4})$")
 _SSN_INSIDE_TEXT = re.compile(r"\b(\d{3})[- ]?(\d{2})[- ]?(\d{4})\b")
 SSN_REMOVED = "[number removed]"
@@ -499,21 +585,56 @@ def parse_choice(text: str, choices: dict) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def _birth_date(year: int, month: int, day: int) -> str | None:
+    """YYYY-MM-DD if this is a real date and a sensible birth date, else None."""
+    try:
+        parsed = date(year, month, day)
+    except ValueError:
+        return None
+    return parsed.isoformat() if 1900 <= parsed.year <= 2025 else None
+
+
 def parse_date(text: str) -> str | None:
-    """A birth date as YYYY-MM-DD, or None if it cannot be read or is not a sensible birth date."""
+    """A birth date as YYYY-MM-DD; NOT_SURE; AMBIGUOUS_DATE when numbers alone could mean two
+    dates (03/04/1950); or None if it cannot be read. Forgiving about commas, dots and "4th",
+    because every date is read back to the person to confirm before it is saved."""
     if is_not_sure(text):
         return NOT_SURE
-    cleaned = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", text.strip().rstrip("."))
-    cleaned = re.sub(r"\s+", " ", cleaned)
-    # the whole reply first, then a date inside a sentence ("I was born on March 4, 1950")
-    for candidate in [cleaned, *(m.group(0) for m in _DATE_INSIDE_TEXT.finditer(cleaned))]:
-        for fmt in _DATE_FORMATS:
+    lowered = text.lower()
+    iso = _ISO_DATE.search(lowered)
+    if iso:
+        return _birth_date(*map(int, iso.groups()))
+    numeric = _NUMERIC_DATE.search(lowered)
+    if numeric:
+        first, second, year = map(int, numeric.groups())
+        options = {_birth_date(year, first, second), _birth_date(year, second, first)} - {None}
+        if len(options) > 1:
+            return AMBIGUOUS_DATE  # US month-first or day-first: never guess
+        return options.pop() if options else None
+    cleaned = re.sub(r"[.,]", " ", lowered)
+    cleaned = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", cleaned)
+    cleaned = re.sub(r"\bsept\b", "sep", re.sub(r"\s+", " ", cleaned)).strip()
+    # e.g. "dec, 4,1950" -> "dec 4 1950"; also finds a date inside a sentence
+    for candidate in _WORD_DATE.findall(cleaned):
+        for fmt in _WORD_DATE_FORMATS:
             try:
                 parsed = datetime.strptime(candidate, fmt).date()
             except ValueError:
                 continue
-            return parsed.isoformat() if 1900 <= parsed.year <= 2025 else None
+            return _birth_date(parsed.year, parsed.month, parsed.day)
     return None
+
+
+def _has_date(text: str) -> bool:
+    return parse_date(text) not in (None, NOT_SURE)
+
+
+def parse_year(text: str) -> int | None:
+    """A recent year, e.g. "she died in 2023" -> 2023."""
+    if is_not_sure(text):
+        return NOT_SURE
+    years = [int(y) for y in re.findall(r"\b(?:19|20)\d\d\b", text)]
+    return years[0] if len(years) == 1 and 1950 <= years[0] <= 2025 else None
 
 
 def parse_amount(text: str) -> float | None:
@@ -554,6 +675,8 @@ def parse_answer(question: Question, text: str):
         return parse_date(text)
     if question.kind == AMOUNT:
         return parse_amount(text)
+    if question.kind == YEAR:
+        return parse_year(text)
     return parse_text(text)
 
 
@@ -646,6 +769,51 @@ def _earlier_answer(question: Question, facts: dict) -> str | None:
     return str(value).replace("_", " ")
 
 
+# ---- "what we covered" summary for a returning person ------------------------------
+
+# Plain, gentle topic names (Q22 is phrased softly on purpose).
+TOPIC_LABELS = {
+    "Q0": "your name", "Q2b": "your spouse's name", "Q2c": "your spouse's tax return",
+    "Q3a": "a question about your spouse", "Q17a": "other income and forms",
+    "Q17b": "other income and forms", "Q17c": "other income and forms",
+    "Q17d": "other income and forms", "Q17e": "other income and forms",
+    "Q20b": "how you'd like your refund", "Q20c": "how you'd like your refund",
+    "Q21b": "whether someone else can claim your spouse",
+    "Q1": "whether you were married", "Q2": "filing together with your spouse",
+    "Q3": "your household", "Q4": "your date of birth", "Q5": "your eyesight",
+    "Q6": "your spouse's date of birth", "Q7": "your spouse's eyesight",
+    "Q8": "people who depend on you", "Q9": "people who depend on you",
+    "Q10": "people who depend on you", "Q11": "people who depend on you",
+    "Q12": "people who depend on you", "Q13": "your tax forms", "Q14": "your tax forms",
+    "Q15": "your tax forms", "Q16": "your tax forms", "Q17": "your tax forms",
+    "Q18": "payments you sent to the IRS", "Q19": "payments you sent to the IRS",
+    "Q20": "adjustments to your income", "Q20a": "adjustments to your income",
+    "Q21": "whether someone else can claim you", "Q22": "a question about your spouse",
+    "Q23": "where you lived in 2025", "Q24": "who is helping you today",
+    "Q25": "who is helping you today",
+}
+
+
+def covered_topics(facts: dict) -> list[str]:
+    """The topics already answered, in the order they were covered, without repeats."""
+    _, answered = _progress(facts)
+    topics = []
+    for key in answered:
+        label = TOPIC_LABELS.get(key.split(":")[0])
+        if label and label not in topics:
+            topics.append(label)
+    return topics
+
+
+def welcome_back(facts: dict) -> str:
+    """e.g. "Welcome back. So far we've covered: your household and your date of birth." """
+    topics = covered_topics(facts)
+    if not topics:
+        return "Welcome back. We haven't covered any questions yet."
+    listed = topics[0] if len(topics) == 1 else f"{', '.join(topics[:-1])} and {topics[-1]}"
+    return f"Welcome back. So far we've covered: {listed}."
+
+
 # ---- the agent --------------------------------------------------------------------
 
 
@@ -676,8 +844,68 @@ def _progress(facts: dict) -> tuple[str | None, list[str]]:
     return progress.get("asking"), list(progress.get("answered", []))
 
 
-def _progress_fact(asking: str | None, answered: list[str]) -> dict:
-    return {PROGRESS: {"value": {"asking": asking, "answered": answered}, "source": "intake"}}
+def _progress_fact(asking: str | None, answered: list[str], confirming: dict | None = None) -> dict:
+    """`confirming` = {"key", "value"}: a date read back to the person, not saved until they say yes."""
+    progress = {"asking": asking, "answered": answered}
+    if confirming:
+        progress["confirming"] = confirming
+    return {PROGRESS: {"value": progress, "source": "intake"}}
+
+
+def _confirming(facts: dict, question: Question) -> dict | None:
+    confirming = (_value(facts, PROGRESS) or {}).get("confirming")
+    return confirming if confirming and confirming["key"] == question.key else None
+
+
+def _confirm_text(question: Question, value: str) -> str:
+    born = datetime.strptime(value, "%Y-%m-%d")
+    return f"Just to check: {CONFIRM_PHRASE[question.id]} {born:%B} {born.day}, {born.year}. Is that right?"
+
+
+def _ask_to_confirm(question: Question, value: str, answered: list[str], opening: str = "") -> dict:
+    confirming = {"key": question.key, "value": value}
+    return _ask(f"{opening}{_confirm_text(question, value)}", _progress_fact(question.key, answered, confirming))
+
+
+def asking_for_a_date(facts: dict) -> bool:
+    """True while Intake waits for a date (Q4/Q6), not while it is reading one back to check.
+    The chat page then shows Month / Day / Year boxes."""
+    asking, _ = _progress(facts)
+    question = question_for_key(asking, facts) if asking else next_question(facts)
+    return question is not None and question.kind == DATE and _confirming(facts, question) is None
+
+
+def answers_so_far(facts: dict) -> list[dict]:
+    """For the "Your answers so far" list: [{"key", "question", "answer"}] in the order answered.
+    Leaves out questions that no longer apply (e.g. spouse questions after "not married")."""
+    _, answered = _progress(facts)
+    rows = []
+    for key in answered:
+        question = question_for_key(key, facts)
+        if question is None:
+            continue
+        applies = _value(facts, "has_dependents") == "yes" if question.part else question.when(facts)
+        answer = _earlier_answer(question, facts) if applies else None
+        if answer is not None:
+            rows.append({"key": key, "question": question.text, "answer": answer})
+    return rows
+
+
+def question_number(facts: dict) -> int:
+    """The number the person sees for the current question ("Question 5"). It counts only the
+    questions this person is asked, matching the numbers in "Your answers so far", so there
+    are no gaps for skipped questions. A revisited question keeps its own number."""
+    asking, _ = _progress(facts)
+    keys = [row["key"] for row in answers_so_far(facts)]
+    return keys.index(asking) + 1 if asking in keys else len(keys) + 1
+
+
+def _answered_question_with_text(text: str, answered: list[str], facts: dict) -> Question | None:
+    for key in answered:
+        question = question_for_key(key, facts)
+        if question is not None and question.text == text.strip():
+            return question
+    return None
 
 
 def _revisit(target: Question, opening: str, answered: list[str], facts: dict) -> dict:
@@ -715,6 +943,8 @@ def answer_alarm(question: Question, value) -> tuple[str, str, str] | None:
         return FILING_STATUS_AMBIGUITY, ALARM_SPOUSE_DIED, SPOUSE_DIED_REPLY
     if question.id == "Q25" and not (isinstance(value, str) and has_authority(value)):
         return EXPLOITATION_SIGNS, ALARM_THIRD_PARTY, CONCERN_REPLY
+    if question.id == "Q20c" and value in ("no", NOT_SURE):
+        return EXPLOITATION_SIGNS, ALARM_REFUND_ACCOUNT, CONCERN_REPLY
     return None
 
 
@@ -755,6 +985,12 @@ def run(view, tools):
     reply = _latest_reply(messages)
     if reply is None:
         return _ask(question.text, _progress_fact(question.key, answered))
+    # A "Change" button on the chat page: jump straight to that earlier question.
+    if reply.startswith(CHANGE_PREFIX):
+        target = _answered_question_with_text(reply[len(CHANGE_PREFIX):], answered, facts)
+        if target:
+            return _revisit(target, "Sure, let's change that.", answered, facts)
+        return _ask(question.text, _progress_fact(question.key, answered))  # nothing to change yet
     # An SSN nobody asked for is removed before anything else reads the reply (INT-4).
     ssn_given = None
     if question.kind != SSN:
@@ -775,9 +1011,18 @@ def run(view, tools):
     if topic and is_correction(reply) and question.kind != TEXT and not wants_volunteer(reply):
         return _revisit(question_for_key(topic, facts), "No problem, let's fix that.", answered, facts)
 
-    reason = None
+    reason, confirmed = None, False
+    confirming = _confirming(facts, question)
     if wants_volunteer(reply):
         value, reason = NOT_SURE, REASON_ASKED
+    elif confirming and not _has_date(reply):
+        # "Just to check: you were born on December 4, 1950. Is that right?"
+        check = parse_yes_no(reply)
+        if check == "no":
+            return _ask(f"{DATE_RETYPE} {question.text}", _progress_fact(question.key, answered))
+        if check is None:
+            return _ask_to_confirm(question, confirming["value"], answered, f"{CONFIRM_HINT} ")
+        value, confirmed = (confirming["value"], True) if check == "yes" else (NOT_SURE, False)
     elif question.kind == SSN:
         value, looks_real = parse_ssn(reply)
         if looks_real:
@@ -791,9 +1036,14 @@ def run(view, tools):
             return _ask(f"{ssn_note}{question.text}")
         if is_correction(reply):
             return _ask(WHICH_ANSWER)
-        return _ask(f"Sorry, I didn't quite understand. {HINTS[question.kind]} {GO_BACK_TIP} {question.text}")
+        hint = question.hint or HINTS[question.kind]
+        return _ask(f"Sorry, I didn't quite understand. {hint} {GO_BACK_TIP} {question.text}")
+    if value == AMBIGUOUS_DATE:  # 03/04/1950 could be March 4 or 3 April: never guess
+        return _ask(DATE_AMBIGUOUS, _progress_fact(question.key, answered))
+    if question.kind == DATE and value != NOT_SURE and not confirmed:
+        return _ask_to_confirm(question, value, answered, ssn_note)
 
-    saved = {**record_answer(question, value, facts), **update_notes(question, value, reason, facts)}
+    saved ={**record_answer(question, value, facts), **update_notes(question, value, reason, facts)}
     if question.key not in answered:
         answered.append(question.key)
     facts.update(saved)

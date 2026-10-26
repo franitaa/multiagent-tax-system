@@ -20,10 +20,13 @@ A Social Security number nobody asked for is removed and never saved (INT-4); se
 It is not plugged in yet: `src/agents/intake.py` is still the placeholder that the
 orchestration tests use.
 
-**What is still missing (and the card for each):**
-- Removing a volunteered SSN from the chat history itself: the chat page will do this
-  before a message enters the system (INT-6)
-- The large-type, screen-reader friendly chat page (INT-6)
+The taxpayer chat page (INT-6) is in `src/ui/`: run `streamlit run src/ui/taxpayer_chat.py`.
+It has large text, screen-reader labels, a case ID to continue later, a "Your answers so
+far" list with Change buttons, and it removes real-looking SSNs before a message is sent in.
+
+**What is still missing:**
+- Permanent session storage: sessions last while the app runs, until Shruti's
+  checkpointer is plugged in (one place: `chat_session.make_graph()`).
 
 **What teammates need from this file:**
 - Eligibility & Rules and Computation: please read answers using the names in
@@ -33,6 +36,9 @@ orchestration tests use.
 - Eligibility & Rules (Matthew): Intake only records Q21 (can someone claim you) and Q23
   (lived in the US all year). Whether a "yes", "no" or "not sure" there makes the return
   out of scope is a tax rule, so please decide it in Rules and raise OUT_OF_SCOPE.
+  The same goes for the new screening answers (Q17a-Q17e: other forms, sales, business or
+  rental income, money abroad, digital assets), `spouse_itemizing` (Q2c),
+  `spouse_can_be_claimed` (Q21b) and `spouse_death_year` (Q3a).
 
 ---
 
@@ -52,16 +58,20 @@ This is the list of questions the Intake agent asks, and the names it uses to sa
 ### Filing status
 | # | Question | Answers | Asked when |
 |---|---|---|---|
+| Q0 | "What is your full name?" | free text | always (first question) |
 | Q1 | "On December 31, 2025, were you married?" | yes / no / not sure | always |
 | Q2 | "Do you and your spouse plan to file one tax return together?" | yes / no / not sure | Q1 = yes |
+| Q2b | "What is your spouse's full name?" | free text | Q2 = yes |
+| Q2c | "Will your spouse list their deductions one by one on their own tax return, instead of taking the standard amount?" | yes / no / not sure | married and Q2 = no |
 | Q3 | "Which of these fits you best: single, widowed, or taking care of someone who lives with you?" | single / widowed / caring for someone / not sure | Q1 = no |
+| Q3a | "In what year did your husband or wife pass away?" | a year / not sure | Q3 = widowed and Q8 = yes (asked after the dependents) |
 
 ### Age and sight
 | # | Question | Answers | Asked when |
 |---|---|---|---|
-| Q4 | "What is your date of birth? For example: March 4, 1950." | a date / not sure | always |
+| Q4 | "What is your date of birth? Please type the month as a word, then the day and the year, for example: March 4, 1950." | a date / not sure (read back to confirm) | always |
 | Q5 | "Are you legally blind?" | yes / no / not sure | always |
-| Q6 | "What is your spouse's date of birth?" | a date / not sure | Q1 = yes |
+| Q6 | "What is your spouse's date of birth? Please type the month as a word, then the day and the year, for example: June 1, 1952." | a date / not sure (read back to confirm) | Q1 = yes |
 | Q7 | "Is your spouse legally blind?" | yes / no / not sure | Q1 = yes |
 
 ### Dependents
@@ -81,6 +91,11 @@ This is the list of questions the Intake agent asks, and the names it uses to sa
 | Q15 | "Did you get a form for money paid out of a pension or retirement account, called a 1099-R?" | yes / no / not sure | always |
 | Q16 | "Did you get a form showing bank interest, called a 1099-INT?" | yes / no / not sure | always |
 | Q17 | "Did you get a form showing dividends, called a 1099-DIV?" | yes / no / not sure | always |
+| Q17a | "Did you get any other tax forms for 2025, such as a 1099-NEC, 1099-MISC or 1099-B?" | yes / no / not sure | always |
+| Q17b | "During 2025, did you sell any stocks, funds or property?" | yes / no / not sure | always |
+| Q17c | "During 2025, did you earn money from your own business, freelance work, or renting out property?" | yes / no / not sure | always |
+| Q17d | "During 2025, did you have any income, bank accounts or investments outside the United States?" | yes / no / not sure | always |
+| Q17e | "During 2025, did you receive, sell or trade any digital assets, such as cryptocurrency?" | yes / no / not sure | always |
 
 ### Payments and adjustments
 | # | Question | Answers | Asked when |
@@ -89,6 +104,8 @@ This is the list of questions the Intake agent asks, and the names it uses to sa
 | Q19 | "About how much did you send in total?" | an amount / not sure | Q18 = yes |
 | Q20 | "Do you have any adjustments to your income that you want to include?" | yes / no / not sure | always |
 | Q20a | "What is the total amount of those adjustments?" | an amount / not sure | Q20 = yes |
+| Q20b | "If you get a refund, would you like it paid into a bank account or sent as a paper check?" | bank account / paper check / not sure | always |
+| Q20c | "Is that bank account in your own name? An account you share with your spouse counts as yes." | yes / no / not sure | Q20b = bank account; no or not sure goes to a human (EXPLOITATION_SIGNS) |
 
 Amounts from Q19 and Q20a are recorded as "direct user input" (who and when), as the brief allows.
 Intake does not check or add them up.
@@ -97,10 +114,19 @@ Intake does not check or add them up.
 | # | Question | Answers | Goes to a human when |
 |---|---|---|---|
 | Q21 | "Can another person claim you as a dependent on their tax return?" | yes / no / not sure | yes or not sure |
+| Q21b | "Can another person claim your spouse as a dependent on their tax return?" | yes / no / not sure | Q1 = yes (recorded for Rules) |
 | Q22 | "Did a spouse pass away during 2025?" | yes / no | yes (FILING_STATUS_AMBIGUITY) |
 | Q23 | "Did you live in the United States for all of 2025?" | yes / no / not sure | no or not sure |
 | Q24 | "Are you answering these questions yourself today?" | yes / no | see Q25 |
 | Q25 | "Who is helping you, and are they allowed to act for you, for example with a power of attorney?" | free text | Q24 = no and no permission is stated (EXPLOITATION_SIGNS) |
+
+## Dates are always confirmed
+People write dates in many ways, and in some countries the day comes first. So Intake is
+forgiving about how a date is typed ("dec, 4,1950" works), but it always reads the date
+back with the month spelled out ("Just to check: you were born on December 4, 1950. Is
+that right?") and saves it only after "yes". If the date is only numbers and could mean
+two dates (03/04/1950 is March 4 in the US but 3 April elsewhere), Intake does not guess:
+it asks the person to type the month as a word.
 
 ## Always-available phrases
 - "I'm not sure": "That's okay. I'll note this for a volunteer to help with."
@@ -135,9 +161,9 @@ repeated back.
 - *Safe by default.* Removing the number first means no later step can accidentally
   store or log it. Alarm reasons are generic and traces store only field names.
 
-**Known limit:** the person's own message is still kept in the chat history, because
-the system adds it before Intake runs. The chat page (INT-6) will remove the number
-before the message is sent in, so it is never stored at all.
+**On the chat page (INT-6):** a real-looking number is removed from the message before
+it is sent into the system, so it is never stored at all, not even in the chat history.
+Practice numbers (900-999) are kept, because Q12 needs them.
 
 ## Answer names (shared contract for `facts`)
 Every answer is saved in `facts` as `{"value": ..., "source": "user"}`.
@@ -145,7 +171,11 @@ Other agents should read these names. Please tell Supriya before renaming one.
 
 | Fact name | From | Value |
 |---|---|---|
+| `taxpayer_name` | Q0 | free text |
 | `married_dec31` | Q1 | `"yes"` / `"no"` / `"not_sure"` |
+| `spouse_name` | Q2b | free text |
+| `spouse_itemizing` | Q2c | `"yes"` / `"no"` / `"not_sure"` |
+| `spouse_death_year` | Q3a | a year as a number (e.g. `2023`) or `"not_sure"` |
 | `file_jointly` | Q2 | `"yes"` / `"no"` / `"not_sure"` |
 | `household_situation` | Q3 | `"single"` / `"widowed"` / `"caring_for_someone"` / `"not_sure"` |
 | `taxpayer_birth_date` | Q4 | `"YYYY-MM-DD"` or `"not_sure"` |
@@ -155,11 +185,15 @@ Other agents should read these names. Please tell Supriya before renaming one.
 | `has_dependents` | Q8 | `"yes"` / `"no"` / `"not_sure"` |
 | `dependents` | Q9-Q12 | list of `{"name", "relationship", "ssn"}` (ssn is 9XX-XX-XXXX only) |
 | `has_w2` ... `has_1099_div` | Q13-Q17 | `"yes"` / `"no"` / `"not_sure"` (`has_w2`, `has_ssa_1099`, `has_1099_r`, `has_1099_int`, `has_1099_div`) |
+| `has_other_tax_forms`, `sold_stocks_or_property`, `business_or_rental_income`, `foreign_income_or_accounts`, `digital_assets` | Q17a-Q17e | `"yes"` / `"no"` / `"not_sure"` |
 | `made_estimated_payments` | Q18 | `"yes"` / `"no"` / `"not_sure"` |
 | `estimated_payments_amount` | Q19 | number, `source: "direct user input"` |
 | `has_adjustments` | Q20 | `"yes"` / `"no"` / `"not_sure"` |
 | `adjustments_amount` | Q20a | number, `source: "direct user input"` |
+| `refund_method` | Q20b | `"bank_account"` / `"paper_check"` / `"not_sure"` |
+| `refund_account_own_name` | Q20c | `"yes"` / `"no"` / `"not_sure"` |
 | `can_be_claimed_as_dependent` | Q21 | `"yes"` / `"no"` / `"not_sure"` |
+| `spouse_can_be_claimed` | Q21b | `"yes"` / `"no"` / `"not_sure"` |
 | `spouse_died_2025` | Q22 | `"yes"` / `"no"` |
 | `us_resident_all_year` | Q23 | `"yes"` / `"no"` / `"not_sure"` |
 | `answering_for_self` | Q24 | `"yes"` / `"no"` |
@@ -184,6 +218,12 @@ Eligibility & Rules decides it from the answers above, and a volunteer may set i
 the human gate (source `human:FILING_STATUS_AMBIGUITY`).
 
 ## Decisions taken (no instructor Q&A available)
+- Names and SSNs at the top of the form: the brief only requires dependents' SSNs (3.1) and
+  says not to ask for SSNs we do not need (4.3). So Intake asks for the taxpayer's name
+  (and the spouse's name on a joint return), but never for the taxpayer's or spouse's SSN.
+  The case ID identifies the session.
+- Bank details: Intake asks only whether the refund account is in the person's own name,
+  never for account or routing numbers.
 - Q12: the brief lists dependents' SSNs on the form, so Intake asks for one per dependent,
   practice numbers only.
 - Q20: line 10 is "Schedule 1, line 26", and the brief says Schedules 1-3 are "user just

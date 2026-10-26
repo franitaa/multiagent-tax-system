@@ -7,30 +7,41 @@ from src.agents import intake_agent as ia
 from src.graph import build_graph
 from src.scenarios import clean_case, user
 
+NAME = "Pat Tester"  # answer to Q0 "What is your full name?"
+
+# Answers after the name, for a single filer with one W-2 and nothing unusual.
 ALL_NO_ANSWERS = [
     "no",              # Q1 married
     "single",          # Q3 situation
     "March 4, 1950",   # Q4 birth date
+    "yes",             # Q4 confirm: "Just to check... Is that right?"
     "no",              # Q5 blind
     "no",              # Q8 dependents
     "yes",             # Q13 W-2
     "no", "no", "no", "no",  # Q14-Q17 other forms
+    "no", "no", "no", "no", "no",  # Q17a-Q17e other forms, sales, business, abroad, digital assets
     "no",              # Q18 estimated payments
     "no",              # Q20 adjustments
+    "paper check",     # Q20b refund
     "no",              # Q21 claimed as dependent
     "no",              # Q22 spouse died
     "yes",             # Q23 lived in US
     "yes",             # Q24 answering for self
 ]
+Q21_AT, Q23_AT = 19, 21  # positions in ALL_NO_ANSWERS
+FULL_ANSWERS = [NAME, *ALL_NO_ANSWERS]  # for tests that drive the whole graph
 
 
 class Chat:
-    """Plays the orchestrator's part: keeps messages and facts, calls Intake once per reply."""
+    """Plays the orchestrator's part: keeps messages and facts, calls Intake once per reply.
+    Answers the name question first unless name=None."""
 
-    def __init__(self):
+    def __init__(self, name=NAME):
         self.messages = [user("Hi, I need help with my 2025 return.")]
         self.facts = {}
         self.last = self._call()
+        if name is not None:
+            self.say(name)
 
     def _call(self):
         update = ia.run({"messages": list(self.messages), "facts": dict(self.facts)}, tools=None)
@@ -63,11 +74,26 @@ def test_parse_yes_no(text, expected):
     assert ia.parse_yes_no(text) == expected
 
 
+@pytest.mark.parametrize("text", [
+    "I don't know", "I do not know", "no idea", "unsure", "I can't remember", "I don’t remember",
+    "I forgot", "no clue", "dunno", "idk", "Not certain",
+])
+def test_ways_of_saying_i_dont_know(text):
+    assert ia.is_not_sure(text)
+
+
 @pytest.mark.parametrize("text, expected", [
     ("March 4, 1950", "1950-03-04"), ("march 4 1950", "1950-03-04"), ("Mar 4th, 1950", "1950-03-04"),
-    ("4 March 1950", "1950-03-04"), ("1950-03-04", "1950-03-04"), ("03/04/1950", "1950-03-04"),
+    ("4 March 1950", "1950-03-04"), ("1950-03-04", "1950-03-04"),
     ("not sure", ia.NOT_SURE), ("sometime in 1950", None), ("March 4, 2030", None),
     ("I was born on March 4, 1950", "1950-03-04"), ("it's 4 March 1950 I think", "1950-03-04"),
+    # forgiving about commas, dots and ordinals (every date is confirmed before saving)
+    ("dec, 4,1950", "1950-12-04"), ("Dec. 4 1950", "1950-12-04"), ("december 4th,1950", "1950-12-04"),
+    ("4th December 1950", "1950-12-04"), ("sept 9 1951", "1951-09-09"),
+    # numbers only: never guess between month-first and day-first
+    ("03/04/1950", ia.AMBIGUOUS_DATE), ("4/5/1950", ia.AMBIGUOUS_DATE),
+    ("25/04/1950", "1950-04-25"), ("04/25/1950", "1950-04-25"), ("4/4/1950", "1950-04-04"),
+    ("13/13/1950", None),
 ])
 def test_parse_date(text, expected):
     assert ia.parse_date(text) == expected
@@ -82,11 +108,12 @@ def test_parse_amount(text, expected):
 
 
 def test_parse_choice():
-    choices = ia.BEFORE_DEPENDENTS[2].choices
+    choices = ia.question_for_key("Q3", {}).choices
     assert ia.parse_choice("I'm single", choices) == "single"
     assert ia.parse_choice("I am a widow", choices) == "widowed"
     assert ia.parse_choice("I take care of my grandson", choices) == "caring_for_someone"
-    assert ia.parse_choice("dunno", choices) is None
+    assert ia.parse_choice("dunno", choices) == ia.NOT_SURE
+    assert ia.parse_choice("purple", choices) is None
 
 
 def test_parse_text():
@@ -106,7 +133,8 @@ def test_parse_ssn_accepts_only_practice_numbers():
 
 
 def test_next_question_skips_spouse_questions_when_not_married():
-    facts = {"married_dec31": {"value": "no", "source": "user"}}
+    facts = {"taxpayer_name": {"value": NAME, "source": "user"},
+             "married_dec31": {"value": "no", "source": "user"}}
     assert ia.next_question(facts).id == "Q3"
     facts["household_situation"] = {"value": "single", "source": "user"}
     facts["taxpayer_birth_date"] = {"value": "1950-03-04", "source": "user"}
@@ -126,8 +154,8 @@ def test_record_answer_keeps_amount_as_direct_user_input():
 
 
 def test_first_message_welcomes_and_asks_one_question():
-    chat = Chat()
-    assert chat.question.endswith("On December 31, 2025, were you married?")
+    chat = Chat(name=None)
+    assert chat.question.endswith("What is your full name?")
     assert chat.question.count("?") == 1
     assert chat.last["handoff_request"]["to"] == "end"
     assert set(chat.last["facts"]) == {ia.PROGRESS}  # only bookkeeping, no answers yet
@@ -150,10 +178,13 @@ def test_married_person_gets_spouse_questions():
     chat = Chat()
     chat.say("yes")
     assert "file one tax return together" in chat.question
-    for answer in ["yes", "June 1, 1952", "no"]:
+    chat.say("yes")
+    assert chat.question == "What is your spouse's full name?"
+    for answer in ["Sam Tester", "June 1, 1952", "yes", "no"]:
         chat.say(answer)
     assert "spouse's date of birth" in chat.question
     chat.say("July 9, 1953")
+    chat.say("yes")
     assert "spouse legally blind" in chat.question
 
 
@@ -162,7 +193,7 @@ def test_unclear_answer_is_asked_again_and_nothing_saved():
     chat.say("purple")
     assert chat.question.startswith("Sorry, I didn't quite understand.")
     assert chat.question.endswith("were you married?")
-    assert set(chat.facts) == {ia.PROGRESS}
+    assert set(chat.facts) == {ia.PROGRESS, "taxpayer_name"}
 
 
 def test_not_sure_is_saved_and_acknowledged():
@@ -174,7 +205,7 @@ def test_not_sure_is_saved_and_acknowledged():
 
 def test_two_dependents_with_practice_numbers():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950", "no", "yes"]:
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes"]:
         chat.say(answer)
     chat.say("Ana Lopez")
     assert "How is Ana Lopez related" in chat.question
@@ -194,7 +225,7 @@ def test_two_dependents_with_practice_numbers():
 
 def test_real_ssn_is_refused_never_saved_or_repeated():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950", "no", "yes", "Ana Lopez", "granddaughter"]:
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopez", "granddaughter"]:
         chat.say(answer)
     update = chat.say("123-45-6789")
     assert "facts" not in update
@@ -230,7 +261,7 @@ def test_go_back_reminds_earlier_answer_and_keeps_it():
     chat.say("no")
     chat.say("single")
     chat.say("go back")
-    assert chat.question == "Sure, let's go back. Earlier you said: single. " + ia.BEFORE_DEPENDENTS[2].text
+    assert chat.question == "Sure, let's go back. Earlier you said: single. " + ia.question_for_key("Q3", {}).text
     assert chat.value("household_situation") == "single"  # kept until a new answer is given
     chat.say("single")
     assert "date of birth" in chat.question  # same answer: carries on
@@ -238,10 +269,10 @@ def test_go_back_reminds_earlier_answer_and_keeps_it():
 
 
 def test_go_back_at_first_question():
-    chat = Chat()
+    chat = Chat(name=None)
     chat.say("go back")
     assert chat.question.startswith(ia.GO_BACK_FIRST)
-    assert chat.question.endswith("were you married?")
+    assert chat.question.endswith("What is your full name?")
 
 
 def test_changed_answer_keeps_history_and_asks_new_questions():
@@ -249,6 +280,7 @@ def test_changed_answer_keeps_history_and_asks_new_questions():
     chat.say("no")
     chat.say("single")
     chat.say("March 4, 1950")
+    chat.say("yes")
     chat.say("go back")
     assert "Earlier you said: March 4, 1950." in chat.question
     chat.say("go back")
@@ -260,6 +292,7 @@ def test_changed_answer_keeps_history_and_asks_new_questions():
     assert chat.value("married_dec31") == "yes"
     assert chat.facts["married_dec31"]["history"] == [{"value": "no", "source": "user"}]
     chat.say("yes")
+    chat.say("Sam Tester")  # spouse's name
     # birth date was already answered, so Intake carries on with the next open question
     assert "legally blind" in chat.question and "spouse" not in chat.question
     assert chat.value("taxpayer_birth_date") == "1950-03-04"
@@ -267,7 +300,7 @@ def test_changed_answer_keeps_history_and_asks_new_questions():
 
 def test_go_back_to_change_a_dependent_name():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950", "no", "yes", "Ana Lopes"]:
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopes"]:
         chat.say(answer)
     chat.say("go back")
     assert "Earlier you said: Ana Lopes." in chat.question
@@ -293,11 +326,11 @@ def test_is_correction():
 
 def test_plain_correction_jumps_to_that_question():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950"]:
+    for answer in ["no", "single", "March 4, 1950", "yes"]:
         chat.say(answer)
     assert "legally blind" in chat.question
     chat.say("Oh wait, actually I was married")
-    assert chat.question == "No problem, let's fix that. Earlier you said: no. " + ia.BEFORE_DEPENDENTS[0].text
+    assert chat.question == "No problem, let's fix that. Earlier you said: no. " + ia.question_for_key("Q1", {}).text
     chat.say("yes")
     assert "file one tax return together" in chat.question
     assert chat.facts["married_dec31"]["history"] == [{"value": "no", "source": "user"}]
@@ -305,13 +338,14 @@ def test_plain_correction_jumps_to_that_question():
 
 def test_naming_an_earlier_question_jumps_to_it():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950"]:
+    for answer in ["no", "single", "March 4, 1950", "yes"]:
         chat.say(answer)
     chat.say("I made a mistake")
     assert chat.question == ia.WHICH_ANSWER
     chat.say("my date of birth")
     assert "Earlier you said: March 4, 1950." in chat.question
     chat.say("March 4, 1951")
+    chat.say("yes")
     assert chat.value("taxpayer_birth_date") == "1951-03-04"
     assert "legally blind" in chat.question
 
@@ -352,7 +386,7 @@ def test_every_question_has_an_explanation():
 
 def test_confused_person_gets_plain_explanation_and_same_question():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950"]:
+    for answer in ["no", "single", "March 4, 1950", "yes"]:
         chat.say(answer)
     chat.say("I didn't understand")
     assert chat.question == f"No problem. {ia.EXPLANATIONS['Q5']} {ia.NOT_SURE_OK} Are you legally blind?"
@@ -363,7 +397,7 @@ def test_confused_person_gets_plain_explanation_and_same_question():
 
 def test_confused_on_a_dependent_question():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950", "no", "yes", "Ana Lopez"]:
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopez"]:
         chat.say(answer)
     chat.say("what do you mean?")
     assert ia.EXPLANATIONS["Q10"] in chat.question
@@ -383,7 +417,7 @@ def test_wants_volunteer(text, expected):
 
 
 def test_update_notes_adds_once_and_resolves():
-    question = ia.BEFORE_DEPENDENTS[4]  # Q5 blind
+    question = ia.question_for_key("Q5", {})  # Q5 blind
     facts = {}
     facts.update(ia.update_notes(question, ia.NOT_SURE, None, facts))
     assert ia.update_notes(question, ia.NOT_SURE, None, facts) == {}  # no duplicate note
@@ -395,10 +429,10 @@ def test_update_notes_adds_once_and_resolves():
 
 def test_not_sure_adds_a_volunteer_note_and_carries_on():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950"]:
+    for answer in ["no", "single", "March 4, 1950", "yes"]:
         chat.say(answer)
     chat.say("I'm not sure")
-    assert chat.question == f"{ia.NOT_SURE_ACK} {ia.BEFORE_DEPENDENTS[7].text}"
+    assert chat.question == f"{ia.NOT_SURE_ACK} {ia.question_for_key('Q8', {}).text}"
     assert chat.value(ia.NOTES) == [{"question": "Q5", "question_text": "Are you legally blind?",
                                      "reason": ia.REASON_NOT_SURE, "resolved": False}]
     assert chat.last["handoff_request"]["to"] == "end"  # no escalation: the chat goes on
@@ -423,6 +457,17 @@ def test_answering_later_resolves_the_note():
     assert chat.value(ia.NOTES)[0]["resolved"] is True
 
 
+def test_covered_topics_in_order_without_repeats():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopez", "granddaughter"]:
+        chat.say(answer)
+    assert ia.covered_topics(chat.facts) == [
+        "your name", "whether you were married", "your household", "your date of birth", "your eyesight",
+        "people who depend on you",
+    ]
+    assert ia.welcome_back({}) == "Welcome back. We haven't covered any questions yet."
+
+
 # ---- a Social Security number nobody asked for (INT-4) ----------------------------
 
 
@@ -438,8 +483,8 @@ def test_strip_volunteered_ssn():
 def test_real_ssn_given_alone_is_not_saved_and_question_repeats():
     chat = Chat()
     update = chat.say("123-45-6789")
-    assert update["pending_question"] == f"{ia.SSN_NOT_NEEDED_REAL} {ia.BEFORE_DEPENDENTS[0].text}"
-    assert set(chat.facts) == {ia.PROGRESS}
+    assert update["pending_question"] == f"{ia.SSN_NOT_NEEDED_REAL} {ia.question_for_key('Q1', {}).text}"
+    assert set(chat.facts) == {ia.PROGRESS, "taxpayer_name"}
     assert "123-45-6789" not in str(chat.facts)
 
 
@@ -456,14 +501,132 @@ def test_practice_ssn_given_unasked_is_not_saved_either():
     for answer in ["no", "single"]:
         chat.say(answer)
     update = chat.say("March 4, 1950. My number is 912-34-5678")
+    assert update["pending_question"].startswith(ia.SSN_NOT_NEEDED + " Just to check:")
+    chat.say("yes")
     assert chat.value("taxpayer_birth_date") == "1950-03-04"
-    assert update["pending_question"].startswith(ia.SSN_NOT_NEEDED + " ")
     assert "912-34-5678" not in str(chat.facts)
+
+
+# ---- dates are read back before saving; numbers alone are never guessed --------------
+
+
+def test_date_is_confirmed_before_it_is_saved():
+    chat = Chat()
+    for answer in ["no", "single"]:
+        chat.say(answer)
+    chat.say("dec, 4,1950")
+    assert chat.question == "Just to check: you were born on December 4, 1950. Is that right?"
+    assert "taxpayer_birth_date" not in chat.facts  # nothing saved yet
+    chat.say("yes")
+    assert chat.value("taxpayer_birth_date") == "1950-12-04"
+    assert "legally blind" in chat.question
+
+
+def test_saying_no_to_the_check_asks_for_the_date_again():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950"]:
+        chat.say(answer)
+    chat.say("no")
+    assert chat.question.startswith(ia.DATE_RETYPE) and "date of birth" in chat.question
+    assert "taxpayer_birth_date" not in chat.facts
+    chat.say("April 3, 1950")
+    chat.say("yes")
+    assert chat.value("taxpayer_birth_date") == "1950-04-03"
+
+
+def test_a_new_date_during_the_check_is_checked_instead():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950"]:
+        chat.say(answer)
+    chat.say("no, it's March 5, 1950")
+    assert "March 5, 1950. Is that right?" in chat.question
+    chat.say("yes")
+    assert chat.value("taxpayer_birth_date") == "1950-03-05"
+
+
+def test_unclear_reply_to_the_check_repeats_the_check():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950"]:
+        chat.say(answer)
+    chat.say("purple")
+    assert chat.question == f"{ia.CONFIRM_HINT} Just to check: you were born on March 4, 1950. Is that right?"
+
+
+def test_numbers_that_could_be_two_dates_are_not_guessed():
+    chat = Chat()
+    for answer in ["no", "single"]:
+        chat.say(answer)
+    chat.say("03/04/1950")
+    assert chat.question == ia.DATE_AMBIGUOUS
+    assert "taxpayer_birth_date" not in chat.facts
+    chat.say("April 3, 1950")
+    assert "April 3, 1950. Is that right?" in chat.question
+
+
+def test_spouse_date_is_checked_with_spouse_wording():
+    chat = Chat()
+    for answer in ["yes", "yes", "Sam Tester", "March 4, 1950", "yes", "no", "June 1, 1952"]:
+        chat.say(answer)
+    assert chat.question == "Just to check: your spouse was born on June 1, 1952. Is that right?"
+
+
+# ---- "Your answers so far" and the Change buttons ----------------------------------
+
+
+def test_answers_so_far_lists_answers_in_plain_words():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "yes", "not sure"]:
+        chat.say(answer)
+    rows = ia.answers_so_far(chat.facts)
+    assert [(r["key"], r["answer"]) for r in rows] == [
+        ("Q0", NAME), ("Q1", "no"), ("Q3", "single"), ("Q4", "March 4, 1950"), ("Q5", "not sure"),
+    ]
+    assert rows[3]["question"] == ia.question_for_key("Q4", {}).text
+
+
+def test_answers_so_far_hides_questions_that_no_longer_apply():
+    chat = Chat()
+    for answer in ["yes", "yes", "Sam Tester", "March 4, 1950", "yes", "no", "June 1, 1952", "yes"]:
+        chat.say(answer)
+    assert "Q6" in [r["key"] for r in ia.answers_so_far(chat.facts)]
+    chat.say(ia.CHANGE_PREFIX + ia.question_for_key("Q1", {}).text)
+    chat.say("no")  # not married after all
+    assert "Q6" not in [r["key"] for r in ia.answers_so_far(chat.facts)]
+    assert chat.value("spouse_birth_date") == "1952-06-01"  # kept, never deleted
+
+
+def test_answers_so_far_never_shows_ssn_digits():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopez", "granddaughter",
+                   "900-11-2222"]:
+        chat.say(answer)
+    rows = ia.answers_so_far(chat.facts)
+    assert "900-11-2222" not in str(rows)
+    assert {"key": "Q12:0", "question": rows[-1]["question"], "answer": "a practice number"} == rows[-1]
+
+
+def test_change_button_jumps_back_and_then_carries_on():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "no", "yes", "no"]:
+        chat.say(answer)
+    assert "1099-R" in chat.question  # now at question 15
+    chat.say(ia.CHANGE_PREFIX + ia.question_for_key("Q3", {}).text)  # "Change answer 2"
+    assert chat.question.startswith("Sure, let's change that. Earlier you said: single.")
+    chat.say("widowed")
+    assert "1099-R" in chat.question  # straight back to where they were
+    assert chat.value("household_situation") == "widowed"
+
+
+def test_change_for_an_unanswered_question_is_ignored():
+    chat = Chat()
+    chat.say(ia.CHANGE_PREFIX + ia.question_for_key("Q4", {}).text)  # Q4 not answered yet
+    assert "facts" not in chat.last or "taxpayer_birth_date" not in chat.facts
+    assert chat.question.endswith("were you married?")
 
 
 def test_ssn_inside_a_name_is_dropped_from_the_name():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950", "no", "yes"]:
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes"]:
         chat.say(answer)
     chat.say("Ana Lopez 123-45-6789")
     assert chat.value("dependents")[0]["name"] == "Ana Lopez"
@@ -471,7 +634,7 @@ def test_ssn_inside_a_name_is_dropped_from_the_name():
 
 def test_ssn_question_still_accepts_a_practice_number():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950", "no", "yes", "Ana Lopez", "granddaughter"]:
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopez", "granddaughter"]:
         chat.say(answer)
     update = chat.say("900-11-2222")
     assert chat.value("dependents")[0]["ssn"] == "900-11-2222"
@@ -539,7 +702,7 @@ def test_after_alarm_intake_asks_the_same_question_again():
     chat.say("no")
     chat.say("Should I convert my IRA to a Roth?")
     chat.last = chat._call()  # the volunteer chose "continue": Intake runs with no new reply
-    assert chat.question == ia.BEFORE_DEPENDENTS[2].text
+    assert chat.question == ia.question_for_key("Q3", {}).text
     assert "escalation" not in chat.last
 
 
@@ -560,7 +723,7 @@ def test_third_party_without_permission_raises_exploitation():
 
 def test_spouse_died_answer_raises_filing_status_ambiguity_and_keeps_answer():
     chat = Chat()
-    for answer in ALL_NO_ANSWERS[:13]:  # up to Q21
+    for answer in ALL_NO_ANSWERS[:Q21_AT + 1]:  # up to Q21
         chat.say(answer)
     assert "pass away" in chat.question
     update = chat.say("yes")
@@ -591,8 +754,8 @@ def test_helper_without_permission_raises_exploitation_and_ends_intake():
 def test_q21_and_q23_are_only_recorded_for_rules_to_decide():
     chat = Chat()
     answers = list(ALL_NO_ANSWERS)
-    answers[12] = "not sure"  # Q21
-    answers[14] = "no"        # Q23
+    answers[Q21_AT] = "not sure"
+    answers[Q23_AT] = "no"
     for answer in answers:
         assert "escalation" not in chat.last
         chat.say(answer)
@@ -605,7 +768,7 @@ def _graph_until_question(tmp_path, thread_id, answers):
     graph = build_graph(trace_dir=tmp_path, agents={"intake": ia.run})
     config = {"configurable": {"thread_id": thread_id}}
     graph.invoke(clean_case(turns=1), config)
-    for answer in answers:
+    for answer in [NAME, *answers]:
         graph.invoke({"messages": [user(answer)]}, config)
     return graph, config
 
@@ -616,7 +779,7 @@ def test_advice_alarm_pauses_graph_and_volunteer_continue_resumes(tmp_path):
     assert paused["__interrupt__"][0].value["condition"] == S.TAX_ADVICE_REQUEST
     resumed = graph.invoke(Command(resume={"decision": "continue", "note": "Noted for the preparer"}), config)
     assert resumed["status"] == "awaiting_user"
-    assert resumed["pending_question"] == ia.BEFORE_DEPENDENTS[2].text
+    assert resumed["pending_question"] == ia.question_for_key("Q3", {}).text
 
 
 def test_exploitation_alarm_pauses_graph_and_volunteer_can_stop(tmp_path):
@@ -633,8 +796,124 @@ def test_works_inside_the_real_graph(tmp_path):
     config = {"configurable": {"thread_id": "t-intake"}}
     result = graph.invoke(clean_case(turns=1), config)
     assert result["status"] == "awaiting_user"
-    for answer in ALL_NO_ANSWERS:
+    for answer in FULL_ANSWERS:
         result = graph.invoke({"messages": [user(answer)]}, config)
     assert result["intake_complete"] is True
     assert result["status"] == "complete"
     assert result["facts"]["taxpayer_birth_date"]["value"] == "1950-03-04"
+
+
+# ---- questions added after the assignment review ------------------------------------
+
+
+def test_name_is_asked_first_and_saved():
+    chat = Chat(name=None)
+    chat.say("Pat Tester")
+    assert chat.value("taxpayer_name") == "Pat Tester"
+    assert chat.question.endswith("were you married?")
+
+
+def test_spouse_name_only_for_a_joint_return():
+    chat = Chat()
+    chat.say("yes")  # married
+    chat.say("yes")  # one return together
+    assert chat.question == "What is your spouse's full name?"
+    chat.say("Sam Tester")
+    assert chat.value("spouse_name") == "Sam Tester"
+
+
+def test_spouse_itemizing_only_when_filing_separately():
+    chat = Chat()
+    chat.say("yes")  # married
+    chat.say("no")   # separate returns
+    assert "list their deductions one by one" in chat.question
+    chat.say("not sure")
+    assert chat.value("spouse_itemizing") == ia.NOT_SURE
+
+
+def test_year_of_death_only_for_widowed_with_dependents():
+    chat = Chat()
+    for answer in ["no", "widowed", "March 4, 1950", "yes", "no", "yes", "Ana Lopez", "granddaughter",
+                   "900-11-2222", "no"]:
+        chat.say(answer)
+    assert chat.question == "In what year did your husband or wife pass away?"
+    chat.say("She died in 2023")
+    assert chat.value("spouse_death_year") == 2023
+
+
+def test_no_year_of_death_question_without_dependents():
+    chat = Chat()
+    for answer in ["no", "widowed", "March 4, 1950", "yes", "no", "no"]:
+        chat.say(answer)
+    assert "W-2" in chat.question
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("2023", 2023), ("in 2024", 2024), ("not sure", ia.NOT_SURE), ("2023 or 2024", None),
+    ("1820", None), ("last year", None),
+])
+def test_parse_year(text, expected):
+    assert ia.parse_year(text) == expected
+
+
+def test_out_of_scope_screening_answers_are_only_recorded():
+    chat = Chat()
+    answers = list(ALL_NO_ANSWERS)
+    answers[11:16] = ["yes", "yes", "yes", "yes", "yes"]  # Q17a-Q17e
+    for answer in answers:
+        assert "escalation" not in chat.last  # Intake does not judge scope; Rules does
+        chat.say(answer)
+    for name in ("has_other_tax_forms", "sold_stocks_or_property", "business_or_rental_income",
+                 "foreign_income_or_accounts", "digital_assets"):
+        assert chat.value(name) == "yes"
+    assert chat.last["intake_complete"] is True
+
+
+def _until_refund(chat):
+    for answer in ALL_NO_ANSWERS[:18]:  # up to and including Q20 adjustments
+        chat.say(answer)
+    assert "refund" in chat.question
+
+
+def test_refund_by_check_skips_the_bank_question():
+    chat = Chat()
+    _until_refund(chat)
+    chat.say("a paper check please")
+    assert chat.value("refund_method") == "paper_check"
+    assert "claim you as a dependent" in chat.question
+
+
+def test_refund_to_own_bank_account_carries_on():
+    chat = Chat()
+    _until_refund(chat)
+    chat.say("into my bank account")
+    assert "in your own name" in chat.question
+    update = chat.say("yes")
+    assert "escalation" not in update
+
+
+@pytest.mark.parametrize("answer", ["no", "I'm not sure"])
+def test_refund_to_someone_elses_account_raises_exploitation(answer):
+    chat = Chat()
+    _until_refund(chat)
+    chat.say("bank account")
+    update = chat.say(answer)
+    assert update["escalation"]["condition"] == S.EXPLOITATION_SIGNS
+    assert update["escalation"]["reason"] == ia.ALARM_REFUND_ACCOUNT
+    assert update["messages"][0]["content"] == ia.CONCERN_REPLY
+
+
+def test_unclear_refund_answer_gets_its_own_hint():
+    chat = Chat()
+    _until_refund(chat)
+    chat.say("purple")
+    assert "Please answer bank account or paper check." in chat.question
+
+
+def test_spouse_can_be_claimed_only_when_married():
+    chat = Chat()
+    for answer in ["yes", "yes", "Sam Tester", "March 4, 1950", "yes", "no", "June 1, 1952", "yes", "no",
+                   "no", "yes", "no", "no", "no", "no", "no", "no", "no", "no", "no", "no", "no",
+                   "paper check", "no"]:
+        chat.say(answer)
+    assert chat.question == "Can another person claim your spouse as a dependent on their tax return?"

@@ -9,7 +9,7 @@ from src import state as S
 from src.agents import intake_agent as ia
 from tests.test_intake_agent import Chat
 
-Q5 = ia.BEFORE_DEPENDENTS[4]  # "Are you legally blind?", a neutral question to ask from
+Q5 = ia.question_for_key("Q5", {})  # "Are you legally blind?", a neutral question to ask from
 
 SHOULD_RAISE = [
     # tax advice, including disguised or indirect requests
@@ -98,7 +98,7 @@ def test_real_ssn_inside_an_alarm_message_is_not_stored():
 
 def test_real_ssn_inside_a_free_text_answer_is_not_stored():
     chat = Chat()
-    for answer in ["no", "single", "March 4, 1950", "no", "yes"]:
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes"]:
         chat.say(answer)
     chat.say("Ana Lopez 123-45-6789")
     assert "123-45-6789" not in str(chat.facts)
