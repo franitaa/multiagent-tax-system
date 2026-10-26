@@ -8,6 +8,7 @@ Traces store field NAMES, never values, so personal data cannot leak into them.
 """
 import json
 import re
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ class Runner:
     def __init__(self, trace_dir: str | Path = "traces", scoped: bool = True):
         self.trace_dir = Path(trace_dir)
         self.scoped = scoped
+        self._lock = threading.Lock()  # parallel workers write the same trace file
 
     def run(self, name: str, fn: Callable, state: dict, thread_id: str) -> dict:
         view = view_for(name, state, self.scoped)
@@ -79,5 +81,6 @@ class Runner:
     def _write(self, thread_id: str, record: dict) -> None:
         self.trace_dir.mkdir(parents=True, exist_ok=True)
         safe = re.sub(r"[^A-Za-z0-9_.-]", "_", str(thread_id))
-        with open(self.trace_dir / f"{safe}.jsonl", "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, sort_keys=True) + "\n")
+        line = json.dumps(record, sort_keys=True) + "\n"
+        with self._lock, open(self.trace_dir / f"{safe}.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(line)

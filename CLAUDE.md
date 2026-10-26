@@ -30,3 +30,4 @@ src/state.py, src/graph.py, src/memory.py, src/agents/, src/orchestration/, data
 - Small commits, feature branches (p1/<topic>), open PRs, never push straight to main. Commit under my git identity. Ask before pushing.
 - Stub other people's agents; do not implement tax logic, intake questions, extraction or review logic unless asked.
 - Run pytest before every commit.
+- If you own an agent, read docs/handoff-contract.md first.
