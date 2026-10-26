@@ -21,10 +21,13 @@ What it can do today:
     account. Intake replies calmly, notes the person's words for the volunteer, and raises
     the escalation flag so the system pauses for a human. The flag itself holds no
     personal details.
+  - Tested against tricky messages (GRD-3, tests/test_guardrails.py): disguised advice,
+    indirect pressure, "ignore your instructions...", ALL CAPS, plus innocent sentences
+    that must NOT raise an alarm. A real-looking SSN typed inside a sentence is replaced
+    with "[number removed]" before anything is saved.
 
 What is still missing:
-  - Fuller handling of a volunteered SSN (INT-4), the chat page (INT-6), and more tricky
-    test messages for the alarms (GRD-3).
+  - Fuller handling of a volunteered SSN (INT-4) and the chat page (INT-6).
   - It uses keyword matching, not AI, so unusual wording can be missed. When in doubt it
     points the person to "go back" or a volunteer.
 
@@ -294,6 +297,13 @@ _NO_WORDS = {"no", "n", "nope", "nah", "never", "false", "not"}
 _DATE_FORMATS = ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y",
                  "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y")
 _SSN_PATTERN = re.compile(r"^(\d{3})[- ]?(\d{2})[- ]?(\d{4})$")
+_SSN_INSIDE_TEXT = re.compile(r"\b(\d{3})[- ]?(\d{2})[- ]?(\d{4})\b")
+SSN_REMOVED = "[number removed]"
+
+
+def redact_ssn(text: str) -> str:
+    """Replace any real-looking SSN inside a sentence; practice numbers (9XX) are left alone."""
+    return _SSN_INSIDE_TEXT.sub(lambda m: m.group(0) if m.group(1).startswith("9") else SSN_REMOVED, text)
 
 
 _GO_BACK_EXACT = {"back", "go back", "previous", "previous question", "undo"}
@@ -360,53 +370,67 @@ def wants_volunteer(text: str) -> bool:
 
 _ADVICE_PHRASES = ("can i deduct", "can we deduct", "can i claim", "would i pay less", "would we pay less",
                    "pay less tax", "save on tax", "save on my tax", "lower my tax", "reduce my tax",
-                   "better for me", "better for us", "what do you recommend", "what would you recommend",
-                   "your advice", "tax advice", "roth")
+                   "better for me", "better for us", "is it better to", "would it be better", "is it smarter",
+                   "bigger refund", "larger refund", "what do you recommend", "what would you recommend",
+                   "your advice", "tax advice")
+# "should I file...", "whether she should file...", "tell me if I should file..."
 _ADVICE_SHOULD = re.compile(
-    r"\bshould (i|we)\b.*\b(convert|file|deduct|claim|take|withdraw|sell|pay|itemi[sz]e|ira|"
-    r"separately|jointly|invest|move)"
+    r"\b(?:should (?:i|we|she|he|they)|(?:i|we|she|he|they) should)\b.*?\b(?:convert|file|deduct|claim|"
+    r"take|withdraw|sell|pay|itemi[sz]e|ira|separately|jointly|invest|move)"
 )
 # Always a warning sign.
-_PRESSURE_STRONG = ("pressur", "threaten", "forcing me", "forced me", "or else", "not my account",
-                    "not my bank", "whose account", "takes my money", "took my money", "takes my refund",
-                    "took my refund")
+_PRESSURE_STRONG = ("pressur", "threaten", "forcing me", "forced me", "or else", "scared of", "not my account",
+                    "not my bank", "whose account", "don't know the account", "don't know which account",
+                    "don't know the bank", "takes my money", "took my money", "takes my refund",
+                    "took my refund", "keeps my bank card", "keeps my card", "has my bank card", "took my card")
 # A warning sign only when money or answers are mentioned too ("my doctor told me to rest" is fine).
 _PRESSURE_WEAK = ("told me to", "telling me to", "making me", "made me", "gets angry", "get angry",
+                  "says i have to", "says i must", "have to give", "must give",
                   "his account", "her account", "their account")
-_MONEY_WORDS = ("refund", "money", "account", "bank", "sign", "say", "answer", "check")
-_THIRD_PARTY = ("answering for", "typing for", "filling this out for", "filling this in for",
-                "on behalf of", "doing this for my")
+# Whole words only, so "accountant" does not count as "account".
+_MONEY_WORDS = re.compile(r"\b(?:refund|money|account|bank|sign|say|answer|check)\b")
+_RELATIVES = (r"(?:(?:my|our) )?(?:mother|mom|mum|father|dad|grandmother|grandma|grandfather|grandpa|"
+              r"aunt|uncle|husband|wife|parents?|sister|brother|friend|neighbou?r)")
+# "I'm answering for mom", "doing it for her", "filling this out for my grandmother", "on behalf of"
+_THIRD_PARTY = re.compile(
+    r"\bon behalf of\b|\b(?:answering|typing|doing|filling)\b(?: (?:this|it))?(?: (?:out|in))? for "
+    rf"(?:her|him|them|{_RELATIVES})\b"
+)
 _AUTHORITY = ("power of attorney", "poa", "guardian", "conservator", "authori", "permission",
               "allowed", "legal")
 _SPOUSE_WORDS = ("husband", "wife", "spouse", "partner")
-_DEATH_WORDS = ("died", "passed away", "passed on", "death", "lost my")
+_DEATH_WORDS = ("died", "passed away", "passed on", "passed in", "passed last", "passed this",
+                "passed recently", "death", "lost my")
+
+
+def _lower(text: str) -> str:
+    return text.lower().replace("’", "'")
 
 
 def asks_for_advice(text: str) -> bool:
-    lowered = text.lower()
+    lowered = _lower(text)
     return any(p in lowered for p in _ADVICE_PHRASES) or bool(_ADVICE_SHOULD.search(lowered))
 
 
 def mentions_pressure(text: str) -> bool:
-    lowered = text.lower().replace("’", "'")
+    lowered = _lower(text)
     if any(p in lowered for p in _PRESSURE_STRONG):
         return True
-    return any(p in lowered for p in _PRESSURE_WEAK) and any(w in lowered for w in _MONEY_WORDS)
+    return any(p in lowered for p in _PRESSURE_WEAK) and bool(_MONEY_WORDS.search(lowered))
 
 
 def has_authority(text: str) -> bool:
-    return any(word in text.lower() for word in _AUTHORITY)
+    return any(word in _lower(text) for word in _AUTHORITY)
 
 
 def someone_else_answering(text: str) -> bool:
     """A third party says they are answering, and no permission (e.g. power of attorney) is stated."""
-    lowered = text.lower()
-    return any(p in lowered for p in _THIRD_PARTY) and not has_authority(lowered)
+    return bool(_THIRD_PARTY.search(_lower(text))) and not has_authority(text)
 
 
 def mentions_spouse_died(text: str) -> bool:
     """e.g. "my husband passed away in March". Not when an earlier year is named ("died in 2010")."""
-    lowered = text.lower()
+    lowered = _lower(text)
     years = re.findall(r"\b(?:19|20)\d\d\b", lowered)
     if any(year != "2025" for year in years):
         return False
@@ -477,7 +501,7 @@ def parse_amount(text: str) -> float | None:
 def parse_text(text: str) -> str | None:
     if is_not_sure(text):
         return NOT_SURE
-    cleaned = text.strip()
+    cleaned = redact_ssn(text.strip())
     return cleaned if re.search(r"[A-Za-z]", cleaned) else None
 
 
@@ -670,7 +694,7 @@ def _safety_note(question: Question, reason: str, words: str, facts: dict) -> di
     """A note for the volunteer, with the person's own words (kept out of the alarm itself)."""
     notes = [dict(n) for n in _value(facts, NOTES) or []]
     notes.append({"question": question.key, "question_text": question.text, "reason": reason,
-                  "resolved": False, "taxpayer_words": words})
+                  "resolved": False, "taxpayer_words": redact_ssn(words)})
     return {NOTES: {"value": notes, "source": "intake"}}
 
 

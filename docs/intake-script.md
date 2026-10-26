@@ -13,14 +13,14 @@ lets the person say "go back" to change an earlier answer without losing anythin
 in `volunteer_notes` (INT-5).
 It also listens for trouble and calls a volunteer (GRD-1, GRD-2): a request for tax
 advice, a spouse who died in 2025, someone else answering without permission, or
-pressure about money or the refund account.
+pressure about money or the refund account. These alarms are tested against a list of
+tricky messages in `tests/test_guardrails.py` (GRD-3).
 It is not plugged in yet: `src/agents/intake.py` is still the placeholder that the
 orchestration tests use.
 
 **What is still missing (and the card for each):**
 - Safely handling a Social Security number the person offers unasked (INT-4)
 - The large-type, screen-reader friendly chat page (INT-6)
-- A bigger set of tricky test messages for the safety alarms (GRD-3)
 
 **What teammates need from this file:**
 - Eligibility & Rules and Computation: please read answers using the names in
