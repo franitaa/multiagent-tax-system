@@ -18,6 +18,12 @@ What it does today (card INT-2):
     answer is ever lost. If a changed answer makes new questions apply (for example "not
     married" changed to "married"), those questions are asked next; then Intake carries on
     where it left off.
+  - "I'm not sure" (card INT-5): always accepted. Intake replies "That's okay. I'll note this
+    for a volunteer to help with." and adds a note to `facts["volunteer_notes"]` (which
+    question, and why). Asking for a person ("can I talk to a real person?", "flag this")
+    works the same way. If the person answers later via "go back", the note is marked
+    resolved, never deleted. A "not sure" does NOT stop the conversation; stopping is kept
+    for the six escalation conditions. The dashboard / volunteer can read the notes.
   - Bookkeeping: `facts["intake_progress"]` records which question is being asked and the
     order of answers. Other agents can ignore it.
 
@@ -37,7 +43,6 @@ What is still missing:
     should only use answers whose question applies.
   - Fuller handling of a volunteered SSN: the user's own message still sits in the chat
     history (INT-4).
-  - Raising a volunteer flag for "not sure" answers; today they are only saved (INT-5).
   - The chat page (INT-6) and the safety flags: advice, spouse died, pressure (GRD-1 to GRD-3).
 
 Not plugged in yet: src/agents/intake.py is still the 2-message placeholder that the
@@ -70,7 +75,11 @@ WHICH_ANSWER = (
     "or say \"go back\"."
 )
 PROGRESS = "intake_progress"
-NOT_SURE_ACK = "That's okay. I've noted that you're not sure."
+NOT_SURE_ACK = "That's okay. I'll note this for a volunteer to help with."
+VOLUNTEER_ACK = "Of course. I'll note that you'd like a volunteer to help with this question."
+NOTES = "volunteer_notes"
+REASON_NOT_SURE = "taxpayer not sure"
+REASON_ASKED = "taxpayer asked for a person"
 DONE = "Thank you. That was my last question. I'll now look at your documents."
 REAL_SSN = (
     "That looks like a real Social Security number. To keep you safe, I did not save it. "
@@ -325,6 +334,20 @@ def is_confused(text: str) -> bool:
     return any(phrase in lowered for phrase in _CONFUSED_PHRASES)
 
 
+_VOLUNTEER_PHRASES = ("a volunteer", "real person", "talk to a person", "speak to a person",
+                      "speak with a person", "a human", "talk to someone", "speak to someone",
+                      "speak with someone", "flag this", "flag it")
+_VOLUNTEER_NOT = ("volunteer at", "volunteers at", "is a volunteer", "was a volunteer")
+
+
+def wants_volunteer(text: str) -> bool:
+    """"Can I talk to a real person?" / "flag this for a volunteer"."""
+    lowered = text.lower()
+    if any(phrase in lowered for phrase in _VOLUNTEER_NOT):
+        return False
+    return any(phrase in lowered for phrase in _VOLUNTEER_PHRASES)
+
+
 def is_correction(text: str) -> bool:
     return bool(_CORRECTION_WORDS.search(text.lower()))
 
@@ -465,6 +488,23 @@ def record_answer(question: Question, value, facts: dict) -> dict:
     return {question.fact: _with_history(question.fact, new, facts)}
 
 
+def update_notes(question: Question, value, reason: str | None, facts: dict) -> dict:
+    """The `volunteer_notes` update, or {} if nothing changes.
+
+    A "not sure" (or a request for a person) adds an open note for that question, once.
+    A real answer given later marks the open note resolved; notes are never deleted."""
+    notes = [dict(n) for n in _value(facts, NOTES) or []]
+    open_note = next((n for n in notes if n["question"] == question.key and not n["resolved"]), None)
+    if value == NOT_SURE and open_note is None:
+        notes.append({"question": question.key, "question_text": question.text,
+                      "reason": reason or REASON_NOT_SURE, "resolved": False})
+    elif value != NOT_SURE and open_note is not None:
+        open_note["resolved"] = True
+    else:
+        return {}
+    return {NOTES: {"value": notes, "source": "intake"}}
+
+
 def _earlier_answer(question: Question, facts: dict) -> str | None:
     """The person's earlier answer in plain words, to remind them when going back."""
     if question.part:
@@ -559,10 +599,13 @@ def run(view, tools):
     # "Actually I was married": a correction word plus an earlier topic jumps to that question.
     # Not for free-text questions, where such a sentence is usually the answer itself.
     topic = topic_of(reply, [k for k in answered if k != question.key])
-    if topic and is_correction(reply) and question.kind != TEXT:
+    if topic and is_correction(reply) and question.kind != TEXT and not wants_volunteer(reply):
         return _revisit(question_for_key(topic, facts), "No problem, let's fix that.", answered, facts)
 
-    if question.kind == SSN:
+    reason = None
+    if wants_volunteer(reply):
+        value, reason = NOT_SURE, REASON_ASKED
+    elif question.kind == SSN:
         value, looks_real = parse_ssn(reply)
         if looks_real:
             return _ask(f"{REAL_SSN} {question.text}")
@@ -575,12 +618,12 @@ def run(view, tools):
             return _ask(WHICH_ANSWER)
         return _ask(f"Sorry, I didn't quite understand. {HINTS[question.kind]} {GO_BACK_TIP} {question.text}")
 
-    saved = record_answer(question, value, facts)
+    saved = {**record_answer(question, value, facts), **update_notes(question, value, reason, facts)}
     if question.key not in answered:
         answered.append(question.key)
     facts.update(saved)
     following = next_question(facts)  # first question still unanswered: carries on where we left off
-    prefix = f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
+    prefix = f"{VOLUNTEER_ACK} " if reason else f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
     if following is None:
         return {
             "messages": [{"role": "assistant", "content": f"{prefix}{DONE}"}],

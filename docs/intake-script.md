@@ -9,12 +9,13 @@ question Intake will ask, in order, and the exact name each answer is saved unde
 **What Intake can do today:** the real Intake lives in `src/agents/intake_agent.py`. It
 asks these questions one at a time, saves the answers under the names below (INT-2), and
 lets the person say "go back" to change an earlier answer without losing anything (INT-3).
+"I'm not sure" or "can I talk to a person?" is always accepted and noted for a volunteer
+in `volunteer_notes` (INT-5).
 It is not plugged in yet: `src/agents/intake.py` is still the placeholder that the
 orchestration tests use.
 
 **What is still missing (and the card for each):**
 - Safely handling a Social Security number the person offers unasked (INT-4)
-- "I'm not sure, let me flag this for a volunteer" (INT-5)
 - The large-type, screen-reader friendly chat page (INT-6)
 - Spotting advice requests, a spouse who died, and pressure from someone else, then raising the flag (GRD-1 to GRD-3)
 
@@ -126,6 +127,10 @@ Other agents should read these names. Please tell Supriya before renaming one.
 Extra entries:
 - `history`: if the person changes an answer, the earlier one is kept in that fact's
   `history` list (for a dependent, in that person's own `history`). Nothing is deleted.
+- `volunteer_notes`: a list of questions a volunteer should help with, one note per
+  question: `{"question", "question_text", "reason", "resolved"}`. `reason` is
+  "taxpayer not sure" or "taxpayer asked for a person". If the person answers later, the
+  note is marked `resolved: true`, never deleted. The dashboard can show these.
 - `dependents_complete`: `"yes"` once the person says nobody else depends on them.
 - `intake_progress`: Intake's own bookkeeping (which question it is asking, and the
   order of answers, for "go back"). Other agents can ignore it.

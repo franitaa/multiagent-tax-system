@@ -367,6 +367,59 @@ def test_confused_on_a_dependent_question():
     assert "relationship" not in chat.value("dependents")[0]
 
 
+# ---- not sure: flag for a volunteer (INT-5) ----------------------------------------
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Can I talk to a real person?", True), ("please flag this for a volunteer", True),
+    ("I'd like to speak to someone", True), ("yes", False),
+    ("My daughter is a volunteer at church", False), ("A person from my church helps me", False),
+])
+def test_wants_volunteer(text, expected):
+    assert ia.wants_volunteer(text) is expected
+
+
+def test_update_notes_adds_once_and_resolves():
+    question = ia.BEFORE_DEPENDENTS[4]  # Q5 blind
+    facts = {}
+    facts.update(ia.update_notes(question, ia.NOT_SURE, None, facts))
+    assert ia.update_notes(question, ia.NOT_SURE, None, facts) == {}  # no duplicate note
+    facts.update(ia.update_notes(question, "no", None, facts))
+    assert facts[ia.NOTES]["value"] == [{"question": "Q5", "question_text": question.text,
+                                         "reason": ia.REASON_NOT_SURE, "resolved": True}]
+    assert ia.update_notes(question, "yes", None, facts) == {}
+
+
+def test_not_sure_adds_a_volunteer_note_and_carries_on():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950"]:
+        chat.say(answer)
+    chat.say("I'm not sure")
+    assert chat.question == f"{ia.NOT_SURE_ACK} {ia.BEFORE_DEPENDENTS[7].text}"
+    assert chat.value(ia.NOTES) == [{"question": "Q5", "question_text": "Are you legally blind?",
+                                     "reason": ia.REASON_NOT_SURE, "resolved": False}]
+    assert chat.last["handoff_request"]["to"] == "end"  # no escalation: the chat goes on
+    assert "escalation" not in chat.last
+
+
+def test_asking_for_a_person_is_noted():
+    chat = Chat()
+    chat.say("Can I talk to a real person about this?")
+    assert chat.question.startswith(ia.VOLUNTEER_ACK)
+    assert chat.value("married_dec31") == ia.NOT_SURE
+    assert chat.value(ia.NOTES)[0]["reason"] == ia.REASON_ASKED
+
+
+def test_answering_later_resolves_the_note():
+    chat = Chat()
+    chat.say("not sure")
+    chat.say("go back")
+    assert "Earlier you said: not sure." in chat.question
+    chat.say("no")
+    assert chat.value("married_dec31") == "no"
+    assert chat.value(ia.NOTES)[0]["resolved"] is True
+
+
 def test_works_inside_the_real_graph(tmp_path):
     """Plugged into the orchestrator with stub agents for the rest: one graph call per reply."""
     graph = build_graph(trace_dir=tmp_path, agents={"intake": ia.run})
