@@ -39,3 +39,50 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
 **Limits I am aware of**
 - The alarms use keyword matching, not AI, so unusual wording can be missed.
 - Commits are marked "Co-Authored-By: Claude" to be transparent about AI help.
+
+## Supriya Patil — Mon Oct 26, 2026 (~5 hours)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on my branch `feature/intake-agent`
+(plus a small separate branch `docs/answer-names` for PR #8).
+
+**What the AI helped with**
+- INT-4: removing a Social Security number nobody asked for, and the "how and why"
+  section for the report.
+- INT-6: the Streamlit chat page (`src/ui/`), with its logic kept separate and tested.
+- Reviewing the assignment against my question list; it suggested missing questions
+  (other forms, sales, business income, money abroad, digital assets, the refund
+  account, spouse questions) and checked what the brief says about SSNs.
+- Code and tests for: date read-back and day/month checks, Change buttons, the 6 parts,
+  progress list and "Skip for now".
+- Acting on Francesca's review: switching to Sahana's shared `is_fake_ssn()` and telling
+  the person when a number was removed. Merging the latest main into my branch.
+- Re-checking Francesca's Phase 3 pull request before I approved it (merged with main,
+  ran all tests, read her doc changes), and drafting PR #8 (shared answer names).
+- Explaining GitHub steps (approving a review, opening a pull request) and drafting my
+  messages to teammates in simpler words.
+
+**What I decided or checked myself**
+- Tested the chat page in my browser and found real problems: "dec, 4,1950" was not
+  understood; April 31 was accepted by the date boxes; "Question 1.1" was bigger than the
+  part heading; the numbering pulled focus away from the question. All fixed at my request.
+- Asked for: a way to jump from question 10 back to question 3 (Change buttons); a date
+  confirmation, because some people write the day first; a month list where typing "3"
+  finds March; sections like an application form; "Skip for now"; more ways to say
+  "I don't know" ("I can't remember", "I forgot").
+- Chose the wording and layout: "Part 1 – Personal information – Question 3" instead of
+  1.1-style numbers, and "Personal information" as the first part's name.
+- Decided which new questions to add (and limited the spouse's year of death to widowed
+  people with dependents), to ask for names, and not to ask for the taxpayer's or
+  spouse's SSN (brief §3.1 and §4.3).
+- Agreed with Francesca: exploitation stays "stop" only, and her tests will use a pretend
+  Intake so my real one can be switched on.
+
+**How the AI's work was verified**
+- All tests run before every commit (326 passing at the end), including a test that
+  fills in the real page's date boxes and one that checks April 31 is never sent.
+- Tests caught AI mistakes before they were committed: a scrambled line of code (twice,
+  from a backslash problem when saving), and a part wrongly shown as "Done" while a
+  question in it was still skipped.
+
+**Limits I am aware of**
+- Sessions are kept only while the app runs until Shruti's saved-session store is plugged in.
+- My real Intake is not switched on in the main system yet (waiting for Phase 3 to merge).
