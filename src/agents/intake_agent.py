@@ -1,58 +1,47 @@
 """Intake agent (real version). Owner: Supriya Patil.
 
 SUMMARY FOR THE TEAM
-What it does today (card INT-2):
-  - Talks to the taxpayer, one question at a time, using the script in docs/intake-script.md.
-  - Skips questions that do not apply (no spouse questions for someone not married, etc.).
-  - Understands simple answers: yes / no / not sure, a choice, a date, a name, an amount.
-  - If it does not understand an answer, it says so kindly and asks the same question again.
-  - Saves every answer in `facts` under the shared names listed in docs/intake-script.md.
-  - Amounts (estimated payments, adjustments) are saved as "direct user input" with who and when.
-  - Only accepts practice Social Security numbers starting with 9. A real-looking number is
-    refused, never saved in `facts`, and never repeated back.
-  - Never does arithmetic and never explains tax rules. It only asks and records.
-  - When the last question is answered it marks intake complete and hands over to Extraction.
-  - "Go back" (card INT-3): the person can say "go back" at any time, as many times as they
-    like. Intake re-asks the previous question and reminds them of their earlier answer.
-    A new answer replaces it, and the old one is kept in that fact's `history` list, so no
-    answer is ever lost. If a changed answer makes new questions apply (for example "not
-    married" changed to "married"), those questions are asked next; then Intake carries on
-    where it left off.
-  - "I'm not sure" (card INT-5): always accepted. Intake replies "That's okay. I'll note this
-    for a volunteer to help with." and adds a note to `facts["volunteer_notes"]` (which
-    question, and why). Asking for a person ("can I talk to a real person?", "flag this")
-    works the same way. If the person answers later via "go back", the note is marked
-    resolved, never deleted. A "not sure" does NOT stop the conversation; stopping is kept
-    for the six escalation conditions. The dashboard / volunteer can read the notes.
-  - Bookkeeping: `facts["intake_progress"]` records which question is being asked and the
-    order of answers. Other agents can ignore it.
+In one line: the only agent that talks to the taxpayer. It asks the questions in
+docs/intake-script.md one at a time, saves the answers, and calls a volunteer when
+something needs a human. It never does arithmetic and never explains tax rules.
 
-  - Simple corrections: "Oh wait, actually I was married" jumps straight back to the
-    marriage question. It needs a correction word (actually, wait, mistake, wrong, change...)
-    plus a topic word from an earlier question (married, born, blind, W-2, pension...).
-    "I made a mistake" with no topic gets "Which answer would you like to change?".
-    Every "didn't understand" message also says: you can say "go back".
-  - Plain-words help: if the person says "I don't understand" or "what does that mean?",
-    Intake explains that one question in simple words (see EXPLANATIONS), says "not sure"
-    is fine, and asks it again. The explanations describe the question, never tax rules.
+What it can do today:
+  - Ask and record (INT-2): one question at a time, skipping ones that do not apply.
+    Understands yes / no / not sure, dates, names and amounts; asks again kindly if
+    unclear. Answers are saved in `facts` under the shared names. Amounts are saved as
+    "direct user input". Only practice SSNs starting with 9 are accepted; real-looking
+    ones are refused and never saved or repeated.
+  - Go back and change answers (INT-3): "go back", or a simple correction like "actually
+    I was married", re-asks that question. Old answers are kept in `history`, never lost.
+    "I don't understand" gets a plain-words explanation of the question.
+  - "I'm not sure" (INT-5): always accepted, noted for a volunteer in `volunteer_notes`.
+    The conversation carries on.
+  - Safety alarms (GRD-1, GRD-2): a request for tax advice, a spouse who died in 2025,
+    someone else answering without permission, or pressure about money or the refund
+    account. Intake replies calmly, notes the person's words for the volunteer, and raises
+    the escalation flag so the system pauses for a human. The flag itself holds no
+    personal details.
 
 What is still missing:
-  - Corrections in unusual wording (no clear topic word) are not understood; the person is
-    pointed to "go back" instead. This is plain keyword matching, not AI. Answers that stop applying after a change (e.g.
-    spouse details after "married" becomes "not married") are kept, not deleted; Rules
-    should only use answers whose question applies.
-  - Fuller handling of a volunteered SSN: the user's own message still sits in the chat
-    history (INT-4).
-  - The chat page (INT-6) and the safety flags: advice, spouse died, pressure (GRD-1 to GRD-3).
+  - Fuller handling of a volunteered SSN (INT-4), the chat page (INT-6), and more tricky
+    test messages for the alarms (GRD-3).
+  - It uses keyword matching, not AI, so unusual wording can be missed. When in doubt it
+    points the person to "go back" or a volunteer.
 
-Not plugged in yet: src/agents/intake.py is still the 2-message placeholder that the
-orchestration tests rely on. Once those tests use their own fake Intake, intake.py will
-point here.
+Notes for teammates:
+  - Rules: Q21 (can someone claim you) and Q23 (lived in the US) are only recorded; Rules
+    decides if they make the return out of scope. If an answer changes so a question no
+    longer applies, the old answer is kept; use only answers whose question applies.
+  - `intake_progress` in `facts` is Intake's own bookkeeping; other agents can ignore it.
+  - Not plugged in yet: src/agents/intake.py is still the 2-message placeholder used by
+    the orchestration tests.
 """
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable
+
+from src.state import EXPLOITATION_SIGNS, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST
 
 NOT_SURE = "not_sure"
 
@@ -80,6 +69,25 @@ VOLUNTEER_ACK = "Of course. I'll note that you'd like a volunteer to help with t
 NOTES = "volunteer_notes"
 REASON_NOT_SURE = "taxpayer not sure"
 REASON_ASKED = "taxpayer asked for a person"
+
+# Safety alarms (GRD-1, GRD-2). Replies are calm and never accuse anyone: a helper may be
+# sitting next to the taxpayer. Alarm reasons are generic (they are written to traces);
+# the person's own words go only into volunteer_notes.
+ADVICE_REPLY = (
+    "I'm here to help fill in your tax form, so I can't give tax advice. "
+    "I'll note your question for the volunteer."
+)
+SPOUSE_DIED_REPLY = (
+    "I'm very sorry for your loss. Thank you for telling me. "
+    "A volunteer will look at this part with you before we go on."
+)
+CONCERN_REPLY = (
+    "Thank you for telling me. Before we go on, I'm going to ask a volunteer to look at this with you."
+)
+ALARM_ADVICE = "taxpayer asked for tax advice"
+ALARM_SPOUSE_DIED = "taxpayer says a spouse died in 2025"
+ALARM_THIRD_PARTY = "someone else is answering without stated authority"
+ALARM_PRESSURE = "taxpayer mentioned pressure or an unfamiliar refund account"
 DONE = "Thank you. That was my last question. I'll now look at your documents."
 REAL_SSN = (
     "That looks like a real Social Security number. To keep you safe, I did not save it. "
@@ -348,6 +356,63 @@ def wants_volunteer(text: str) -> bool:
     return any(phrase in lowered for phrase in _VOLUNTEER_PHRASES)
 
 
+# ---- safety listeners (GRD-1) -----------------------------------------------------
+
+_ADVICE_PHRASES = ("can i deduct", "can we deduct", "can i claim", "would i pay less", "would we pay less",
+                   "pay less tax", "save on tax", "save on my tax", "lower my tax", "reduce my tax",
+                   "better for me", "better for us", "what do you recommend", "what would you recommend",
+                   "your advice", "tax advice", "roth")
+_ADVICE_SHOULD = re.compile(
+    r"\bshould (i|we)\b.*\b(convert|file|deduct|claim|take|withdraw|sell|pay|itemi[sz]e|ira|"
+    r"separately|jointly|invest|move)"
+)
+# Always a warning sign.
+_PRESSURE_STRONG = ("pressur", "threaten", "forcing me", "forced me", "or else", "not my account",
+                    "not my bank", "whose account", "takes my money", "took my money", "takes my refund",
+                    "took my refund")
+# A warning sign only when money or answers are mentioned too ("my doctor told me to rest" is fine).
+_PRESSURE_WEAK = ("told me to", "telling me to", "making me", "made me", "gets angry", "get angry",
+                  "his account", "her account", "their account")
+_MONEY_WORDS = ("refund", "money", "account", "bank", "sign", "say", "answer", "check")
+_THIRD_PARTY = ("answering for", "typing for", "filling this out for", "filling this in for",
+                "on behalf of", "doing this for my")
+_AUTHORITY = ("power of attorney", "poa", "guardian", "conservator", "authori", "permission",
+              "allowed", "legal")
+_SPOUSE_WORDS = ("husband", "wife", "spouse", "partner")
+_DEATH_WORDS = ("died", "passed away", "passed on", "death", "lost my")
+
+
+def asks_for_advice(text: str) -> bool:
+    lowered = text.lower()
+    return any(p in lowered for p in _ADVICE_PHRASES) or bool(_ADVICE_SHOULD.search(lowered))
+
+
+def mentions_pressure(text: str) -> bool:
+    lowered = text.lower().replace("’", "'")
+    if any(p in lowered for p in _PRESSURE_STRONG):
+        return True
+    return any(p in lowered for p in _PRESSURE_WEAK) and any(w in lowered for w in _MONEY_WORDS)
+
+
+def has_authority(text: str) -> bool:
+    return any(word in text.lower() for word in _AUTHORITY)
+
+
+def someone_else_answering(text: str) -> bool:
+    """A third party says they are answering, and no permission (e.g. power of attorney) is stated."""
+    lowered = text.lower()
+    return any(p in lowered for p in _THIRD_PARTY) and not has_authority(lowered)
+
+
+def mentions_spouse_died(text: str) -> bool:
+    """e.g. "my husband passed away in March". Not when an earlier year is named ("died in 2010")."""
+    lowered = text.lower()
+    years = re.findall(r"\b(?:19|20)\d\d\b", lowered)
+    if any(year != "2025" for year in years):
+        return False
+    return any(w in lowered for w in _SPOUSE_WORDS) and any(w in lowered for w in _DEATH_WORDS)
+
+
 def is_correction(text: str) -> bool:
     return bool(_CORRECTION_WORDS.search(text.lower()))
 
@@ -494,7 +559,8 @@ def update_notes(question: Question, value, reason: str | None, facts: dict) -> 
     A "not sure" (or a request for a person) adds an open note for that question, once.
     A real answer given later marks the open note resolved; notes are never deleted."""
     notes = [dict(n) for n in _value(facts, NOTES) or []]
-    open_note = next((n for n in notes if n["question"] == question.key and not n["resolved"]), None)
+    open_note = next((n for n in notes if n["question"] == question.key and not n["resolved"]
+                      and n["reason"] in (REASON_NOT_SURE, REASON_ASKED)), None)
     if value == NOT_SURE and open_note is None:
         notes.append({"question": question.key, "question_text": question.text,
                       "reason": reason or REASON_NOT_SURE, "resolved": False})
@@ -578,6 +644,52 @@ def _go_back(question: Question, answered: list[str], facts: dict) -> dict:
     return _revisit(previous, "Sure, let's go back.", answered, facts)
 
 
+def safety_check(reply: str, question: Question) -> tuple[str, str, str] | None:
+    """(condition, generic alarm reason, calm reply) if this message needs a human. Most serious first."""
+    if mentions_pressure(reply):
+        return EXPLOITATION_SIGNS, ALARM_PRESSURE, CONCERN_REPLY
+    if question.id != "Q25" and someone_else_answering(reply):  # Q25 is checked as an answer
+        return EXPLOITATION_SIGNS, ALARM_THIRD_PARTY, CONCERN_REPLY
+    if question.id != "Q22" and mentions_spouse_died(reply):  # Q22 is checked as an answer
+        return FILING_STATUS_AMBIGUITY, ALARM_SPOUSE_DIED, SPOUSE_DIED_REPLY
+    if asks_for_advice(reply):
+        return TAX_ADVICE_REQUEST, ALARM_ADVICE, ADVICE_REPLY
+    return None
+
+
+def answer_alarm(question: Question, value) -> tuple[str, str, str] | None:
+    """Alarms raised by the answer itself: Q22 "yes", or a helper (Q25) with no stated permission."""
+    if question.id == "Q22" and value == "yes":
+        return FILING_STATUS_AMBIGUITY, ALARM_SPOUSE_DIED, SPOUSE_DIED_REPLY
+    if question.id == "Q25" and not (isinstance(value, str) and has_authority(value)):
+        return EXPLOITATION_SIGNS, ALARM_THIRD_PARTY, CONCERN_REPLY
+    return None
+
+
+def _safety_note(question: Question, reason: str, words: str, facts: dict) -> dict:
+    """A note for the volunteer, with the person's own words (kept out of the alarm itself)."""
+    notes = [dict(n) for n in _value(facts, NOTES) or []]
+    notes.append({"question": question.key, "question_text": question.text, "reason": reason,
+                  "resolved": False, "taxpayer_words": words})
+    return {NOTES: {"value": notes, "source": "intake"}}
+
+
+def _raise_alarm(alarm: tuple[str, str, str], facts_update: dict, intake_complete: bool = False) -> dict:
+    """Say the calm reply and set the escalation flag; the orchestrator pauses for a volunteer.
+    After the volunteer chooses "continue", Intake asks the question in `intake_progress` again."""
+    condition, reason, reply_text = alarm
+    update = {
+        "messages": [{"role": "assistant", "content": reply_text}],
+        "facts": facts_update,
+        "pending_question": None,
+        "escalation": {"pending": True, "condition": condition, "reason": reason, "raised_by": "intake"},
+        "handoff_request": {"to": "human", "reason": reason},
+    }
+    if intake_complete:
+        update["intake_complete"] = True
+    return update
+
+
 def run(view, tools):
     facts = dict(view.get("facts") or {})
     messages = view.get("messages") or []
@@ -591,6 +703,10 @@ def run(view, tools):
     reply = _latest_reply(messages)
     if reply is None:
         return _ask(question.text, _progress_fact(question.key, answered))
+    alarm = safety_check(reply, question)
+    if alarm:
+        note = _safety_note(question, alarm[1], reply, facts)
+        return _raise_alarm(alarm, {**note, **_progress_fact(question.key, answered)})
     if is_go_back(reply):
         return _go_back(question, answered, facts)
     # In a free-text answer only a short message counts ("what do you mean?"), not a long reply.
@@ -623,6 +739,11 @@ def run(view, tools):
         answered.append(question.key)
     facts.update(saved)
     following = next_question(facts)  # first question still unanswered: carries on where we left off
+    alarm = answer_alarm(question, value)
+    if alarm:
+        note = _safety_note(question, alarm[1], reply, facts)
+        progress = _progress_fact(following.key if following else None, answered)
+        return _raise_alarm(alarm, {**saved, **note, **progress}, intake_complete=following is None)
     prefix = f"{VOLUNTEER_ACK} " if reason else f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
     if following is None:
         return {

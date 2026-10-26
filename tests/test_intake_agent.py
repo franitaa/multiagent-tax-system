@@ -1,6 +1,8 @@
 """Tests for the real Intake agent (src/agents/intake_agent.py). No network or model calls."""
 import pytest
+from langgraph.types import Command
 
+from src import state as S
 from src.agents import intake_agent as ia
 from src.graph import build_graph
 from src.scenarios import clean_case, user
@@ -418,6 +420,155 @@ def test_answering_later_resolves_the_note():
     chat.say("no")
     assert chat.value("married_dec31") == "no"
     assert chat.value(ia.NOTES)[0]["resolved"] is True
+
+
+# ---- safety alarms (GRD-1, GRD-2) -------------------------------------------------
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Should I convert my IRA to a Roth?", True), ("Would I pay less if we filed separately?", True),
+    ("Can I deduct my medications?", True), ("What would you recommend?", True),
+    ("yes", False), ("Should I type the date like March 4?", False),
+])
+def test_asks_for_advice(text, expected):
+    assert ia.asks_for_advice(text) is expected
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("He told me to send the refund to his account", True), ("My son is pressuring me", True),
+    ("It's not my bank account", True), ("She gets angry if I don't sign", True),
+    ("My doctor told me to rest", False), ("no", False),
+])
+def test_mentions_pressure(text, expected):
+    assert ia.mentions_pressure(text) is expected
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("I'm typing for my mom", True), ("I am answering for my father", True),
+    ("I'm answering for my father, I have power of attorney", False), ("yes", False),
+])
+def test_someone_else_answering(text, expected):
+    assert ia.someone_else_answering(text) is expected
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("My husband passed away in March", True), ("my wife died this year", True),
+    ("My husband died in 2010", False), ("I am a widow", False),
+])
+def test_mentions_spouse_died(text, expected):
+    assert ia.mentions_spouse_died(text) is expected
+
+
+def _alarm(update):
+    return update["escalation"]
+
+
+def test_advice_request_is_refused_noted_and_raised():
+    chat = Chat()
+    chat.say("no")
+    update = chat.say("Should I convert my IRA to a Roth?")
+    assert update["messages"][0]["content"] == ia.ADVICE_REPLY
+    assert _alarm(update) == {"pending": True, "condition": S.TAX_ADVICE_REQUEST,
+                              "reason": ia.ALARM_ADVICE, "raised_by": "intake"}
+    assert "Roth" not in _alarm(update)["reason"]  # the person's words stay out of the alarm
+    note = chat.value(ia.NOTES)[-1]
+    assert note["taxpayer_words"] == "Should I convert my IRA to a Roth?"
+    assert note["question"] == "Q3"
+    assert update["pending_question"] is None
+    assert "household_situation" not in chat.facts  # the question is still open
+
+
+def test_after_alarm_intake_asks_the_same_question_again():
+    chat = Chat()
+    chat.say("no")
+    chat.say("Should I convert my IRA to a Roth?")
+    chat.last = chat._call()  # the volunteer chose "continue": Intake runs with no new reply
+    assert chat.question == ia.BEFORE_DEPENDENTS[2].text
+    assert "escalation" not in chat.last
+
+
+def test_pressure_raises_exploitation_calmly():
+    chat = Chat()
+    update = chat.say("He told me to send the refund to his account")
+    assert update["messages"][0]["content"] == ia.CONCERN_REPLY
+    assert _alarm(update)["condition"] == S.EXPLOITATION_SIGNS
+    assert _alarm(update)["reason"] == ia.ALARM_PRESSURE
+
+
+def test_third_party_without_permission_raises_exploitation():
+    chat = Chat()
+    update = chat.say("I'm typing for my mom, she is tired")
+    assert _alarm(update)["condition"] == S.EXPLOITATION_SIGNS
+    assert _alarm(update)["reason"] == ia.ALARM_THIRD_PARTY
+
+
+def test_spouse_died_answer_raises_filing_status_ambiguity_and_keeps_answer():
+    chat = Chat()
+    for answer in ALL_NO_ANSWERS[:13]:  # up to Q21
+        chat.say(answer)
+    assert "pass away" in chat.question
+    update = chat.say("yes")
+    assert update["messages"][0]["content"] == ia.SPOUSE_DIED_REPLY
+    assert _alarm(update)["condition"] == S.FILING_STATUS_AMBIGUITY
+    assert chat.value("spouse_died_2025") == "yes"
+    chat.last = chat._call()  # after "continue", Intake carries on with the next question
+    assert "United States" in chat.question
+
+
+def test_spouse_died_in_free_text():
+    chat = Chat()
+    update = chat.say("My husband passed away in March")
+    assert _alarm(update)["condition"] == S.FILING_STATUS_AMBIGUITY
+
+
+def test_helper_without_permission_raises_exploitation_and_ends_intake():
+    chat = Chat()
+    for answer in ALL_NO_ANSWERS[:-1]:
+        chat.say(answer)
+    chat.say("no")
+    update = chat.say("My nephew Tom")
+    assert chat.value("helper_description") == "My nephew Tom"
+    assert _alarm(update)["condition"] == S.EXPLOITATION_SIGNS
+    assert update["intake_complete"] is True
+
+
+def test_q21_and_q23_are_only_recorded_for_rules_to_decide():
+    chat = Chat()
+    answers = list(ALL_NO_ANSWERS)
+    answers[12] = "not sure"  # Q21
+    answers[14] = "no"        # Q23
+    for answer in answers:
+        assert "escalation" not in chat.last
+        chat.say(answer)
+    assert chat.value("can_be_claimed_as_dependent") == ia.NOT_SURE
+    assert chat.value("us_resident_all_year") == "no"
+    assert chat.last["intake_complete"] is True
+
+
+def _graph_until_question(tmp_path, thread_id, answers):
+    graph = build_graph(trace_dir=tmp_path, agents={"intake": ia.run})
+    config = {"configurable": {"thread_id": thread_id}}
+    graph.invoke(clean_case(turns=1), config)
+    for answer in answers:
+        graph.invoke({"messages": [user(answer)]}, config)
+    return graph, config
+
+
+def test_advice_alarm_pauses_graph_and_volunteer_continue_resumes(tmp_path):
+    graph, config = _graph_until_question(tmp_path, "t-advice", ["no"])
+    paused = graph.invoke({"messages": [user("Can I deduct my medications?")]}, config)
+    assert paused["__interrupt__"][0].value["condition"] == S.TAX_ADVICE_REQUEST
+    resumed = graph.invoke(Command(resume={"decision": "continue", "note": "Noted for the preparer"}), config)
+    assert resumed["status"] == "awaiting_user"
+    assert resumed["pending_question"] == ia.BEFORE_DEPENDENTS[2].text
+
+
+def test_exploitation_alarm_pauses_graph_and_volunteer_can_stop(tmp_path):
+    graph, config = _graph_until_question(tmp_path, "t-exploit", [])
+    paused = graph.invoke({"messages": [user("My son is pressuring me to sign")]}, config)
+    assert paused["__interrupt__"][0].value["condition"] == S.EXPLOITATION_SIGNS
+    stopped = graph.invoke(Command(resume={"decision": "stop", "note": "Call the client"}), config)
+    assert stopped["status"] == "halted_by_human"
 
 
 def test_works_inside_the_real_graph(tmp_path):

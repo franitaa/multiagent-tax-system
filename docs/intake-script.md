@@ -11,19 +11,25 @@ asks these questions one at a time, saves the answers under the names below (INT
 lets the person say "go back" to change an earlier answer without losing anything (INT-3).
 "I'm not sure" or "can I talk to a person?" is always accepted and noted for a volunteer
 in `volunteer_notes` (INT-5).
+It also listens for trouble and calls a volunteer (GRD-1, GRD-2): a request for tax
+advice, a spouse who died in 2025, someone else answering without permission, or
+pressure about money or the refund account.
 It is not plugged in yet: `src/agents/intake.py` is still the placeholder that the
 orchestration tests use.
 
 **What is still missing (and the card for each):**
 - Safely handling a Social Security number the person offers unasked (INT-4)
 - The large-type, screen-reader friendly chat page (INT-6)
-- Spotting advice requests, a spouse who died, and pressure from someone else, then raising the flag (GRD-1 to GRD-3)
+- A bigger set of tricky test messages for the safety alarms (GRD-3)
 
 **What teammates need from this file:**
 - Eligibility & Rules and Computation: please read answers using the names in
   "Answer names" below, so we all use the same names.
 - Everyone: Q24 and Q25 are new. They cover escalation condition 6 (someone else
   answering for the taxpayer).
+- Eligibility & Rules (Matthew): Intake only records Q21 (can someone claim you) and Q23
+  (lived in the US all year). Whether a "yes", "no" or "not sure" there makes the return
+  out of scope is a tax rule, so please decide it in Rules and raise OUT_OF_SCOPE.
 
 ---
 
