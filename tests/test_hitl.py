@@ -5,9 +5,13 @@ import pytest
 from langgraph.types import Command
 
 from src import state as S
-from src.graph import build_graph
-from src.scenarios import CONDITION_SOURCES, clean_case, escalation_case, raising, user
 from src.agents import AGENTS
+from src.graph import build_graph
+from src.orchestration.human import CONTINUABLE
+from src.scenarios import CONDITION_SOURCES, clean_case, escalation_case, raising, user
+
+STOP_ONLY = sorted(set(CONDITION_SOURCES) - CONTINUABLE)
+CONTINUE_OK = sorted(CONTINUABLE)
 
 
 def cfg(tid):
@@ -18,76 +22,154 @@ def trace(tmp_path, tid):
     return [json.loads(x) for x in (tmp_path / f"{tid}.jsonl").read_text().splitlines()]
 
 
-def resume(decision="continue", note="reviewed (test)"):
-    return Command(resume={"decision": decision, "note": note})
+def answer(decision="continue", note="reviewed with the taxpayer (test)", **extra):
+    return Command(resume={"decision": decision, "note": note, **extra})
+
+
+def paused(tmp_path, condition, tid=None):
+    graph = build_graph(trace_dir=tmp_path, agents=escalation_case(condition))
+    result = graph.invoke(clean_case(), cfg(tid or condition))
+    return graph, result
+
+
+def test_rules_partition_the_six_conditions():
+    assert set(CONTINUE_OK) == {S.SOURCE_CONFLICT, S.FILING_STATUS_AMBIGUITY, S.TAX_ADVICE_REQUEST}
+    assert set(STOP_ONLY) == {S.OUT_OF_SCOPE, S.FORM_1099R_BOX_2B, S.EXPLOITATION_SIGNS}
 
 
 @pytest.mark.parametrize("condition", sorted(CONDITION_SOURCES))
-def test_interrupt_then_continue(tmp_path, condition):
-    graph = build_graph(trace_dir=tmp_path, agents=escalation_case(condition))
-    paused = graph.invoke(clean_case(), cfg(condition))
-
-    payload = paused["__interrupt__"][0].value
+def test_interrupt_payload_and_trace(tmp_path, condition):
+    graph, result = paused(tmp_path, condition)
+    payload = result["__interrupt__"][0].value
     assert payload["condition"] == condition
     assert payload["raised_by"] == CONDITION_SOURCES[condition][0]
-    assert payload["options"] == ["continue", "stop"]
+    assert payload["options"] == (["continue", "stop"] if condition in CONTINUABLE else ["stop"])
     assert graph.get_state(cfg(condition)).values["status"] == S.AWAITING_HUMAN
-
-    final = graph.invoke(resume(), cfg(condition))
-    assert final["status"] == S.COMPLETE
-    assert final["escalation"] is None
-    assert final["human_decisions"][0]["condition"] == condition
-    assert final["human_decisions"][0]["decision"] == "continue"
-
     records = trace(tmp_path, condition)
     assert any(r.get("interrupted") and r["interrupted_on"] == condition for r in records)
-    # personal-data guard: free text of the reason never reaches the trace
+    # personal-data guard: the free-text reason never reaches the trace
     assert "TEST:" not in (tmp_path / f"{condition}.jsonl").read_text()
+
+
+@pytest.mark.parametrize("condition", CONTINUE_OK)
+def test_continue_with_note_resumes_and_is_audited(tmp_path, condition):
+    graph, _ = paused(tmp_path, condition)
+    final = graph.invoke(answer("continue", "volunteer confirmed with taxpayer"), cfg(condition))
+    assert final["status"] == S.COMPLETE and final["escalation"] is None
+    decision = final["human_decisions"][0]
+    assert decision == {"condition": condition, "decision": "continue",
+                        "note": "volunteer confirmed with taxpayer", "resolution": None}
+
+
+def re_asked(graph, tid, command, match):
+    """A rejected answer returns a fresh interrupt carrying an error; nothing is applied."""
+    result = graph.invoke(command, cfg(tid))
+    payload = result["__interrupt__"][0].value
+    assert match in payload["error"]
+    values = graph.get_state(cfg(tid)).values
+    assert values["status"] == S.AWAITING_HUMAN and not values.get("human_decisions")
+    return payload
+
+
+@pytest.mark.parametrize("condition", CONTINUE_OK)
+@pytest.mark.parametrize("note", ["", "   ", None])
+def test_continue_with_empty_note_is_rejected_then_corrected(tmp_path, condition, note):
+    graph, _ = paused(tmp_path, condition)
+    re_asked(graph, condition, Command(resume={"decision": "continue", "note": note}), "non-empty note")
+    final = graph.invoke(answer("continue", "now with a note"), cfg(condition))
+    assert final["status"] == S.COMPLETE
+    assert final["human_decisions"][0]["note"] == "now with a note"
+
+
+@pytest.mark.parametrize("condition", STOP_ONLY)
+def test_continue_is_rejected_for_stop_only_conditions(tmp_path, condition):
+    graph, _ = paused(tmp_path, condition)
+    payload = re_asked(graph, condition, answer("continue", "I take responsibility"), "can only be stopped")
+    assert payload["options"] == ["stop"]
+    final = graph.invoke(answer("stop"), cfg(condition))  # and stop still works afterwards
+    assert final["status"] == S.HALTED_BY_HUMAN
 
 
 @pytest.mark.parametrize("condition", sorted(CONDITION_SOURCES))
 def test_stop_halts_and_runs_no_more_agents(tmp_path, condition):
-    graph = build_graph(trace_dir=tmp_path, agents=escalation_case(condition))
-    graph.invoke(clean_case(), cfg(condition))
-    final = graph.invoke(resume("stop"), cfg(condition))
+    graph, _ = paused(tmp_path, condition)
+    final = graph.invoke(answer("stop", note=""), cfg(condition))  # note optional for stop
 
     assert final["status"] == S.HALTED_BY_HUMAN and final["done"] is True
+    assert final["human_decisions"][0]["decision"] == "stop"
     records = trace(tmp_path, condition)
     last_human = max(i for i, r in enumerate(records) if r["agent"] == "human")
-    after = {r["agent"] for r in records[last_human + 1:]}
-    assert after <= {"orchestrator"}, "no agent may run after the human stops the case"
-    assert "review" not in final or final.get("review") is None
+    assert {r["agent"] for r in records[last_human + 1:]} <= {"orchestrator"}
+
+
+def test_filing_status_resolution_is_stored_as_a_sourced_fact(tmp_path):
+    graph, _ = paused(tmp_path, S.FILING_STATUS_AMBIGUITY)
+    final = graph.invoke(
+        answer("continue", "spouse died in 2025; surviving spouse rules checked with volunteer lead",
+               resolution={"filing_status": "married_filing_jointly"}),
+        cfg(S.FILING_STATUS_AMBIGUITY),
+    )
+    assert final["facts"]["filing_status"] == {
+        "value": "married_filing_jointly", "source": "human:FILING_STATUS_AMBIGUITY"}
+    assert final["human_decisions"][0]["resolution"] == {"filing_status": "married_filing_jointly"}
+
+
+def test_source_conflict_resolution_sets_named_facts(tmp_path):
+    graph, _ = paused(tmp_path, S.SOURCE_CONFLICT)
+    final = graph.invoke(
+        answer("continue", "taxpayer confirmed the document is right", resolution={"has_interest": True}),
+        cfg(S.SOURCE_CONFLICT),
+    )
+    assert final["facts"]["has_interest"] == {"value": True, "source": "human:SOURCE_CONFLICT"}
+
+
+@pytest.mark.parametrize("condition,resolution", [
+    (S.FILING_STATUS_AMBIGUITY, {"filing_status": "widowed"}),      # not a real status
+    (S.FILING_STATUS_AMBIGUITY, {"filing_status": "single", "x": 1}),  # extra key
+    (S.TAX_ADVICE_REQUEST, {"anything": 1}),                         # nothing to resolve
+    (S.SOURCE_CONFLICT, {"": 1}),                                    # bad fact name
+    (S.SOURCE_CONFLICT, {"k": {"nested": 1}}),                       # not a scalar
+])
+def test_bad_resolutions_are_rejected(tmp_path, condition, resolution):
+    graph, _ = paused(tmp_path, condition)
+    re_asked(graph, condition, answer("continue", "n", resolution=resolution), "")
+
+
+def test_resolution_with_stop_is_rejected(tmp_path):
+    graph, _ = paused(tmp_path, S.SOURCE_CONFLICT)
+    re_asked(graph, "SOURCE_CONFLICT", answer("stop", "n", resolution={"a": 1}), "only applies to 'continue'")
+
+
+@pytest.mark.parametrize("bad", [{"decision": "approve"}, "continue", {"note": "x"}, 5])
+def test_malformed_resume_values_are_rejected(tmp_path, bad):
+    graph, _ = paused(tmp_path, S.TAX_ADVICE_REQUEST)
+    re_asked(graph, S.TAX_ADVICE_REQUEST, Command(resume=bad), "")
+    assert graph.invoke(answer("continue", "ok"), cfg(S.TAX_ADVICE_REQUEST))["status"] == S.COMPLETE
 
 
 def test_out_of_scope_without_a_flag_is_caught_by_the_router(tmp_path):
     out_of_scope = lambda view, tools: {"eligibility": {"in_scope": False, "citations": ["x"]}}
     graph = build_graph(trace_dir=tmp_path, agents={"rules": out_of_scope})
-    paused = graph.invoke(clean_case(), cfg("oos"))
-    payload = paused["__interrupt__"][0].value
+    result = graph.invoke(clean_case(), cfg("oos"))
+    payload = result["__interrupt__"][0].value
     assert payload["condition"] == S.OUT_OF_SCOPE and payload["raised_by"] == "orchestrator"
-    final = graph.invoke(resume(), cfg("oos"))
-    assert final["status"] == S.COMPLETE  # human resolved it; not raised again
+    assert payload["options"] == ["stop"]
+    final = graph.invoke(answer("stop"), cfg("oos"))
+    assert final["status"] == S.HALTED_BY_HUMAN
 
 
 def test_interrupt_in_the_middle_of_a_conversation(tmp_path):
     two_turns = lambda view: sum(m["role"] == "user" for m in view["messages"]) >= 2
-    agents = {"intake": raising(AGENTS["intake"], "intake", S.EXPLOITATION_SIGNS, "TEST", two_turns)}
+    agents = {"intake": raising(AGENTS["intake"], "intake", S.TAX_ADVICE_REQUEST, "TEST", two_turns)}
     graph = build_graph(trace_dir=tmp_path, agents=agents)
     config = cfg("mid")
 
     first = graph.invoke(clean_case(turns=1), config)
     assert first["status"] == S.AWAITING_USER and "__interrupt__" not in first
 
-    second = graph.invoke({"messages": [user("My nephew says I must sign this today.")]}, config)
-    assert second["__interrupt__"][0].value["condition"] == S.EXPLOITATION_SIGNS
+    second = graph.invoke({"messages": [user("Should I itemize?")]}, config)
+    assert second["__interrupt__"][0].value["condition"] == S.TAX_ADVICE_REQUEST
 
-    final = graph.invoke(resume(), config)
+    final = graph.invoke(answer("continue", "question noted for the volunteer"), config)
     assert final["status"] == S.COMPLETE
     assert [m["role"] for m in final["messages"]].count("user") == 2
-
-
-def test_invalid_resume_value_is_rejected(tmp_path):
-    graph = build_graph(trace_dir=tmp_path, agents=escalation_case(S.TAX_ADVICE_REQUEST))
-    graph.invoke(clean_case(), cfg("bad"))
-    with pytest.raises(ValueError):
-        graph.invoke(Command(resume={"decision": "approve"}), cfg("bad"))
