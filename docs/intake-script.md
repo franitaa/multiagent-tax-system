@@ -6,12 +6,13 @@ Owner: Supriya Patil (Intake + Guardrails & ethics).
 **What this file is:** the plan for the conversation with the taxpayer. It lists every
 question Intake will ask, in order, and the exact name each answer is saved under.
 
-**What Intake can do today:** nothing real yet. `src/agents/intake.py` is still the
-placeholder that asks one fake question. This file is the blueprint for replacing it.
+**What Intake can do today:** the real Intake lives in `src/agents/intake_agent.py`. It
+asks these questions one at a time, saves the answers under the names below (INT-2), and
+lets the person say "go back" to change an earlier answer without losing anything (INT-3).
+It is not plugged in yet: `src/agents/intake.py` is still the placeholder that the
+orchestration tests use.
 
 **What is still missing (and the card for each):**
-- Turning these questions into working code (INT-2)
-- "Go back" and changing an earlier answer without losing anything (INT-3)
 - Safely handling a Social Security number the person offers unasked (INT-4)
 - "I'm not sure, let me flag this for a volunteer" (INT-5)
 - The large-type, screen-reader friendly chat page (INT-6)
@@ -121,6 +122,16 @@ Other agents should read these names. Please tell Supriya before renaming one.
 | `us_resident_all_year` | Q23 | `"yes"` / `"no"` / `"not_sure"` |
 | `answering_for_self` | Q24 | `"yes"` / `"no"` |
 | `helper_description` | Q25 | free text |
+
+Extra entries:
+- `history`: if the person changes an answer, the earlier one is kept in that fact's
+  `history` list (for a dependent, in that person's own `history`). Nothing is deleted.
+- `dependents_complete`: `"yes"` once the person says nobody else depends on them.
+- `intake_progress`: Intake's own bookkeeping (which question it is asking, and the
+  order of answers, for "go back"). Other agents can ignore it.
+- If an answer changes so that some questions no longer apply (e.g. "married" becomes
+  "not married"), the old answers to those questions are kept. Rules should only use
+  answers whose question applies.
 
 `filing_status` is NOT written by Intake: working out the filing status is a tax rule, so
 Eligibility & Rules decides it from the answers above, and a volunteer may set it through

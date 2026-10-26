@@ -12,9 +12,29 @@ What it does today (card INT-2):
     refused, never saved in `facts`, and never repeated back.
   - Never does arithmetic and never explains tax rules. It only asks and records.
   - When the last question is answered it marks intake complete and hands over to Extraction.
+  - "Go back" (card INT-3): the person can say "go back" at any time, as many times as they
+    like. Intake re-asks the previous question and reminds them of their earlier answer.
+    A new answer replaces it, and the old one is kept in that fact's `history` list, so no
+    answer is ever lost. If a changed answer makes new questions apply (for example "not
+    married" changed to "married"), those questions are asked next; then Intake carries on
+    where it left off.
+  - Bookkeeping: `facts["intake_progress"]` records which question is being asked and the
+    order of answers. Other agents can ignore it.
+
+  - Simple corrections: "Oh wait, actually I was married" jumps straight back to the
+    marriage question. It needs a correction word (actually, wait, mistake, wrong, change...)
+    plus a topic word from an earlier question (married, born, blind, W-2, pension...).
+    "I made a mistake" with no topic gets "Which answer would you like to change?".
+    Every "didn't understand" message also says: you can say "go back".
+  - Plain-words help: if the person says "I don't understand" or "what does that mean?",
+    Intake explains that one question in simple words (see EXPLANATIONS), says "not sure"
+    is fine, and asks it again. The explanations describe the question, never tax rules.
 
 What is still missing:
-  - "Go back" and changing an earlier answer (INT-3).
+  - Corrections in unusual wording (no clear topic word) are not understood; the person is
+    pointed to "go back" instead. This is plain keyword matching, not AI. Answers that stop applying after a change (e.g.
+    spouse details after "married" becomes "not married") are kept, not deleted; Rules
+    should only use answers whose question applies.
   - Fuller handling of a volunteered SSN: the user's own message still sits in the chat
     history (INT-4).
   - Raising a volunteer flag for "not sure" answers; today they are only saved (INT-5).
@@ -40,8 +60,16 @@ SSN = "ssn"
 
 WELCOME = (
     "Hello. I will ask you some questions about your 2025 taxes, one at a time. "
-    "There are no wrong answers, and you can say \"I'm not sure\" at any time."
+    "There are no wrong answers. You can say \"I'm not sure\" or \"go back\" at any time."
 )
+GO_BACK_FIRST = "We are at the first question, so there is nothing to go back to."
+NOT_SURE_OK = "If you're not sure, that's fine, just say \"not sure\"."
+GO_BACK_TIP ="If you want to change an earlier answer, just say \"go back\"."
+WHICH_ANSWER = (
+    "Which answer would you like to change? You can name it, for example \"my date of birth\", "
+    "or say \"go back\"."
+)
+PROGRESS = "intake_progress"
 NOT_SURE_ACK = "That's okay. I've noted that you're not sure."
 DONE = "Thank you. That was my last question. I'll now look at your documents."
 REAL_SSN = (
@@ -55,6 +83,53 @@ HINTS = {
     TEXT: "Please type a short answer.",
     AMOUNT: "Please type the amount as a number, like 1200.",
     SSN: "Please type a number that starts with 9, like 900-12-3456.",
+}
+
+
+# Plain-words help for each question, used when the person says they do not understand.
+# They explain what the question means, never a tax rule or advice.
+EXPLANATIONS = {
+    "Q1": "This asks whether you had a husband or wife on December 31, 2025, the last day of the year. "
+          "If you were separated or it feels complicated, you can say \"not sure\".",
+    "Q2": "Married couples can send in one shared tax return for both of them, or one each. "
+          "This asks if you plan to share one.",
+    "Q3": "\"Widowed\" means your husband or wife has died. \"Taking care of someone\" means a child or "
+          "relative lives with you and you support them. Otherwise, choose \"single\".",
+    "Q4": "Please type the day you were born, with the month, day and year. For example: March 4, 1950.",
+    "Q5": "\"Legally blind\" means a doctor has said your eyesight is very poor, even with glasses or "
+          "contact lenses.",
+    "Q6": "Please type the day your husband or wife was born, with the month, day and year. "
+          "For example: June 1, 1952.",
+    "Q7": "\"Legally blind\" means a doctor has said their eyesight is very poor, even with glasses or "
+          "contact lenses.",
+    "Q8": "This asks if someone, such as a child, grandchild or parent, relies on you for money to live.",
+    "Q9": "Please type the first and last name of the person who relies on you.",
+    "Q10": "For example: son, daughter, grandchild, or parent.",
+    "Q11": "This asks if there is one more person who relies on you for money to live.",
+    "Q12": "This is a practice system, so we never use real Social Security numbers. Please type any "
+           "made-up number that starts with 9, like 900-12-3456.",
+    "Q13": "A W-2 is a form an employer sends early in the year. It shows what you were paid at a job.",
+    "Q14": "An SSA-1099 is a form the Social Security office mails you each January. It shows the "
+           "Social Security money you received.",
+    "Q15": "A 1099-R is a form you get if money was paid to you from a pension, an IRA, or another "
+           "retirement account.",
+    "Q16": "A 1099-INT is a form a bank sends you if your savings earned interest.",
+    "Q17": "A 1099-DIV is a form you get if you own shares or funds that paid you dividends. "
+           "Dividends are payments from companies.",
+    "Q18": "Some people send money to the IRS during the year themselves, instead of waiting until "
+           "they file. These are called estimated payments.",
+    "Q19": "Please type the total you sent to the IRS during 2025, as a number. For example: 1200.",
+    "Q20": "\"Adjustments\" are certain amounts that some people take off their income on a separate "
+           "form called Schedule 1.",
+    "Q20a": "Please type the total of those adjustments, as a number. If you have the form, it is on "
+            "Schedule 1, line 26.",
+    "Q21": "This asks if someone else, such as a son or daughter, lists you on their own tax return "
+           "because they support you.",
+    "Q22": "This asks if your husband or wife died at any time during 2025. We're sorry to ask about this.",
+    "Q23": "This asks if you lived in the United States for the whole year, from January to December 2025.",
+    "Q24": "This asks if you are the person typing these answers, or if someone else is typing them for you.",
+    "Q25": "Please tell us the name of the person helping you and how you know them. A power of "
+           "attorney is a legal paper that lets someone act for you.",
 }
 
 
@@ -80,6 +155,12 @@ class Question:
     when: Callable[[dict], bool] = _always
     choices: dict = field(default_factory=dict)  # saved value -> words that mean it
     part: str | None = None  # for dependent questions: name / relationship / ssn / another
+    index: int | None = None  # for dependent questions: which dependent (0 = first)
+
+    @property
+    def key(self) -> str:
+        """Unique name for this question, e.g. "Q4", or "Q10:1" for the second dependent."""
+        return self.id if self.index is None else f"{self.id}:{self.index}"
 
 
 MARRIED = _when("married_dec31", "yes")
@@ -130,26 +211,47 @@ AFTER_DEPENDENTS = [
 # ---- choosing the next question ---------------------------------------------------
 
 
+def _dependent(question_id: str, index: int, facts: dict) -> Question:
+    """Q9-Q12 for the dependent at `index` (0 = first)."""
+    dependents = _value(facts, "dependents") or []
+    current = dependents[index] if index < len(dependents) else {}
+    name = current.get("name", NOT_SURE)
+    name = name if name != NOT_SURE else "this person"
+    if question_id == "Q9":
+        return Question("Q9", "dependents", TEXT, "What is this person's full name?", part="name", index=index)
+    if question_id == "Q10":
+        return Question("Q10", "dependents", TEXT, f"How is {name} related to you?",
+                        part="relationship", index=index)
+    if question_id == "Q12":
+        return Question(
+            "Q12", "dependents", SSN,
+            f"For this test, please use a practice Social Security number that starts with 9. "
+            f"What is the practice number for {name}?",
+            part="ssn", index=index,
+        )
+    return Question("Q11", "dependents", YES_NO, "Does anyone else depend on you for support?",
+                    part="another", index=index)
+
+
 def _dependent_question(facts: dict) -> Question | None:
     """Q9-Q12 repeat for each dependent; Q11 asks whether there is another one."""
     if _value(facts, "has_dependents") != "yes" or _value(facts, "dependents_complete") == "yes":
         return None
     dependents = _value(facts, "dependents") or []
-    current = dependents[-1] if dependents else {}
-    if "name" not in current:
-        return Question("Q9", "dependents", TEXT, "What is this person's full name?", part="name")
-    name = current["name"] if current["name"] != NOT_SURE else "this person"
-    if "relationship" not in current:
-        return Question("Q10", "dependents", TEXT, f"How is {name} related to you?", part="relationship")
-    if "ssn" not in current:
-        return Question(
-            "Q12", "dependents", SSN,
-            f"For this test, please use a practice Social Security number that starts with 9. "
-            f"What is the practice number for {name}?",
-            part="ssn",
-        )
-    return Question("Q11", "dependents", YES_NO, "Does anyone else depend on you for support?",
-                    part="another")
+    index = max(len(dependents) - 1, 0)
+    current = dependents[index] if dependents else {}
+    for question_id, part in (("Q9", "name"), ("Q10", "relationship"), ("Q12", "ssn")):
+        if part not in current:
+            return _dependent(question_id, index, facts)
+    return _dependent("Q11", index, facts)
+
+
+def question_for_key(key: str, facts: dict) -> Question | None:
+    """Turn a question key back into the question (used when going back)."""
+    if ":" in key:
+        question_id, index = key.split(":")
+        return _dependent(question_id, int(index), facts)
+    return next((q for q in BEFORE_DEPENDENTS + AFTER_DEPENDENTS if q.id == key), None)
 
 
 def next_question(facts: dict) -> Question | None:
@@ -175,6 +277,65 @@ _NO_WORDS = {"no", "n", "nope", "nah", "never", "false", "not"}
 _DATE_FORMATS = ("%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y",
                  "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y")
 _SSN_PATTERN = re.compile(r"^(\d{3})[- ]?(\d{2})[- ]?(\d{4})$")
+
+
+_GO_BACK_EXACT = {"back", "go back", "previous", "previous question", "undo"}
+_GO_BACK_PHRASES = ("go back", "change my answer", "change my last answer", "previous question")
+
+
+def is_go_back(text: str) -> bool:
+    lowered = re.sub(r"[^a-z ]", "", text.lower()).strip()
+    return lowered in _GO_BACK_EXACT or any(phrase in lowered for phrase in _GO_BACK_PHRASES)
+
+
+_CORRECTION_WORDS = re.compile(r"\b(actually|wait|i meant|i mean|mistake|wrong|oops|change|fix)\b")
+
+# Words that point to an earlier question, checked in this order (spouse questions before
+# the person's own, so "my wife was born..." means Q6, not Q4).
+_TOPICS = (
+    ("Q6", (("spouse", "wife", "husband"), ("born", "birth"))),
+    ("Q7", (("spouse", "wife", "husband"), ("blind",))),
+    ("Q21", (("claim",),)),
+    ("Q22", (("passed away", "died", "death"),)),
+    ("Q2", (("together", "jointly", "joint"),)),
+    ("Q1", (("married", "marriage"),)),
+    ("Q3", (("single", "widow", "take care", "taking care", "caring"),)),
+    ("Q4", (("born", "birth"),)),
+    ("Q5", (("blind",),)),
+    ("Q8", (("dependent", "depend"),)),
+    ("Q13", (("w-2", "w2"),)),
+    ("Q14", (("ssa", "social security"),)),
+    ("Q15", (("1099-r", "pension", "retirement"),)),
+    ("Q16", (("interest", "1099-int"),)),
+    ("Q17", (("dividend", "1099-div"),)),
+    ("Q18", (("estimated", "payment"),)),
+    ("Q20", (("adjustment",),)),
+    ("Q23", (("lived", "live in", "united states", "abroad"),)),
+)
+
+
+_CONFUSED_PHRASES = ("don't understand", "dont understand", "didn't understand", "didnt understand",
+                     "do not understand", "did not understand", "what does that mean",
+                     "what does this mean", "what do you mean", "what is a", "what's a", "what is that",
+                     "what's that", "confused", "explain", "huh", "don't get it", "dont get it", "pardon")
+
+
+def is_confused(text: str) -> bool:
+    lowered = text.lower().replace("’", "'")
+    return any(phrase in lowered for phrase in _CONFUSED_PHRASES)
+
+
+def is_correction(text: str) -> bool:
+    return bool(_CORRECTION_WORDS.search(text.lower()))
+
+
+def topic_of(text: str, answered: list[str]) -> str | None:
+    """The already-answered question this message talks about, e.g. "I was married" -> "Q1"."""
+    lowered = text.lower()
+    for question_id, groups in _TOPICS:
+        if question_id in answered and all(any(w in lowered for w in group) for group in groups):
+            return question_id
+    return None
 
 
 def is_not_sure(text: str) -> bool:
@@ -259,36 +420,72 @@ def parse_answer(question: Question, text: str):
 # ---- saving answers ---------------------------------------------------------------
 
 
+def _with_history(name: str, new: dict, facts: dict) -> dict:
+    """Keep the earlier answer in `history` when an answer changes, so nothing is lost."""
+    old = facts.get(name)
+    if not isinstance(old, dict):
+        return new
+    history = list(old.get("history", []))
+    if old.get("value") != new["value"]:
+        history.append({k: v for k, v in old.items() if k != "history"})
+    return {**new, "history": history} if history else new
+
+
 def record_answer(question: Question, value, facts: dict) -> dict:
     """The `facts` update for one answer. Never removes an earlier fact."""
     if question.part:
         dependents = [dict(d) for d in _value(facts, "dependents") or []]
-        if question.part == "name":
-            if dependents and "name" not in dependents[-1]:
-                dependents[-1]["name"] = value
-            else:
-                dependents.append({"name": value})
-        elif question.part == "another":
-            if value == "yes":
+        index = question.index or 0
+        update = {}
+        if question.part == "another":
+            is_last = index >= len(dependents) - 1
+            if value == "yes" and is_last:
                 dependents.append({})
-            else:
-                return {
-                    "dependents": {"value": dependents, "source": "user"},
-                    "dependents_complete": {"value": "yes", "source": "user"},
-                }
+            elif value != "yes":
+                update["dependents_complete"] = {"value": "yes", "source": "user"}
         else:
-            dependents[-1][question.part] = value
-        return {"dependents": {"value": dependents, "source": "user"}}
+            while len(dependents) <= index:
+                dependents.append({})
+            person = dependents[index]
+            old = person.get(question.part)
+            if old is not None and old != value:
+                person["history"] = [*person.get("history", []), {question.part: old}]
+            person[question.part] = value
+        update["dependents"] = {"value": dependents, "source": "user"}
+        return update
     if question.kind == AMOUNT and value != NOT_SURE:
-        return {
-            question.fact: {
-                "value": value,
-                "source": "direct user input",
-                "entered_by": "taxpayer",
-                "entered_on": datetime.now(timezone.utc).date().isoformat(),
-            }
+        new = {
+            "value": value,
+            "source": "direct user input",
+            "entered_by": "taxpayer",
+            "entered_on": datetime.now(timezone.utc).date().isoformat(),
         }
-    return {question.fact: {"value": value, "source": "user"}}
+    else:
+        new = {"value": value, "source": "user"}
+    return {question.fact: _with_history(question.fact, new, facts)}
+
+
+def _earlier_answer(question: Question, facts: dict) -> str | None:
+    """The person's earlier answer in plain words, to remind them when going back."""
+    if question.part:
+        dependents = _value(facts, "dependents") or []
+        if question.part == "another" or question.index >= len(dependents):
+            return None
+        value = dependents[question.index].get(question.part)
+        if question.part == "ssn" and value not in (None, NOT_SURE):
+            return "a practice number"
+    else:
+        value = _value(facts, question.fact)
+    if value is None:
+        return None
+    if value == NOT_SURE:
+        return "not sure"
+    if question.kind == DATE:
+        born = datetime.strptime(value, "%Y-%m-%d")
+        return f"{born:%B} {born.day}, {born.year}"
+    if question.kind == AMOUNT:
+        return f"{value:,.2f}"
+    return str(value).replace("_", " ")
 
 
 # ---- the agent --------------------------------------------------------------------
@@ -315,18 +512,55 @@ def _ask(text: str, facts_update: dict | None = None) -> dict:
     return update
 
 
+def _progress(facts: dict) -> tuple[str | None, list[str]]:
+    """(key of the question being asked, keys of answered questions in the order answered)."""
+    progress = _value(facts, PROGRESS) or {}
+    return progress.get("asking"), list(progress.get("answered", []))
+
+
+def _progress_fact(asking: str | None, answered: list[str]) -> dict:
+    return {PROGRESS: {"value": {"asking": asking, "answered": answered}, "source": "intake"}}
+
+
+def _revisit(target: Question, opening: str, answered: list[str], facts: dict) -> dict:
+    """Ask an earlier question again, reminding the person of their earlier answer."""
+    earlier = _earlier_answer(target, facts)
+    reminder = f" Earlier you said: {earlier}." if earlier else ""
+    return _ask(f"{opening}{reminder} {target.text}", _progress_fact(target.key, answered))
+
+
+def _go_back(question: Question, answered: list[str], facts: dict) -> dict:
+    """Re-ask the question answered just before the current one."""
+    position = answered.index(question.key) if question.key in answered else len(answered)
+    if position == 0:
+        return _ask(f"{GO_BACK_FIRST} {question.text}", _progress_fact(question.key, answered))
+    previous = question_for_key(answered[position - 1], facts)
+    return _revisit(previous, "Sure, let's go back.", answered, facts)
+
+
 def run(view, tools):
     facts = dict(view.get("facts") or {})
     messages = view.get("messages") or []
-    question = next_question(facts)
+    asking, answered = _progress(facts)
+    question = question_for_key(asking, facts) if asking else next_question(facts)
     if question is None:
         return {"pending_question": None, "intake_complete": True,
                 "handoff_request": {"to": "extraction", "reason": "intake complete"}}
     if not any(m["role"] == "assistant" for m in messages):
-        return _ask(f"{WELCOME} {question.text}")
+        return _ask(f"{WELCOME} {question.text}", _progress_fact(question.key, answered))
     reply = _latest_reply(messages)
     if reply is None:
-        return _ask(question.text)
+        return _ask(question.text, _progress_fact(question.key, answered))
+    if is_go_back(reply):
+        return _go_back(question, answered, facts)
+    # In a free-text answer only a short message counts ("what do you mean?"), not a long reply.
+    if is_confused(reply) and (question.kind != TEXT or len(reply.split()) <= 6):
+        return _ask(f"No problem. {EXPLANATIONS[question.id]} {NOT_SURE_OK} {question.text}")
+    # "Actually I was married": a correction word plus an earlier topic jumps to that question.
+    # Not for free-text questions, where such a sentence is usually the answer itself.
+    topic = topic_of(reply, [k for k in answered if k != question.key])
+    if topic and is_correction(reply) and question.kind != TEXT:
+        return _revisit(question_for_key(topic, facts), "No problem, let's fix that.", answered, facts)
 
     if question.kind == SSN:
         value, looks_real = parse_ssn(reply)
@@ -335,18 +569,24 @@ def run(view, tools):
     else:
         value = parse_answer(question, reply)
     if value is None:
-        return _ask(f"Sorry, I didn't quite understand. {HINTS[question.kind]} {question.text}")
+        if topic:  # not an answer, but names an earlier question (e.g. "my date of birth")
+            return _revisit(question_for_key(topic, facts), "No problem, let's fix that.", answered, facts)
+        if is_correction(reply):
+            return _ask(WHICH_ANSWER)
+        return _ask(f"Sorry, I didn't quite understand. {HINTS[question.kind]} {GO_BACK_TIP} {question.text}")
 
     saved = record_answer(question, value, facts)
+    if question.key not in answered:
+        answered.append(question.key)
     facts.update(saved)
-    following = next_question(facts)
+    following = next_question(facts)  # first question still unanswered: carries on where we left off
     prefix = f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
     if following is None:
         return {
             "messages": [{"role": "assistant", "content": f"{prefix}{DONE}"}],
-            "facts": saved,
+            "facts": {**saved, **_progress_fact(None, answered)},
             "pending_question": None,
             "intake_complete": True,
             "handoff_request": {"to": "extraction", "reason": "intake complete"},
         }
-    return _ask(f"{prefix}{following.text}", saved)
+    return _ask(f"{prefix}{following.text}", {**saved, **_progress_fact(following.key, answered)})
