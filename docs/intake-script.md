@@ -128,6 +128,19 @@ that right?") and saves it only after "yes". If the date is only numbers and cou
 two dates (03/04/1950 is March 4 in the US but 3 April elsewhere), Intake does not guess:
 it asks the person to type the month as a word.
 
+## Parts and "Skip for now"
+The questions are grouped into 6 parts, like the sections of an application form:
+1. Personal information (Q0-Q3), 2. Age and eyesight (Q4-Q7), 3. People who depend on you (Q8-Q12, Q3a),
+4. Your income and tax forms (Q13-Q17e), 5. Payments and your refund (Q18-Q20c),
+6. A few final checks (Q21-Q25).
+The chat page shows each part's status in words ("Done", "In progress", "Not started",
+"1 skipped", "1 noted for a volunteer") and numbers questions within a part ("Question 2.3"),
+counting only the questions this person is asked.
+"Skip for now" sets a question aside; it is asked again at the end ("There is 1 question we
+skipped. Let's look at it now."). Skipping it a second time counts as "not sure", so it goes
+to a volunteer instead of staying blank. Details about a dependent cannot be skipped, only
+noted for a volunteer. Skipped questions are kept in `intake_skipped` (bookkeeping).
+
 ## Always-available phrases
 - "I'm not sure": "That's okay. I'll note this for a volunteer to help with."
 - Asking for advice: "I'm here to help fill in your tax form, so I can't give tax advice. I'll note your question for the volunteer."

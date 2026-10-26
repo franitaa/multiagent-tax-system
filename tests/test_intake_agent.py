@@ -602,7 +602,8 @@ def test_answers_so_far_never_shows_ssn_digits():
         chat.say(answer)
     rows = ia.answers_so_far(chat.facts)
     assert "900-11-2222" not in str(rows)
-    assert {"key": "Q12:0", "question": rows[-1]["question"], "answer": "a practice number"} == rows[-1]
+    assert {"key": "Q12:0", "question": rows[-1]["question"], "answer": "a practice number",
+            "part": 3, "position": 4, "number": "3.4"} == rows[-1]
 
 
 def test_change_button_jumps_back_and_then_carries_on():
@@ -943,3 +944,121 @@ def test_number_removed_by_the_chat_page_at_the_ssn_question():
     update = chat.say(ia.SSN_REMOVED)
     assert update["pending_question"].startswith(ia.REAL_SSN)
     assert "ssn" not in chat.value("dependents")[0]
+
+
+
+# ---- parts and "Skip for now" ------------------------------------------------------
+
+
+def test_every_question_belongs_to_exactly_one_part():
+    ids = [q.id for q in ia.BEFORE_DEPENDENTS + ia.AFTER_DEPENDENTS] + ["Q9", "Q10", "Q11", "Q12"]
+    in_parts = [qid for _, part_ids in ia.PARTS for qid in part_ids]
+    assert sorted(ids) == sorted(in_parts)
+    assert ia.part_of("Q10:1") == 3
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("skip", True), ("Skip for now", True), ("skip this question", True), ("later", True),
+    ("I'll answer later", True), ("come back to this", True), ("no", False),
+    ("My son skips meals", False), ("later this year", False),
+])
+def test_is_skip(text, expected):
+    assert ia.is_skip(text) is expected
+
+
+def test_skip_moves_on_and_saves_nothing():
+    chat = Chat()
+    update = chat.say("skip for now")
+    assert update["pending_question"] == f"{ia.SKIP_ACK} {ia.question_for_key('Q4', {}).text}"
+    assert "married_dec31" not in chat.facts
+    assert chat.value(ia.SKIPPED) == ["Q1"]
+
+
+def test_skipped_questions_come_back_at_the_end():
+    chat = Chat()
+    chat.say("skip")  # Q1 married: also hides Q2/Q3 until it is answered
+    answers = [a for a in ALL_NO_ANSWERS if a not in ("single",)][1:]  # no Q1, no Q3
+    for answer in answers:
+        chat.say(answer)
+    assert chat.question.endswith(
+        "Thank you. There is 1 question we skipped. Let's look at it now. On December 31, 2025, were you married?")
+    assert not chat.last.get("intake_complete")
+    chat.say("no")
+    assert "single, widowed" in chat.question  # Q3 now applies and is asked
+    chat.say("single")
+    assert chat.last["intake_complete"] is True
+    assert chat.value(ia.SKIPPED) == []
+
+
+def test_skipping_twice_counts_as_not_sure_for_a_volunteer():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "yes"]:
+        chat.say(answer)
+    chat.say("skip")  # Q5 blind
+    chat.say("skip")  # Q8: nothing else left before Q8? no, Q8 is the next question
+    for answer in ["yes", "no", "no", "no", "no", "no", "no", "no", "no", "no", "no", "no", "paper check",
+                   "no", "no", "yes", "yes"]:
+        chat.say(answer)
+    assert "There are 2 questions we skipped" in chat.question
+    chat.say("skip")  # Q5 again
+    assert chat.value("taxpayer_blind") == ia.NOT_SURE
+    assert chat.question.startswith(ia.NOT_SURE_ACK)
+    assert chat.value(ia.NOTES)[-1]["question"] == "Q5"
+
+
+def test_skipped_question_is_listed_and_can_be_answered_any_time():
+    chat = Chat()
+    chat.say("no")
+    chat.say("skip")  # Q3
+    rows = ia.answers_so_far(chat.facts)
+    assert rows[-1] == {"key": "Q3", "question": ia.question_for_key("Q3", {}).text,
+                        "answer": ia.SKIPPED_ANSWER, "part": 1, "position": 3, "number": "1.3"}
+    chat.say(ia.CHANGE_PREFIX + rows[-1]["question"])
+    assert chat.question.endswith(ia.question_for_key("Q3", {}).text)
+    chat.say("widowed")
+    assert chat.value("household_situation") == "widowed"
+    assert chat.value(ia.SKIPPED) == []
+
+
+def test_dependent_details_cannot_be_skipped_only_noted():
+    chat = Chat()
+    for answer in ["no", "single", "March 4, 1950", "yes", "no", "yes", "Ana Lopez"]:
+        chat.say(answer)
+    chat.say("skip")  # relationship: noted for a volunteer instead of left blank
+    assert chat.value("dependents")[0]["relationship"] == ia.NOT_SURE
+
+
+def test_overview_counts_skipped_and_volunteer_notes():
+    chat = Chat()
+    chat.say("no")
+    chat.say("skip")       # Q3 skipped
+    chat.say("March 4, 1950")
+    chat.say("yes")
+    chat.say("not sure")   # Q5 noted for a volunteer
+    overview = {p["title"]: p["status"] for p in ia.parts_overview(chat.facts)}
+    assert overview["Personal information"] == "In progress, 1 skipped"
+    assert overview["Age and eyesight"] == "Done, 1 noted for a volunteer"
+    assert overview["People who depend on you"] == "In progress"
+    assert [p["current"] for p in ia.parts_overview(chat.facts)] == [False, False, True, False, False, False]
+
+
+# ---- dates that do not exist ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("month, day, year, expected", [
+    (4, 31, 1950, "April has only 30 days. Please check the day."),
+    (2, 29, 1950, "February 1950 has only 28 days. Please check the day."),
+    (2, 30, 1952, "February has only 29 days. Please check the day."),
+    (2, 29, 1952, None), (4, 30, 1950, None), (12, 31, 1950, None),
+])
+def test_day_problem(month, day, year, expected):
+    assert ia.day_problem(month, day, year) == expected
+
+
+def test_typed_impossible_date_gets_a_clear_reason():
+    chat = Chat()
+    for answer in ["no", "single"]:
+        chat.say(answer)
+    chat.say("April 31, 1950")
+    assert chat.question.startswith("That date doesn't exist: April has only 30 days. Please check the day.")
+    assert "taxpayer_birth_date" not in chat.facts

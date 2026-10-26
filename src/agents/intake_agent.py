@@ -20,6 +20,10 @@ What it can do today:
     "I don't understand" gets a plain-words explanation of the question. `answers_so_far()`
     feeds the chat page's "Your answers so far" list, whose Change buttons jump straight to
     any earlier question and then carry on where the person left off.
+  - Parts and skipping: the questions are grouped into 6 parts (PARTS), numbered like "2.3",
+    with a status for each part in words (parts_overview) for the chat page. "Skip for now"
+    sets a question aside; skipped questions come back at the end, and skipping one a
+    second time counts as "not sure" (noted for a volunteer), so nothing is left blank.
   - "I'm not sure" (INT-5): always accepted, noted for a volunteer in `volunteer_notes`.
     The conversation carries on.
   - Safety alarms (GRD-1, GRD-2): a request for tax advice, a spouse who died in 2025,
@@ -51,6 +55,7 @@ Notes for teammates:
   - Not plugged in yet: src/agents/intake.py is still the 2-message placeholder used by
     the orchestration tests.
 """
+import calendar
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -81,6 +86,9 @@ WHICH_ANSWER = (
     "or say \"go back\"."
 )
 PROGRESS = "intake_progress"
+SKIPPED = "intake_skipped"  # questions set aside with "Skip for now"; asked again at the end
+SKIP_ACK = "That's fine, we'll come back to it at the end."
+SKIPPED_ANSWER = "skipped, we'll come back to this"
 NOT_SURE_ACK = "That's okay. I'll note this for a volunteer to help with."
 VOLUNTEER_ACK = "Of course. I'll note that you'd like a volunteer to help with this question."
 NOTES = "volunteer_notes"
@@ -327,6 +335,23 @@ AFTER_DEPENDENTS = [
 ]
 
 
+# The six parts of the conversation, like the sections of an application form.
+PARTS = (
+    ("Personal information", ("Q0", "Q1", "Q2", "Q2b", "Q2c", "Q3")),
+    ("Age and eyesight", ("Q4", "Q5", "Q6", "Q7")),
+    ("People who depend on you", ("Q8", "Q9", "Q10", "Q11", "Q12", "Q3a")),
+    ("Your income and tax forms", ("Q13", "Q14", "Q15", "Q16", "Q17", "Q17a", "Q17b", "Q17c", "Q17d", "Q17e")),
+    ("Payments and your refund", ("Q18", "Q19", "Q20", "Q20a", "Q20b", "Q20c")),
+    ("A few final checks", ("Q21", "Q21b", "Q22", "Q23", "Q24", "Q25")),
+)
+
+
+def part_of(key: str) -> int:
+    """The part number (1-6) a question belongs to, e.g. "Q10:1" -> 3."""
+    question_id = key.split(":")[0]
+    return next(number for number, (_, ids) in enumerate(PARTS, start=1) if question_id in ids)
+
+
 # ---- choosing the next question ---------------------------------------------------
 
 
@@ -374,16 +399,34 @@ def question_for_key(key: str, facts: dict) -> Question | None:
     return next((q for q in BEFORE_DEPENDENTS + AFTER_DEPENDENTS if q.id == key), None)
 
 
+def _skipped(facts: dict) -> list[str]:
+    return list(_value(facts, SKIPPED) or [])
+
+
+def _skipped_fact(keys: list[str]) -> dict:
+    return {SKIPPED: {"value": keys, "source": "intake"}}
+
+
+def _is_open(question: Question, facts: dict) -> bool:
+    return question.when(facts) and question.fact not in facts
+
+
 def next_question(facts: dict) -> Question | None:
-    """The first question that applies and has no answer yet. None when intake is finished."""
+    """The first question that applies and has no answer yet; skipped questions come back
+    only when everything else is done. None when intake is finished."""
+    skipped = _skipped(facts)
     for question in BEFORE_DEPENDENTS:
-        if question.when(facts) and question.fact not in facts:
+        if _is_open(question, facts) and question.key not in skipped:
             return question
     dependent = _dependent_question(facts)
     if dependent:
         return dependent
     for question in AFTER_DEPENDENTS:
-        if question.when(facts) and question.fact not in facts:
+        if _is_open(question, facts) and question.key not in skipped:
+            return question
+    for key in skipped:  # the second round: the questions set aside with "Skip for now"
+        question = question_for_key(key, facts)
+        if question is not None and _is_open(question, facts):
             return question
     return None
 
@@ -425,6 +468,16 @@ def strip_volunteered_ssn(text: str) -> tuple[str, str | None]:
         return text, ("real" if SSN_REMOVED in text else None)
     real = SSN_REMOVED in text or not all(_is_practice(m) for m in found)
     return _SSN_INSIDE_TEXT.sub(SSN_REMOVED, text), ("real" if real else "practice")
+
+
+_SKIP_EXACT = {"skip", "skip for now", "skip this", "skip it", "skip this question", "skip this one",
+               "later", "answer later", "ill answer later", "i will answer later", "come back to this",
+               "come back to this later", "come back to it later", "ask me later"}
+
+
+def is_skip(text: str) -> bool:
+    """Only short, clear phrases, so a real answer is never mistaken for a skip."""
+    return re.sub(r"[^a-z ]", "", text.lower().replace("'", "")).strip() in _SKIP_EXACT
 
 
 _GO_BACK_EXACT = {"back", "go back", "previous", "previous question", "undo"}
@@ -636,6 +689,40 @@ def parse_date(text: str) -> str | None:
     return None
 
 
+_MONTH_NUMBERS = {
+    **{name.lower(): number for number, name in enumerate(calendar.month_name) if name},
+    **{abbr.lower(): number for number, abbr in enumerate(calendar.month_abbr) if abbr},
+    "sept": 9,
+}
+
+
+def day_problem(month: int, day: int, year: int) -> str | None:
+    """A plain explanation when the day does not exist in that month, e.g. April 31."""
+    if not 1 <= month <= 12:
+        return None
+    days = calendar.monthrange(year, month)[1]
+    if 1 <= day <= days:
+        return None
+    if month == 2 and day == 29:
+        return f"February {year} has only 28 days. Please check the day."
+    return f"{calendar.month_name[month]} has only {days} days. Please check the day."
+
+
+def impossible_date(text: str) -> str | None:
+    """If the person typed a month, day and year but the day does not exist ("April 31, 1950"),
+    say why, instead of a general "I didn't understand"."""
+    cleaned = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1", re.sub(r"[.,]", " ", text.lower()))
+    for candidate in _WORD_DATE.findall(re.sub(r"\s+", " ", cleaned)):
+        words = candidate.split()
+        month_word = next(w for w in words if not w.isdigit())
+        numbers = [int(w) for w in words if w.isdigit()]
+        if month_word in _MONTH_NUMBERS and len(numbers) == 2:
+            problem = day_problem(_MONTH_NUMBERS[month_word], numbers[0], numbers[1])
+            if problem:
+                return problem
+    return None
+
+
 def _has_date(text: str) -> bool:
     return parse_date(text) not in (None, NOT_SURE)
 
@@ -810,8 +897,11 @@ TOPIC_LABELS = {
 def covered_topics(facts: dict) -> list[str]:
     """The topics already answered, in the order they were covered, without repeats."""
     _, answered = _progress(facts)
+    skipped = _skipped(facts)
     topics = []
     for key in answered:
+        if key in skipped:
+            continue
         label = TOPIC_LABELS.get(key.split(":")[0])
         if label and label not in topics:
             topics.append(label)
@@ -889,28 +979,89 @@ def asking_for_a_date(facts: dict) -> bool:
 
 
 def answers_so_far(facts: dict) -> list[dict]:
-    """For the "Your answers so far" list: [{"key", "question", "answer"}] in the order answered.
+    """For the "Your answers so far" list: [{"key", "question", "answer", "part", "number"}] in
+    the order asked, numbered within each part ("2.3"). Skipped questions are listed too.
     Leaves out questions that no longer apply (e.g. spouse questions after "not married")."""
     _, answered = _progress(facts)
-    rows = []
+    skipped = _skipped(facts)
+    rows, per_part = [], {}
     for key in answered:
         question = question_for_key(key, facts)
         if question is None:
             continue
         applies = _value(facts, "has_dependents") == "yes" if question.part else question.when(facts)
-        answer = _earlier_answer(question, facts) if applies else None
-        if answer is not None:
-            rows.append({"key": key, "question": question.text, "answer": answer})
+        if not applies:
+            continue
+        answer = SKIPPED_ANSWER if key in skipped and _is_open(question, facts) else _earlier_answer(question, facts)
+        if answer is None:
+            continue
+        part = part_of(key)
+        per_part[part] = per_part.get(part, 0) + 1
+        rows.append({"key": key, "question": question.text, "answer": answer, "part": part,
+                     "position": per_part[part], "number": f"{part}.{per_part[part]}"})
     return rows
 
 
-def question_number(facts: dict) -> int:
-    """The number the person sees for the current question ("Question 5"). It counts only the
-    questions this person is asked, matching the numbers in "Your answers so far", so there
-    are no gaps for skipped questions. A revisited question keeps its own number."""
+def _current_question(facts: dict) -> Question | None:
     asking, _ = _progress(facts)
-    keys = [row["key"] for row in answers_so_far(facts)]
-    return keys.index(asking) + 1 if asking in keys else len(keys) + 1
+    return question_for_key(asking, facts) if asking else next_question(facts)
+
+
+def question_label(facts: dict) -> dict | None:
+    """Where the person is: {"part", "part_title", "number", "text"}, e.g. 2, "Age and eyesight",
+    "2.3", "Are you legally blind?". `text` is the question itself (or the date read-back while
+    checking a date), so the page can show the number right in front of it. Numbers count
+    only the questions this person is asked (no gaps) and match the answers list."""
+    question = _current_question(facts)
+    if question is None:
+        return None
+    part = part_of(question.key)
+    rows = [row for row in answers_so_far(facts) if row["part"] == part]
+    keys = [row["key"] for row in rows]
+    position = keys.index(question.key) + 1 if question.key in keys else len(rows) + 1
+    confirming = _confirming(facts, question)
+    text = _confirm_text(question, confirming["value"]) if confirming else question.text
+    return {"part": part, "part_title": PARTS[part - 1][0], "position": position,
+            "number": f"{part}.{position}", "text": text}
+
+
+def _part_has_open_questions(part: int, facts: dict) -> bool:
+    """Any question in this part still to answer, including skipped ones (a part with a
+    skipped question is not "Done" yet)."""
+    ids = PARTS[part - 1][1]
+    if part == part_of("Q8") and _dependent_question(facts) is not None:
+        return True
+    return any(q.id in ids and _is_open(q, facts) for q in BEFORE_DEPENDENTS + AFTER_DEPENDENTS)
+
+
+def parts_overview(facts: dict) -> list[dict]:
+    """The progress list at the top of the page: [{"number", "title", "status", "current"}].
+    The status is in words (not only a tick or a colour) so screen readers and colour-blind
+    people get it too: "Not started", "In progress", "Done", plus "1 skipped" or
+    "1 noted for a volunteer" when that applies."""
+    question = _current_question(facts)
+    current = part_of(question.key) if question is not None else None
+    rows = answers_so_far(facts)
+    open_notes = [n for n in _value(facts, NOTES) or [] if not n["resolved"]]
+    overview = []
+    for number, (title, _) in enumerate(PARTS, start=1):
+        part_rows = [row for row in rows if row["part"] == number]
+        if number == current:
+            status = "In progress"
+        elif part_rows and not _part_has_open_questions(number, facts):
+            status = "Done"
+        elif part_rows:
+            status = "In progress"
+        else:
+            status = "Not started"
+        skipped = sum(1 for row in part_rows if row["answer"] == SKIPPED_ANSWER)
+        notes = sum(1 for n in open_notes if part_of(n["question"]) == number)
+        if skipped:
+            status += f", {skipped} skipped"
+        if notes:
+            status += f", {notes} noted for a volunteer"
+        overview.append({"number": number, "title": title, "status": status, "current": number == current})
+    return overview
 
 
 def _answered_question_with_text(text: str, answered: list[str], facts: dict) -> Question | None:
@@ -919,6 +1070,27 @@ def _answered_question_with_text(text: str, answered: list[str], facts: dict) ->
         if question is not None and question.text == text.strip():
             return question
     return None
+
+
+def _second_round_text(facts: dict) -> str:
+    open_keys = [k for k in _skipped(facts) if (q := question_for_key(k, facts)) and _is_open(q, facts)]
+    n = len(open_keys)
+    if n == 1:
+        return "Thank you. There is 1 question we skipped. Let's look at it now."
+    return f"Thank you. There are {n} questions we skipped. Let's look at them now."
+
+
+def _skip(question: Question, answered: list[str], skipped: list[str], facts: dict) -> dict:
+    """ "Skip for now": set the question aside and move on; it comes back at the end."""
+    skipped = [*skipped, question.key]
+    if question.key not in answered:
+        answered.append(question.key)  # keeps its place and number in "Your answers so far"
+    facts = {**facts, **_skipped_fact(skipped)}
+    following = next_question(facts)
+    opening = SKIP_ACK
+    if following.key in skipped:  # nothing else left: start the second round now
+        opening += " " + _second_round_text(facts)
+    return _ask(f"{opening} {following.text}", {**_skipped_fact(skipped), **_progress_fact(following.key, answered)})
 
 
 def _revisit(target: Question, opening: str, answered: list[str], facts: dict) -> dict:
@@ -1024,10 +1196,19 @@ def run(view, tools):
     if topic and is_correction(reply) and question.kind != TEXT and not wants_volunteer(reply):
         return _revisit(question_for_key(topic, facts), "No problem, let's fix that.", answered, facts)
 
+    skipped = _skipped(facts)
+    skip_again = False
+    if is_skip(reply):
+        if question.part is None and question.key not in skipped:
+            return _skip(question, answered, skipped, facts)
+        skip_again = True  # skipped twice (or a dependent detail): note it for a volunteer
+
     reason, confirmed = None, False
     confirming = _confirming(facts, question)
     if wants_volunteer(reply):
         value, reason = NOT_SURE, REASON_ASKED
+    elif skip_again:
+        value = NOT_SURE
     elif confirming and not _has_date(reply):
         # "Just to check: you were born on December 4, 1950. Is that right?"
         check = parse_yes_no(reply)
@@ -1047,6 +1228,8 @@ def run(view, tools):
             return _revisit(question_for_key(topic, facts), "No problem, let's fix that.", answered, facts)
         if ssn_given:  # the message was only a number: explain, then ask again
             return _ask(f"{ssn_note}{question.text}")
+        if question.kind == DATE and (problem := impossible_date(reply)):
+            return _ask(f"That date doesn't exist: {problem} {question.text}")
         if is_correction(reply):
             return _ask(WHICH_ANSWER)
         hint = question.hint or HINTS[question.kind]
@@ -1056,9 +1239,12 @@ def run(view, tools):
     if question.kind == DATE and value != NOT_SURE and not confirmed:
         return _ask_to_confirm(question, value, answered, ssn_note)
 
-    saved ={**record_answer(question, value, facts), **update_notes(question, value, reason, facts)}
+    saved = {**record_answer(question, value, facts), **update_notes(question, value, reason, facts)}
     if question.key not in answered:
         answered.append(question.key)
+    was_skipped = question.key in skipped
+    if was_skipped:
+        saved.update(_skipped_fact([k for k in skipped if k != question.key]))
     facts.update(saved)
     following = next_question(facts)  # first question still unanswered: carries on where we left off
     alarm = answer_alarm(question, value)
@@ -1068,6 +1254,8 @@ def run(view, tools):
         return _raise_alarm(alarm, {**saved, **note, **progress}, intake_complete=following is None)
     prefix = f"{VOLUNTEER_ACK} " if reason else f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
     prefix = ssn_note + prefix
+    if following is not None and following.key in _skipped(facts) and not was_skipped:
+        prefix += _second_round_text(facts) + " "
     if following is None:
         return {
             "messages": [{"role": "assistant", "content": f"{prefix}{DONE}"}],

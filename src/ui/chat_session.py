@@ -15,6 +15,8 @@ What it does:
     messages accepted, as the contract asks), finished, or stopped by a volunteer.
   - Gives a "welcome back, so far we've covered..." summary when a session is continued.
   - Lists "Your answers so far"; each has a Change button that jumps straight to that question.
+  - The conversation is split into 6 parts like an application form: `overview()` gives each
+    part's status in words, and `question_label()` gives "Part 2 of 6, Question 2.3".
   - For date questions, the page shows Month / Day / Year boxes (`MONTH_OPTIONS`,
     `date_answer`), so day-first vs month-first can never be mixed up.
 
@@ -131,8 +133,28 @@ def date_answer(month_option: str | None, day: int | None, year: int | None) -> 
     return f"{month_option.split(' - ')[1]} {int(day)}, {int(year)}"
 
 
-def question_number(graph, case_id: str) -> int:
-    return intake_agent.question_number(graph.get_state(_config(case_id)).values.get("facts", {}))
+PARTS = [title for title, _ in intake_agent.PARTS]
+
+
+def _facts(graph, case_id: str) -> dict:
+    return graph.get_state(_config(case_id)).values.get("facts", {})
+
+
+def question_label(graph, case_id: str) -> dict | None:
+    """{"part", "part_title", "number"}, e.g. 2, "Age and eyesight", "2.3"."""
+    return intake_agent.question_label(_facts(graph, case_id))
+
+
+def overview(graph, case_id: str) -> list[dict]:
+    """The six parts with their status in words, for the progress list."""
+    return intake_agent.parts_overview(_facts(graph, case_id))
+
+
+def date_problem(month_option: str | None, day: int | None, year: int | None) -> str | None:
+    """Checked before sending, e.g. "April has only 30 days. Please check the day." """
+    if not month_option or not day or not year:
+        return None
+    return intake_agent.day_problem(int(month_option.split(" - ")[0]), int(day), int(year))
 
 
 def change(graph, case_id: str, question_text: str) -> None:

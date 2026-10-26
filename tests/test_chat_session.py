@@ -137,20 +137,37 @@ def test_date_boxes_only_while_asking_for_a_date(graph):
     assert chat.transcript(graph, case_id)[-1]["content"].endswith("March 4, 1950. Is that right?")
 
 
-def test_question_numbers_have_no_gaps_and_match_the_answers_list(graph):
+def test_part_numbers_have_no_gaps_and_match_the_answers_list(graph):
     case_id = "SF-000-010"
     chat.start(graph, case_id)
-    assert chat.question_number(graph, case_id) == 1  # the name
+    assert chat.question_label(graph, case_id) == {"part": 1, "part_title": "Personal information", "position": 1,
+                                                   "number": "1.1", "text": "What is your full name?"}
     chat.send(graph, case_id, NAME)
     chat.send(graph, case_id, "no")      # Q1; Q2 is skipped for someone not married
-    assert chat.question_number(graph, case_id) == 3  # Q3 is shown as "Question 3"
+    assert chat.question_label(graph, case_id)["number"] == "1.3"  # Q3 is shown as 1.3: no gap
     chat.send(graph, case_id, "single")
+    assert chat.question_label(graph, case_id)["part_title"] == "Age and eyesight"
     chat.send(graph, case_id, "March 4, 1950")
-    assert chat.question_number(graph, case_id) == 4  # the read-back keeps the same number
+    assert chat.question_label(graph, case_id)["number"] == "2.1"  # the read-back keeps its number
+    assert chat.question_label(graph, case_id)["text"].startswith("Just to check: you were born on")
     chat.send(graph, case_id, "yes")
-    assert chat.question_number(graph, case_id) == 5
-    chat.change(graph, case_id, chat.answers(graph, case_id)[2]["question"])  # "Change answer 3"
-    assert chat.question_number(graph, case_id) == 3
+    assert chat.question_label(graph, case_id)["number"] == "2.2"
+    assert [r["number"] for r in chat.answers(graph, case_id)] == ["1.1", "1.2", "1.3", "2.1"]
+    chat.change(graph, case_id, chat.answers(graph, case_id)[2]["question"])  # "Change answer 1.3"
+    assert chat.question_label(graph, case_id)["number"] == "1.3"
+
+
+def test_overview_shows_each_part_in_words(graph):
+    case_id = "SF-000-011"
+    start_named(graph, case_id)
+    for answer in ["no", "single"]:
+        chat.send(graph, case_id, answer)
+    statuses = {p["title"]: p["status"] for p in chat.overview(graph, case_id)}
+    assert statuses == {
+        "Personal information": "Done", "Age and eyesight": "In progress", "People who depend on you": "Not started",
+        "Your income and tax forms": "Not started", "Payments and your refund": "Not started",
+        "A few final checks": "Not started",
+    }
 
 
 def test_page_shows_answers_and_change_buttons():
@@ -162,8 +179,11 @@ def test_page_shows_answers_and_change_buttons():
         page.text_input[0].input(answer)
         next(b for b in page.button if b.label == "Send my answer").click().run()
     assert not page.exception
-    assert any(b.label == "Change answer 2" for b in page.button)
-    assert any(h.value == "Question 3" for h in page.header)
+    assert any(b.label == "Change Part 1, question 2" for b in page.button)
+    current = ia.question_for_key("Q3", {}).text
+    assert any("Part 1 – Personal information – Question 3</span>" + current in m.value for m in page.markdown)
+    assert any("Part 1: Personal information, In progress (you are here)" in m.value for m in page.markdown)
+    assert any(b.label == "Skip for now" for b in page.button)
 
 
 def test_page_date_boxes_send_a_date():
@@ -193,3 +213,25 @@ def test_page_loads_and_starts_a_session():
     assert not page.exception
     assert re.fullmatch(r"SF-\d{3}-\d{3}", page.session_state.case_id)
     assert any("What is your full name?" in m.value for m in page.markdown)
+
+
+def test_date_boxes_catch_a_day_that_does_not_exist():
+    assert chat.date_problem("4 - April", 31, 1950) == "April has only 30 days. Please check the day."
+    assert chat.date_problem("4 - April", 30, 1950) is None
+    assert chat.date_problem(None, 31, 1950) is None  # empty boxes are handled separately
+
+
+def test_page_does_not_send_april_31():
+    from streamlit.testing.v1 import AppTest
+
+    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page.button[0].click().run()
+    for answer in [NAME, "no", "single"]:
+        page.text_input[0].input(answer)
+        next(b for b in page.button if b.label == "Send my answer").click().run()
+    page.selectbox[0].select("4 - April")
+    page.number_input[0].set_value(31)
+    page.number_input[1].set_value(1950)
+    next(b for b in page.button if b.label == "Send this date").click().run()
+    assert any(e.value == "April has only 30 days. Please check the day." for e in page.error)
+    assert not any("April 31" in m.value for m in page.markdown)  # never sent into the chat

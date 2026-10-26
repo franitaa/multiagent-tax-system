@@ -15,8 +15,13 @@ What it does:
   - Date questions get three labelled boxes: Month (a list showing "3 - March", so the
     person can scroll, or type the name or the number), Day and Year. No grey placeholder
     format like MM/DD/YYYY: labels stay visible, and day-first vs month-first cannot mix.
-  - A "Question N" heading above the answer box. N counts only the questions this person
-    is asked (no gaps for skipped ones) and matches the numbers in "Your answers so far".
+  - Six parts, like an application form: a "Your progress" list at the top shows each part's
+    status in words ("Done", "In progress", "Not started", "1 skipped", "1 noted for a
+    volunteer"). Above the answer box: "Part 2 – Age and eyesight – Question 3" in words, then
+    the question itself in the largest text. Questions are counted within each part.
+    Numbers count only the questions this person is asked (no gaps).
+  - "Skip for now": the question is set aside and asked again at the end. Skipping it a
+    second time counts as "not sure", so it goes to a volunteer instead of staying blank.
   - "Your answers so far": a numbered list with a "Change answer N" button for each, so the
     person can jump from question 10 straight back to question 3 and check their answers.
   - While a volunteer is needed, shows a calm waiting message and accepts no new messages.
@@ -48,6 +53,7 @@ st.markdown(
     html, body, [class*="css"], .stMarkdown, p, label, input, button { font-size: 22px !important; }
     h1 { font-size: 40px !important; }
     h2 { font-size: 30px !important; }
+    h3 { font-size: 26px !important; }  /* "Question 2.3" sits under "Part 2 of 6", so it is smaller */
     .stApp { background: #ffffff; color: #111111; }
     .bubble { padding: 14px 18px; margin: 10px 0; border-radius: 10px; line-height: 1.5; }
     .from-silverfile { background: #eef3fb; border-left: 6px solid #1f4e9a; }
@@ -55,6 +61,10 @@ st.markdown(
     .speaker { font-weight: 700; display: block; margin-bottom: 4px; }
     .case-id { font-size: 30px; font-weight: 700; letter-spacing: 2px; }
     .answer-row { padding: 10px 0 4px 0; border-top: 1px solid #cccccc; line-height: 1.5; }
+    .progress li { margin: 4px 0; }
+    .current-question { font-size: 30px !important; font-weight: 700; line-height: 1.4; margin: 24px 0 12px 0; }
+    .current-question .part-label { display: block; font-size: 22px !important; font-weight: 600;
+                                    color: #1f4e9a; margin-bottom: 6px; }
     .stButton button, .stFormSubmitButton button {
         min-height: 3.2rem; width: 100%; font-weight: 700; border: 2px solid #1f4e9a;
     }
@@ -126,10 +136,21 @@ def date_form(graph, case_id: str) -> None:
                                      value=None, step=1)
         if st.form_submit_button("Send this date"):
             answer = chat.date_answer(month, day, year)
-            if answer:
+            problem = chat.date_problem(month, day, year)  # e.g. April 31: never sent
+            if answer and not problem:
                 chat.send(graph, case_id, answer)
                 st.rerun()
-            st.error("Please fill in the month, the day and the year.")
+            st.error(problem or "Please fill in the month, the day and the year.")
+
+
+def progress_list(graph, case_id: str) -> None:
+    """The six parts and their status in words, like the sections of an application form."""
+    items = []
+    for part in chat.overview(graph, case_id):
+        text = html.escape(f"Part {part['number']}: {part['title']}, {part['status']}")
+        items.append(f"<li><b>{text} (you are here)</b></li>" if part["current"] else f"<li>{text}</li>")
+    st.subheader("Your progress")
+    st.markdown(f'<ul class="progress">{"".join(items)}</ul>', unsafe_allow_html=True)
 
 
 def chat_screen(graph, case_id: str) -> None:
@@ -139,6 +160,7 @@ def chat_screen(graph, case_id: str) -> None:
         st.info("Please write this case ID down. You will need it to continue later.")
     else:
         st.info(chat.welcome_back(graph, case_id))
+    progress_list(graph, case_id)
 
     messages = chat.transcript(graph, case_id)
     for i, message in enumerate(messages):
@@ -155,7 +177,16 @@ def chat_screen(graph, case_id: str) -> None:
         st.info(STOPPED_TEXT)
         return
 
-    st.header(f"Question {chat.question_number(graph, case_id)}")
+    label = chat.question_label(graph, case_id)
+    if label:
+        # Where you are, in words ("Part 1 – Personal information – Question 3"), then the question itself,
+        # which is the largest text on the page. One heading, so screen readers keep them together.
+        where = f'Part {label["part"]} – {label["part_title"]} – Question {label["position"]}'
+        st.markdown(
+            f'<h2 class="current-question"><span class="part-label">{html.escape(where)}</span>'
+            f'{html.escape(label["text"])}</h2>',
+            unsafe_allow_html=True,
+        )
     if chat.asking_for_a_date(graph, case_id):
         date_form(graph, case_id)
 
@@ -167,7 +198,7 @@ def chat_screen(graph, case_id: str) -> None:
             st.rerun()
 
     st.write("Or choose one of these:")
-    quick = {"Go back": "go back", "I'm not sure": "I'm not sure",
+    quick = {"Go back": "go back", "Skip for now": "skip for now", "I'm not sure": "I'm not sure",
              "Please explain": "I don't understand", "Talk to a volunteer": "Can I talk to a real person?"}
     columns = st.columns(2)
     for i, (label, text) in enumerate(quick.items()):
@@ -179,15 +210,20 @@ def chat_screen(graph, case_id: str) -> None:
     if rows:
         st.header("Your answers so far")
         st.write("You can check your answers here. To change one, press its Change button.")
-        for number, row in enumerate(rows, start=1):
-            st.markdown(
-                f'<div class="answer-row"><b>{number}. {html.escape(row["question"])}</b><br>'
-                f'Your answer: {html.escape(row["answer"])}</div>',
-                unsafe_allow_html=True,
-            )
-            if st.button(f"Change answer {number}", key=f"change-{row['key']}"):
-                chat.change(graph, case_id, row["question"])
-                st.rerun()
+        for part, title in enumerate(chat.PARTS, start=1):
+            part_rows = [row for row in rows if row["part"] == part]
+            if not part_rows:
+                continue
+            st.subheader(f"Part {part}: {title}")
+            for row in part_rows:
+                st.markdown(
+                    f'<div class="answer-row"><b>Question {row["position"]}: {html.escape(row["question"])}</b><br>'
+                    f'Your answer: {html.escape(row["answer"])}</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button(f"Change Part {part}, question {row['position']}", key=f"change-{row['key']}"):
+                    chat.change(graph, case_id, row["question"])
+                    st.rerun()
 
     if st.button("Leave and continue later"):
         st.session_state.clear()
