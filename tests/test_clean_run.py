@@ -32,7 +32,8 @@ def test_clean_case_runs_end_to_end(tmp_path, context_strategy):
     assert {"value", "formula", "inputs", "source", "tool"} <= set(record)
     # the orchestrator's decisions, in order
     assert [e["to"] for e in result["handoff_log"]] == [
-        "intake", "extraction", "rules", "computation", "review", "end",
+        "intake", "extraction", "rules", "computation", "review",
+        "computation", "review", "end",  # Review sends the text W-2 amounts back; the redo passes
     ]
     # stubs requested the hops the orchestrator took
     assert all(e["honored"] in (True, None) for e in result["handoff_log"])
@@ -46,6 +47,7 @@ def test_trace_written_by_runner_only(tmp_path):
     assert [r["agent"] for r in records] == [
         "orchestrator", "intake", "orchestrator", "extraction", "orchestrator", "rules",
         "orchestrator", "computation", "orchestrator", "review", "orchestrator",
+        "computation", "orchestrator", "review", "orchestrator",
     ]
     for r in records:
         assert REQUIRED_TRACE_KEYS <= set(r)

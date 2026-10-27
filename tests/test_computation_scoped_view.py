@@ -38,6 +38,14 @@ def test_the_volunteers_filing_status_override_reaches_computation():
     assert computed["line_12e"]["value"] == 31500 + 2 * 1600  # both spouses 65+, joint
 
 
+def test_rules_65_plus_answer_is_used_when_it_gave_one():
+    st = state()
+    st["eligibility"] = {"filing_status": "married_filing_jointly", "taxpayer_qualifies": False,
+                         "spouse_qualifies": True}
+    inputs = run(True, st)["computed"]["line_12e"]["inputs"]
+    assert inputs["age_65_or_older"] is False and inputs["spouse_age_65_or_older"] is True
+
+
 def test_free_text_facts_stay_out_of_the_computation_view():
     view = view_for("computation", state(), scoped=True)
     assert "taxpayer_name" not in view["facts"] and "has_dependents" not in view["facts"]

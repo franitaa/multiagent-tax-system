@@ -154,10 +154,20 @@ def _preserve_pending_escalation(
 # -----------------------------------------------------------------------------
 
 
+HUMAN_GATE_NAMES = {
+    "single": "single",
+    "married_filing_jointly": "mfj",
+    "married_filing_separately": "mfs",
+    "head_of_household": "hoh",
+    "qualifying_surviving_spouse": "qss",
+}
+
+
 def _human_filing_status_override(facts: dict[str, Any]) -> str | None:
     """Use the volunteer's filing-status decision when it exists."""
 
     value = _normalize(_fact_value(facts, "filing_status"))
+    value = HUMAN_GATE_NAMES.get(value, value)  # the human gate writes full names, Rules uses codes
     source = _fact_source(facts, "filing_status", "")
 
     if (

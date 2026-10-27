@@ -19,6 +19,10 @@ boundary that every agent call passes through.
 
 ## Failure modes and out-of-scope handling
 - Missing filing status: Computation fails loudly instead of guessing.
+- Text amounts from Extraction (`"1000.00"`): the first pass does not use them, Review flags the
+  line, and the send-back makes Computation read them (a repaired draft says so in its formula). A
+  volunteer's filing-status decision is never replaced by Rules' stale one; Review keeps failing
+  until Rules agrees, and the bounded loop then hands the case to a human.
 - Taxpayer who can be claimed as a dependent, itemizing spouse, 1099-R with box 2b, 1099-NEC and
   similar: Computation stops and escalates to a human instead of calculating.
 - Not handled (documented in `docs/provenance.md`): qualified-dividend rates, QCD, dual-status
@@ -31,7 +35,7 @@ boundary that every agent call passes through.
 ## Testing
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
-tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 634 passing.
+tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 734 passing.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed and the user is told why in plain language; no SSN is

@@ -51,13 +51,20 @@ def test_rules_sees_facts_and_typed_records_but_no_chat_or_raw_documents():
 def test_computation_sees_numbers_and_filing_status_not_chat_or_free_text():
     view = view_for("computation", full_state())
     assert set(view["facts"]) == {"age", "wages_claim"}  # numeric only: not str, not bool
-    assert view["eligibility"] == {"filing_status": "single"}
+    assert view["eligibility"] == {"filing_status": "single", "taxpayer_qualifies": None,
+                                   "spouse_qualifies": None}  # what Rules decided, nothing else
     assert "messages" not in view and "documents" not in view
 
 
-def test_review_sees_the_assembled_return_not_chat_facts_or_documents():
-    view = view_for("review", full_state())
-    assert set(view) == {"computed", "eligibility", "session_summary", "escalation", "human_decisions"}
+def test_review_sees_the_return_and_its_sources_but_only_numeric_facts_and_no_chat():
+    state = full_state()
+    state["facts"]["taxpayer_name"] = {"value": "Test Person", "source": "user"}
+    state["facts"]["estimated_payments_amount"] = {"value": 500, "source": "direct user input"}
+    view = view_for("review", state)
+    assert set(view) == {"computed", "eligibility", "facts", "extracted", "session_summary",
+                         "escalation", "human_decisions"}
+    assert "messages" not in view and "documents" not in view
+    assert "taxpayer_name" not in view["facts"] and "estimated_payments_amount" in view["facts"]
     assert view["eligibility"]["citations"] == ["x"]
 
 

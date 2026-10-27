@@ -35,3 +35,14 @@ def test_rules_finds_the_birth_date_under_intakes_name():
     result = eligibility({"taxpayer_birth_date": "1950-03-04", "household_situation": "single",
                           "married_dec31": "no"})
     assert result["eligible_1040sr"] is True
+
+
+def test_a_volunteers_full_name_filing_status_from_the_human_gate_is_honored():
+    """The human gate writes `married_filing_jointly`; Rules works in codes (`mfj`)."""
+    result = rules.run({"facts": {
+        "taxpayer_birth_date": {"value": "1950-03-04", "source": "user"},
+        "married_dec31": {"value": "no", "source": "user"},
+        "household_situation": {"value": "single", "source": "user"},
+        "filing_status": {"value": "married_filing_jointly", "source": "human:FILING_STATUS_AMBIGUITY"},
+    }, "extracted": {}}, None)["eligibility"]
+    assert result["filing_status"] == "mfj"

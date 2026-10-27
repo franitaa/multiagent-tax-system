@@ -11,10 +11,21 @@ Dependency order: document and direct-input lines -> 6b (needs the rest of incom
 income -> 11a AGI -> 12e standard deduction -> 13b senior deduction (needs AGI) -> 14 -> 15
 taxable income -> 16 tax -> 18/22/24 total tax -> 25d, 33 total payments -> 34 refund / 37 owed.
 
+Review send-backs: when Review fails a draft it puts its findings in view["pending_revision"]
+({"target", "round", "findings": [{"check", "line", "issue"}]}). Computation re-runs the whole
+pipeline and, for the two kinds of finding it can fix without guessing, changes how it reads its
+inputs (see _repairs): a "sources" finding (a document amount that did not reach its line) makes
+it read text amounts such as "20000.00" as numbers; a "recompute" finding about the filing
+status makes it use the status in `eligibility`. The first pass stays strict: a text amount is
+not used until Review has flagged it. Findings it cannot act on are ignored; the loop bound
+then hands the case to a human.
+
 Defensive escalations (Rules should catch these first): a taxpayer who can be claimed as a
 dependent, or a separately filing spouse who itemizes (the Standard Deduction Chart does not
 apply), a 1099-R whose taxable amount is not determined, and out-of-scope 1099 types.
 """
+import re
+
 from provenance import make_direct_input_provenance, make_provenance
 from src.state import FORM_1099R_BOX_2B, OUT_OF_SCOPE
 
@@ -77,22 +88,61 @@ def _number(item):
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
-def _doc_amounts(extracted, specs):
-    """(label, value, doc_id) for each extracted document field named in `specs`."""
+_TEXT_AMOUNT = re.compile(r"\s*\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*")
+
+
+def _text_amount(value):
+    """A plain amount written as text ("20000.00", "$20,000.00", "1,234") as a number, else
+    None. Strict on purpose: anything else (words, signs, ranges) is not read."""
+    match = _TEXT_AMOUNT.fullmatch(value) if isinstance(value, str) else None
+    return float(match.group(1).replace(",", "") + (match.group(2) or "")) if match else None
+
+
+def _doc_amounts(extracted, specs, read_text=False):
+    """(label, value, doc_id) for each extracted document field named in `specs`. Text amounts
+    are only read when `read_text` (a send-back from Review asked for it)."""
     found = []
     for doc_id, record in sorted(extracted.items()):
         for kind, field in specs:
             if _kind(record) == kind:
-                value = _number(_raw(record, field))
+                raw = _raw(record, field)
+                value = _number(raw)
+                if value is None and read_text:
+                    value = _text_amount(raw)
                 if value is not None:
                     found.append((f"{doc_id}.{field}", value, doc_id))
     return found
 
 
-def _status(view):
+def _repairs(view):
+    """What Review's send-back lets Computation change. Returns (read_text, status_from_eligibility,
+    what it did, for the handoff reason). Reads findings by their `check` and, for the filing
+    status, the words 'filing status' in the issue; anything else is not acted on."""
+    revision = view.get("pending_revision") or {}
+    findings = [f for f in revision.get("findings") or [] if isinstance(f, dict)]
+    read_text = any(f.get("check") == "sources" for f in findings)
+    status = any(f.get("check") == "recompute" and "filing status" in str(f.get("issue", "")).lower()
+                 for f in findings)
+    done = (["read text amounts as numbers"] if read_text else []) + (
+        ["used the filing status from eligibility"] if status else [])
+    return read_text, status, done
+
+
+def _status(view, prefer_eligibility=False):
+    """The filing status. Normally a volunteer's override (facts) comes first; after Review says a
+    tool used the wrong status, the status Rules put in `eligibility` comes first, unless the
+    status in `facts` is a volunteer's decision."""
     facts, eligibility = view.get("facts", {}), view.get("eligibility") or {}
-    raw = (_fact(facts, "filing_status") or eligibility.get("filing_status")
-           or _fact(facts, "filing_status_claim") or _intake_status(facts))
+    decided = eligibility.get("filing_status")
+    human = str((facts.get("filing_status") or {}).get("source", "")).startswith("human:")
+    # a volunteer's decision is never overridden: if eligibility disagrees with it, that is for
+    # Rules to fix and Review keeps failing the return until it does
+    if (prefer_eligibility and not human
+            and STATUS_NAMES.get(str(decided).strip().lower(), decided) in FULL_NAMES):
+        raw = decided
+    else:
+        raw = (_fact(facts, "filing_status") or decided
+               or _fact(facts, "filing_status_claim") or _intake_status(facts))
     name = STATUS_NAMES.get(str(raw).strip().lower(), str(raw).strip().lower())
     if name not in FULL_NAMES:
         raise ValueError("Computation needs a valid filing status; Rules/Intake must supply it")
@@ -141,7 +191,8 @@ def _must_escalate(view, status):
 
     for record in extracted.values():
         if _kind(record).startswith("1099r"):
-            if _raw(record, "box_2b") or _number(_raw(record, "box_2a")) is None:
+            taxable = _raw(record, "box_2a")  # present as text counts: "determined" is not "a number"
+            if _raw(record, "box_2b") or (_number(taxable) is None and _text_amount(taxable) is None):
                 return raise_once(FORM_1099R_BOX_2B, "1099-R taxable amount not determined")
         if any(_kind(record).startswith(k) for k in OUT_OF_SCOPE_KINDS):
             return raise_once(OUT_OF_SCOPE, "out-of-scope tax document")
@@ -154,7 +205,8 @@ def _must_escalate(view, status):
 
 def run(view, tools):
     facts, extracted = view.get("facts", {}), view.get("extracted", {})
-    status = _status(view)
+    read_text, status_from_eligibility, repaired = _repairs(view)
+    status = _status(view, status_from_eligibility)
     escalation = _must_escalate(view, status)
     if escalation:
         return escalation
@@ -183,11 +235,13 @@ def run(view, tools):
 
     def from_documents(line):
         """Line total from documents. One document keeps its own source; several are summed."""
-        amounts = _doc_amounts(extracted, DOC_LINES[line])
+        amounts = _doc_amounts(extracted, DOC_LINES[line], read_text)
         if len(amounts) == 1:
             label, value, doc_id = amounts[0]
+            raw = _raw(extracted[doc_id], label.split(".", 1)[1])
+            note = f" (text {raw!r} read as a number after a review finding)" if isinstance(raw, str) else ""
             return add(line, make_provenance(
-                value, f"{line} = value read from document field {label}", {label: value},
+                value, f"{line} = value read from document field {label}{note}", {label: value},
                 f"Document {doc_id} (Document Extraction)", "document_extraction"))
         return total(line, {label: v for label, v, _ in amounts},
                      "Documents: " + ", ".join(sorted({d for _, _, d in amounts}))
@@ -230,9 +284,14 @@ def run(view, tools):
         label="line_11a", start_name="line_9", floor_at_zero=False))
 
     # --- deductions
-    senior_self = _is_65(facts, "age", "taxpayer_birth_date")
+    # age 65+: the answer Rules decided when it gave one (Review checks the boxes against it),
+    # else worked out from the taxpayer's own answers
+    decided = view.get("eligibility") or {}
+    senior_self = (decided["taxpayer_qualifies"] if isinstance(decided.get("taxpayer_qualifies"), bool)
+                   else _is_65(facts, "age", "taxpayer_birth_date"))
     joint = status == "married_filing_jointly"
-    spouse_senior = joint and _is_65(facts, "spouse_age", "spouse_birth_date")
+    spouse_senior = joint and (decided["spouse_qualifies"] if isinstance(decided.get("spouse_qualifies"), bool)
+                               else _is_65(facts, "spouse_age", "spouse_birth_date"))
     std = add("line_12e", call(
         "calculate_standard_deduction", filing_status=status,
         age_65_or_older=senior_self, blind=_yes(facts, "blind", "taxpayer_blind"),
@@ -274,4 +333,5 @@ def run(view, tools):
         "subtract_amounts", start=total_tax, subtract={"line_33": payments}, label="line_37",
         start_name="line_24"))
 
-    return {"computed": computed, "handoff_request": {"to": "review", "reason": "lines computed"}}
+    reason = "lines computed" + (f" again after review: {', '.join(repaired)}" if repaired else "")
+    return {"computed": computed, "handoff_request": {"to": "review", "reason": reason}}

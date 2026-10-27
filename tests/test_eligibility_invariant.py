@@ -82,7 +82,9 @@ def test_not_eligible_for_the_1040sr_is_a_verdict_not_a_gap(tmp_path):
     graph = build_graph(trace_dir=tmp_path, agents={"rules": rules_returning(
         {"in_scope": True, "filing_status": "single", "eligible_1040sr": False, "citations": ["x"]})})
     result = graph.invoke(clean_case(), cfg("not-eligible"))
-    assert "__interrupt__" not in result  # what Rules does with "not eligible" is Rules' call
+    # the orchestrator does not treat it as a gap; Review then escalates it as out of scope
+    payload = result["__interrupt__"][0].value
+    assert payload["condition"] == S.OUT_OF_SCOPE and payload["raised_by"] == "review"
 
 
 def test_the_default_clean_run_is_unaffected(tmp_path):

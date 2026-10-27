@@ -172,7 +172,9 @@ def decided_rules(view, tools):
     session is about context size, not eligibility, so it must not depend on the real Rules agent
     (which is being reworked and cannot decide from the long scenario's made-up facts)."""
     return {
-        "eligibility": {"in_scope": True, "filing_status": "single", "citations": ["STUB: policy citation"]},
+        "eligibility": {"in_scope": True, "eligible_1040sr": True, "filing_status": "single",
+                        "taxpayer_qualifies": True, "age_blindness_boxes": 1,
+                        "citations": ["STUB: policy citation"]},
         "handoff_request": {"to": "computation", "reason": "in scope; status determined"},
     }
 

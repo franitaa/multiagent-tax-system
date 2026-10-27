@@ -597,7 +597,7 @@ def consistent_computation(view, tools):
     """Test-only Computation: a small, correct draft for the stub W-2s (box 1 only, single,
     65+), so these tests do not depend on the Computation teammate's stub."""
     eligibility = view.get("eligibility", {})
-    wages = {f"{doc_id}.box_1": record["fields"]["box_1"]["value"]
+    wages = {f"{doc_id}.box_1": float(record["fields"]["box_1"]["value"])  # Extraction gives text
              for doc_id, record in sorted(view.get("extracted", {}).items())}
     total = sum(wages.values())
     c = {
