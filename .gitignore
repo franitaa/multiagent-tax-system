@@ -6,3 +6,4 @@ __pycache__/
 *.sqlite
 *.db
 traces/*.jsonl
+draft_1040sr.html
