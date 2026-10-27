@@ -179,7 +179,7 @@ def test_form_shows_status_boxes_and_masked_valid_test_ssns_only():
         {"name": "Alex", "relationship": "grandchild", "ssn": "912-34-5678"},
         {"name": "Sam", "relationship": "grandchild", "ssn": "123-45-6789"}], "source": "user"}}
     html = render_draft_html(c, facts, {"filing_status": "mfj", "age_blindness_boxes": 2})
-    assert "Married filing jointly" in html and "12d boxes checked" in html
+    assert "Married filing jointly" in html and "Line 12d: age and blindness boxes" in html
     assert "XXX-XX-5678" in html and "912-34-5678" not in html
     assert "123-45-6789" not in html and "[not a valid test SSN]" in html
     assert "<th scope='row'>1z</th>" in html and "<th scope='row'>11a</th>" in html

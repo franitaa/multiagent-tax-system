@@ -69,13 +69,27 @@ case to a human. The handoff reason names what was repaired (`lines computed aga
 Computation also uses Rules' `taxpayer_qualifies` / `spouse_qualifies` for the 65+ boxes when
 present, which is what Review checks them against.
 
-## Draft form output
-`src/draft_form.py: write_draft_form(state, directory, name)` renders the final graph state to
-`<directory>/<name>_1040sr.html` and refuses to write when nothing is computed or an amount has
-no complete provenance record. `python -m scripts.run_scenarios clean` (and `spouse-died`) call
-it when the run completes and print the path (default folder `output/`, ignored by Git; override
-with `--output-dir`). Open the file in a browser and click any amount to see formula, inputs,
-source and tool. A sample for the demo folder: `python scripts/render_draft.py`.
+## Draft form output (PRV-3)
+The draft 1040-SR is a standalone HTML page (`src/draft_form.py`). Click an amount, or tab to it and
+press Enter, to see its formula, inputs, source and tool; "Show all sources" opens them all and
+Print opens every source first. It shows every section 3.1 item: filing status (and whether Rules
+or a volunteer set it), each line 12d box (from what the standard-deduction tool was actually given),
+dependents (name, relationship, masked test SSN), every computed line, what Review found and how many
+send-back rounds it took, and each volunteer decision with the volunteer's name. A line without a full
+provenance record is never rendered, and everything from documents or answers is HTML-escaped.
+
+Where it comes from:
+- **Chat page:** when a case finishes, [src/ui/taxpayer_chat.py](../src/ui/taxpayer_chat.py) shows the form
+  inline with a "Download the draft form" button.
+- **Scenarios:** `python -m scripts.run_scenarios clean` (also `spouse-died`, `interrupt`) writes
+  `output/<run>_1040sr.html` and prints the path (`--output-dir` to change; the folder is ignored by Git).
+- **Any saved case:** `python -m scripts.render_case <case id>` reads the case from
+  `runtime/team_checkpoints.sqlite` (the store the chat page and workbench use). The dashboard can call
+  `write_draft_form(state, directory, name, audit=...)` or `render_draft_html(...)` directly.
+- **Demo files:** `python -m scripts.render_draft` rewrites `demo/sample_1040sr.html` (every income type),
+  `demo/eval_case_1_1040sr.html` (clean run) and `demo/eval_case_2_1040sr.html` (volunteer resolves a
+  spouse's death, filing status set to married filing jointly).
+Writing a form records `draft_form_written` in the audit log.
 
 ## Integration notes
 - Computation's scoped view keeps numeric facts plus a named list (`COMPUTATION_FACTS` in

@@ -1,16 +1,26 @@
-"""Write a sample DRAFT 1040-SR with click-to-expand provenance (fake data only).
+"""Write the sample DRAFT 1040-SR forms in demo/ (fake data only), each amount click-to-expand:
 
-Run from the project root:  python scripts/render_draft.py
-Then open demo/sample_1040sr.html in a browser and click any amount.
+  demo/sample_1040sr.html       every income type, Schedule 1 and estimated payments
+  demo/eval_case_1_1040sr.html  the clean run (docs/handoff-contract.md, scripts.run_scenarios clean)
+  demo/eval_case_2_1040sr.html  the human-in-the-loop run: a spouse died in the tax year, a volunteer
+                                resolves the filing status, then the draft is produced
+
+Run from the project root:  python -m scripts.render_draft
+Then open a file in a browser and click any amount.
 """
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from langgraph.types import Command  # noqa: E402
+
 from src.agents import computation  # noqa: E402
-from src.draft_form import render_draft_html  # noqa: E402
+from src.draft_form import render_draft_html, write_draft_form  # noqa: E402
+from src.graph import build_graph  # noqa: E402
 from src.orchestration.access import ToolBox  # noqa: E402
+from src.scenarios import clean_case, spouse_died_case  # noqa: E402
 
 
 def doc(kind, **fields):
@@ -34,10 +44,36 @@ sample_view = {
     "eligibility": {},
 }
 
-if __name__ == "__main__":
+
+def write_sample(out: Path) -> Path:
     computed = computation.run(sample_view, ToolBox("computation"))["computed"]
-    out = Path("demo/sample_1040sr.html")
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(render_draft_html(computed, sample_view["facts"], {"filing_status": "single",
-                   "age_blindness_boxes": 1}), encoding="utf-8")
-    print(f"Wrote {out.resolve()}")
+    path = out / "sample_1040sr.html"
+    path.write_text(render_draft_html(computed, sample_view["facts"], {"filing_status": "single",
+                    "age_blindness_boxes": 1}, case_id="sample"), encoding="utf-8")
+    return path
+
+
+def write_eval_cases(out: Path) -> list[Path]:
+    paths = []
+    with tempfile.TemporaryDirectory() as traces:
+        graph = build_graph(trace_dir=traces)
+        paths.append(write_draft_form(graph.invoke(clean_case(), {"configurable": {"thread_id": "eval1"}}),
+                                      out, "eval_case_1"))
+
+        case, agents = spouse_died_case()
+        graph = build_graph(trace_dir=traces, agents=agents)
+        config = {"configurable": {"thread_id": "eval2"}}
+        graph.invoke(case, config)
+        final = graph.invoke(Command(resume={
+            "decision": "continue", "reviewer": "Demo Volunteer",
+            "note": "demo: confirmed with the taxpayer that the spouse died in the tax year",
+            "resolution": {"filing_status": "married_filing_jointly"}}), config)
+        paths.append(write_draft_form(final, out, "eval_case_2"))
+    return paths
+
+
+if __name__ == "__main__":
+    out = Path("demo")
+    out.mkdir(exist_ok=True)
+    for path in [write_sample(out), *write_eval_cases(out)]:
+        print(f"Wrote {path.resolve()}")
