@@ -7,6 +7,8 @@ reachable through the ToolBox the runner hands in.
 from dataclasses import dataclass
 from typing import Callable
 
+import tax_math
+
 # Fields every agent may set so that safety signals and handoffs always work.
 COMMON_WRITES = frozenset({"escalation", "handoff_request"})
 # Fields every agent can always read, so a safety signal can never be scoped away.
@@ -51,16 +53,27 @@ POLICY: dict[str, AgentPolicy] = {
     "computation": AgentPolicy(
         reads=frozenset({"facts", "extracted", "eligibility", "pending_revision"}),
         writes=COMMON_WRITES | {"computed"},
+        tools=frozenset({"calculate_standard_deduction", "calculate_senior_deduction",
+                         "calculate_taxable_social_security", "calculate_income_tax"}),
     ),
+    # Review reads the sources (facts, extracted) so it can check each line against them,
+    # and re-runs the same deterministic tools to recompute independently.
     "review": AgentPolicy(
-        reads=frozenset({"computed", "eligibility", "session_summary"}),
+        reads=frozenset({"computed", "eligibility", "facts", "extracted", "session_summary"}),
         writes=COMMON_WRITES | {"review"},
+        tools=frozenset({"calculate_standard_deduction", "calculate_senior_deduction",
+                         "calculate_taxable_social_security", "calculate_income_tax"}),
     ),
 }
 
 # Tool registry. Teammates register their deterministic tools here by name, then list the
 # name in the owning agent's `tools` above.
-TOOLS: dict[str, Callable] = {}
+TOOLS: dict[str, Callable] = {
+    "calculate_standard_deduction": tax_math.calculate_standard_deduction,
+    "calculate_senior_deduction": tax_math.calculate_senior_deduction,
+    "calculate_taxable_social_security": tax_math.calculate_taxable_social_security,
+    "calculate_income_tax": tax_math.calculate_income_tax,
+}
 
 
 class AccessViolation(Exception):
