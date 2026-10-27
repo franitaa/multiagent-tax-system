@@ -86,7 +86,7 @@ free text.
 ## Results (30 turns, 12 documents, one revision round; estimates, see metrics.md)
 | | Strategy on | Strategy off |
 |---|---|---|
-| Total input tokens, all model calls | 33,736 | 618,693 (18.3x) |
+| Total input tokens, all model calls | 33,658 | 618,537 (18.4x) |
 | Intake input, turn 1 to turn 30 | 88 to 1,047 | 12,190 to 17,613 |
 | Intake growth per turn | 29 tokens | 186 tokens (6.5x) |
 
