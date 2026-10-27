@@ -104,10 +104,15 @@ def long_answer(turn: int) -> str:
 
 
 def long_document(doc_id: str, kind: str = "W-2") -> dict:
-    """A document with a few KB of fake text, as a scanned page would be."""
-    lines = (f"TEST DATA {kind} {doc_id} line {j}: box value placeholder, employer name placeholder, "
-             f"period placeholder" for j in range(40))
-    return {"id": doc_id, "kind": kind, "text": "\n".join(lines)}
+    """Explicit synthetic amounts plus padding for context-size tests."""
+    fixture = document(doc_id, kind)
+    lines = (
+        f"TEST DATA {kind} {doc_id} line {j}: box value placeholder, "
+        f"employer name placeholder, period placeholder"
+        for j in range(40)
+    )
+    fixture["text"] += "\n" + "\n".join(lines)
+    return fixture
 
 
 def long_intake(turns: int):
