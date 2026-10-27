@@ -17,6 +17,8 @@ from src.orchestration.access import ToolBox
 from src.scenarios import clean_case, spouse_died_case
 from tests.helpers import cfg
 
+_CHAT_PAGE = __import__('pathlib').Path(__file__).resolve().parents[1] / 'src' / 'ui' / 'taxpayer_chat.py'
+
 # Every line in section 3.1 that Computation derives or reads.
 SPEC_LINES = ["1z", "2a", "2b", "3a", "3b", "4a", "4b", "5a", "5b", "6a", "6b", "9", "10", "11a",
               "12e", "13b", "14", "15", "16", "24", "25a", "25b", "25d", "26", "33", "34", "37"]
@@ -261,7 +263,7 @@ def chat_page(graph, case_id):
     chat_session.make_graph = lambda *a, **k: graph
     st.cache_resource.clear()
     try:
-        at = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=60)
+        at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=60)
         at.session_state["case_id"] = case_id
         return at.run()
     finally:
