@@ -12,3 +12,4 @@ runtime/
 !.env.example
 *.egg-info/
 output/
+traces/audit/

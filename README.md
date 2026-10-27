@@ -101,6 +101,10 @@ Scenarios (all offline; each writes a trace to `traces/`):
 .venv/bin/python -m scripts.draw_graph                        # regenerates the diagram above
 ```
 
+Security and privacy (what is protected, the audit log, deleting a case, what is not done):
+[docs/security.md](docs/security.md). Delete a case or apply the retention policy with
+`python -m scripts.purge_cases --case <id>` / `--expired --dry-run`.
+
 A trace line (`traces/<thread_id>.jsonl`) records the agent, the handoff (from, to, reason), the state
 fields read and written, duration, and estimated input/output tokens. It stores field names, never values.
 
