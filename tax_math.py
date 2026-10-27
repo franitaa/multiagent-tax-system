@@ -326,3 +326,40 @@ def calculate_income_tax(
         "source": "2025 IRS tax rate schedules",
         "tool": "calculate_income_tax",
     }
+
+def sum_amounts(
+    amounts: dict[str, float],
+    label: str,
+) -> ProvenanceRecord:
+    """Add named amounts. `label` names the form line being produced."""
+    total = round(sum(amounts.values()), 2)
+    return {
+        "value": total,
+        "formula": f"{label} = " + (" + ".join(amounts) or "0"),
+        "inputs": dict(amounts),
+        "source": "Addition of the listed form lines",
+        "tool": "sum_amounts",
+    }
+
+
+def subtract_amounts(
+    start: float,
+    subtract: dict[str, float],
+    label: str,
+    start_name: str = "start",
+    floor_at_zero: bool = True,
+) -> ProvenanceRecord:
+    """Compute start minus the named amounts, optionally floored at zero."""
+    result = round(start - sum(subtract.values()), 2)
+    if floor_at_zero:
+        result = max(0, result)
+    return {
+        "value": result,
+        "formula": (
+            f"{label} = {start_name} - " + (" - ".join(subtract) or "0")
+            + (", not below zero" if floor_at_zero else "")
+        ),
+        "inputs": {start_name: start, **subtract},
+        "source": "Subtraction of the listed form lines",
+        "tool": "subtract_amounts",
+    }
