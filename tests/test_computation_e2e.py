@@ -34,7 +34,7 @@ def test_hand_calculated_single_senior_with_social_security():
     ex = {"d1": doc("W-2", box_1=30000, box_2=3000), "d2": doc("SSA-1099", box_5=20000)}
     c, _ = compute(view(extracted=ex))
     assert c["line_6b"]["value"] == 9600
-    assert c["line_9"]["value"] == 39600 and c["line_11"]["value"] == 39600
+    assert c["line_9"]["value"] == 39600 and c["line_11a"]["value"] == 39600
     assert c["line_12e"]["value"] == 17750 and c["line_13b"]["value"] == 6000
     assert c["line_15"]["value"] == 15850 and c["line_16"]["value"] == 1663.5
     assert c["line_24"]["value"] == 1663.5 and c["line_33"]["value"] == 3000
@@ -70,7 +70,7 @@ def test_every_line_has_complete_provenance_and_direct_inputs_are_attributed():
     assert est["inputs"]["field_name"] == "estimated_payments_amount"
     assert est["inputs"]["entered_by"] and est["inputs"]["entered_on"]
     assert c["line_10"]["value"] == 300 and c["line_17"]["value"] == 50
-    assert c["line_33"]["inputs"] == {"line_25a": 1000, "line_26": 500, "line_31": 0}
+    assert c["line_33"]["inputs"] == {"line_25d": 1000, "line_26": 500, "line_31": 0}
     assert c["line_1a"]["source"].startswith("Document d1")
 
 
@@ -119,3 +119,86 @@ def test_birth_date_cutoff_is_before_january_2_1961():
         c, _ = compute({"facts": facts, "extracted": {}, "eligibility": {}})
         return c["line_13b"]["value"]
     assert senior_deduction("1961-01-01") == 6000 and senior_deduction("1961-01-02") == 0
+
+
+def test_spec_line_ids_a_and_b_pairs_and_withholding_split():
+    ex = {
+        "w": doc("W-2", box_1=20000, box_2=1500),
+        "i": doc("1099-INT", box_1=300, box_8=200, box_4=10),
+        "dv": doc("1099-DIV", box_1a=400, box_1b=250),
+        "ira": doc("1099-R", box_1=5000, box_2a=4000, box_4=100, ira_sep_simple=True),
+        "pen": doc("1099-R", box_1=9000, box_2a=8000, box_4=200),
+    }
+    c, _ = compute(view(extracted=ex))
+    assert (c["line_1z"]["value"], c["line_2a"]["value"], c["line_2b"]["value"]) == (20000, 200, 300)
+    assert (c["line_3a"]["value"], c["line_3b"]["value"]) == (250, 400)
+    assert (c["line_4a"]["value"], c["line_4b"]["value"]) == (5000, 4000)
+    assert (c["line_5a"]["value"], c["line_5b"]["value"]) == (9000, 8000)
+    assert c["line_9"]["value"] == 20000 + 300 + 400 + 4000 + 8000
+    assert c["line_25b"]["value"] == 310 and c["line_25d"]["value"] == 1810
+    assert c["line_25d"]["inputs"] == {"line_25a": 1500, "line_25b": 310}
+
+
+def test_tax_exempt_interest_raises_provisional_income_for_6b():
+    base = {"d": doc("SSA-1099", box_5=20000), "w": doc("W-2", box_1=20000)}
+    low, _ = compute(view(extracted=base))
+    high, _ = compute(view(extracted={**base, "i": doc("1099-INT", box_1=0, box_8=8000)}))
+    assert high["line_6b"]["inputs"]["tax_exempt_interest"] == 8000
+    assert high["line_6b"]["value"] > low["line_6b"]["value"]
+
+
+def escalates(v, condition):
+    update = computation.run(v, ToolBox("computation"))
+    assert update["escalation"]["condition"] == condition and "computed" not in update
+    assert update["handoff_request"]["to"] == "human"
+
+
+def test_defensive_escalations():
+    from src.state import FORM_1099R_BOX_2B, OUT_OF_SCOPE
+    escalates(view(extracted={"r": doc("1099-R", box_1=900, box_2a=0, box_2b=True)}), FORM_1099R_BOX_2B)
+    escalates(view(extracted={"r": doc("1099-R", box_1=900)}), FORM_1099R_BOX_2B)  # taxable amount missing
+    escalates(view(extracted={"n": doc("1099-NEC", box_1=500)}), OUT_OF_SCOPE)
+    escalates(view(can_be_claimed_as_dependent="yes"), OUT_OF_SCOPE)
+    escalates(view(status="mfs", spouse_itemizing="yes"), OUT_OF_SCOPE)
+
+
+def test_spouse_itemizing_only_matters_when_filing_separately():
+    c, _ = compute(view(status="mfj", spouse_itemizing="yes", extracted={"w": doc("W-2", box_1=1000)}))
+    assert c["line_12e"]["value"] >= 31500
+
+
+def test_resolved_condition_is_not_raised_again():
+    v = view(can_be_claimed_as_dependent="yes", extracted={"w": doc("W-2", box_1=1000)})
+    v["human_decisions"] = [{"condition": "OUT_OF_SCOPE", "decision": "continue"}]
+    assert "computed" in computation.run(v, ToolBox("computation"))
+
+
+def test_form_shows_status_boxes_and_masked_valid_test_ssns_only():
+    c, _ = compute(view(extracted={"w": doc("W-2", box_1=1000)}))
+    facts = {"dependents": {"value": [
+        {"name": "Alex", "relationship": "grandchild", "ssn": "912-34-5678"},
+        {"name": "Sam", "relationship": "grandchild", "ssn": "123-45-6789"}], "source": "user"}}
+    html = render_draft_html(c, facts, {"filing_status": "mfj", "age_blindness_boxes": 2})
+    assert "Married filing jointly" in html and "12d boxes checked" in html
+    assert "XXX-XX-5678" in html and "912-34-5678" not in html
+    assert "123-45-6789" not in html and "[not a valid test SSN]" in html
+    assert "<th scope='row'>1z</th>" in html and "<th scope='row'>11a</th>" in html
+
+
+def test_tools_are_served_over_mcp_and_match_direct_calls():
+    import asyncio
+    pytest.importorskip("mcp.server.mcpserver")
+    from src.tax_math_mcp import server
+    from tax_math import calculate_income_tax
+
+    async def go():
+        tools = {t.name for t in await server.list_tools()}
+        result = await server.call_tool(
+            "calculate_income_tax", {"taxable_income": 20000, "filing_status": "single"})
+        return tools, result
+
+    tools, result = asyncio.run(go())
+    assert {"calculate_income_tax", "calculate_taxable_social_security",
+            "calculate_senior_deduction", "calculate_standard_deduction"} <= tools
+    expected = calculate_income_tax(20000, "single")["value"]
+    assert str(expected) in str(result)
