@@ -8,6 +8,9 @@ What it does:
   - Start screen: "Start a new session" (shows a case ID to write down) or "Continue a
     session" (type the case ID; shows "Welcome back, so far we've covered...").
   - Shows the conversation and the current question, one question at a time.
+  - Always the light theme (.streamlit/config.toml), whatever the computer's dark/light
+    setting, with button and box colours also set here as a safety net, so it looks the
+    same and stays readable everywhere, including Docker and a Mac in dark mode.
   - Large text (22px+), strong contrast, big buttons, visible labels, and plain-text
     speaker names ("SilverFile says:" / "You said:") so screen readers announce who is
     speaking. The newest question is in a live region, so it is read out when it appears.
@@ -67,7 +70,15 @@ st.markdown(
                                     color: #1f4e9a; margin-bottom: 6px; }
     .stButton button, .stFormSubmitButton button {
         min-height: 3.2rem; width: 100%; font-weight: 700; border: 2px solid #1f4e9a;
+        background: #ffffff !important; color: #111111 !important;
     }
+    .stButton button:hover, .stFormSubmitButton button:hover { background: #eef3fb !important; }
+    /* Safety net if the light theme in .streamlit/config.toml is not picked up (e.g. a Mac in
+       dark mode): keep every text box and list white with dark text, so it stays readable. */
+    input, textarea, [data-baseweb="input"] > div, [data-baseweb="select"] > div {
+        background: #ffffff !important; color: #111111 !important;
+    }
+    label, h1, h2, h3, p, li, .stMarkdown { color: #111111 !important; }
     .stButton button:focus, .stFormSubmitButton button:focus, input:focus {
         outline: 4px solid #f2a900 !important; outline-offset: 2px;
     }
