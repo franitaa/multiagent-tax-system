@@ -6,7 +6,8 @@ Computation, or escalates when something out of scope slipped through.
 
 Checks (each produces findings {check, line, issue, severity}):
   provenance      every line carries a complete ProvenanceRecord with a numeric value; a
-                  "direct user input" record says who entered it and when
+                  "direct user input" record says who entered it and when, and matches the
+                  amount the taxpayer gave (facts)
   sources         an input citing a document field ("<doc_id>.<field>") matches the extracted
                   value; an input citing a line ("line_9") matches that line; a line built only
                   from document fields equals their sum; every in-scope document amount
@@ -25,6 +26,10 @@ Checks (each produces findings {check, line, issue, severity}):
 
 Errors fail the review (sent back to Computation). Scope problems also raise
 OUT_OF_SCOPE / FORM_1099R_BOX_2B so a human sees them. Warnings never fail the review.
+
+Review sees only the numeric answers in `facts` (amounts the taxpayer typed), never free
+text such as dependents or volunteer notes. Blindness comes from Rules' line 12d box count,
+a volunteer's filing status from `human_decisions`.
 
 Review does its own arithmetic on purpose: the no-arithmetic rule binds Computation, whose
 numbers are under test, not the auditor checking them.
@@ -126,6 +131,18 @@ def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _amount(value):
+    """A document amount as a number. Extraction may write text such as "20000.00"."""
+    if _is_number(value):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip().replace("$", "").replace(",", ""))
+        except ValueError:
+            return None
+    return None
+
+
 def _close(a, b):
     return abs(a - b) <= TOLERANCE
 
@@ -142,11 +159,6 @@ def _field(record, name):
 def _fact(facts, name, default=None):
     item = facts.get(name)
     return item.get("value", default) if isinstance(item, dict) else default
-
-
-def _yes(value):
-    """Answers are "yes" / "no" / "not_sure" (docs/answer-names.md); only "yes" counts."""
-    return value is True or str(value).strip().lower() == "yes"
 
 
 def _is_direct_input(record):
@@ -185,6 +197,21 @@ class _Return:
 # ---- checks -------------------------------------------------------------------------
 
 
+def check_direct_inputs(ret, facts):
+    """A typed-in amount must equal what the taxpayer gave, when the record names the answer."""
+    findings = []
+    for line in sorted(ret.computed):
+        record = ret.record(line)
+        name = ret.inputs(line).get("field_name")
+        if not (_is_direct_input(record) and name in facts):
+            continue
+        given = _amount(_fact(facts, name))
+        if given is not None and not _close(given, ret.value(line)):
+            findings.append(_finding(
+                "provenance", line, f"is {ret.value(line)}, but the taxpayer gave {name} = {given}"))
+    return findings
+
+
 def check_provenance(computed):
     findings = []
     if not computed:
@@ -220,7 +247,10 @@ def check_sources(ret, extracted):
         for key, cited in inputs.items():
             if key.startswith("line_"):
                 if not ret.has(key):
-                    findings.append(_finding("sources", line, f"cites {key}, which is not on the return"))
+                    # a blank line is zero; citing it as zero is fine
+                    if _is_number(cited) and not _close(cited, 0.0):
+                        findings.append(_finding(
+                            "sources", line, f"uses {key} = {cited}, but {key} is blank"))
                 elif _is_number(cited) and not _close(cited, ret.value(key)):
                     findings.append(_finding(
                         "sources", line, f"uses {key} = {cited}, but {key} is {ret.value(key)}"))
@@ -229,14 +259,21 @@ def check_sources(ret, extracted):
                 if doc_id not in extracted:
                     findings.append(_finding("sources", line, f"cites {doc_id}, which was not extracted"))
                     continue
-                actual = _field(extracted[doc_id], field)
-                if actual is None:
+                raw = _field(extracted[doc_id], field)
+                actual = _amount(raw)
+                if raw is None:
                     findings.append(_finding("sources", line, f"cites {key}, which the document lacks"))
-                elif _is_number(cited) and _is_number(actual) and not _close(cited, actual):
+                elif actual is None:
+                    findings.append(_finding("sources", line, f"cites {key}, which is not an amount"))
+                elif _amount(cited) is not None and not _close(_amount(cited), actual):
                     findings.append(_finding(
                         "sources", line, f"uses {key} = {cited}, but the document shows {actual}"))
-                elif _is_number(actual):
-                    doc_values.append(float(actual))
+                else:
+                    doc_values.append(actual)
+        # a blank line (zero, built from nothing) needs no source; the document check below
+        # still catches an amount that should have reached it
+        if not inputs and _is_number(record.get("value")) and record["value"] == 0:
+            verified.add(line)
         # a line built only from document fields must equal their sum
         if inputs and len(doc_values) == len(inputs):
             verified.add(line)
@@ -250,8 +287,8 @@ def check_sources(ret, extracted):
             continue
         kind = _kind(record)
         for (doc_kind, field), lines in DOC_FIELD_LINES.items():
-            amount = _field(record, field) if doc_kind == kind else None
-            if not _is_number(amount) or amount == 0:
+            amount = _amount(_field(record, field)) if doc_kind == kind else None
+            if not amount:
                 continue
             ref = f"{doc_id}.{field}"
             if not any(ref in ret.inputs(line) for line in lines):
@@ -260,20 +297,31 @@ def check_sources(ret, extracted):
     return findings, verified
 
 
-def _derived_tool_inputs(line, ret, eligibility, facts):
+def _blind_boxes(eligibility):
+    """Blindness boxes on line 12d: Rules' box count minus the age boxes it found. None if the
+    count does not fit the ages (reported as a finding)."""
+    boxes = eligibility.get("age_blindness_boxes") or 0
+    ages = int(eligibility.get("taxpayer_qualifies") is True) + int(eligibility.get("spouse_qualifies") is True)
+    blind = boxes - ages if isinstance(boxes, int) else -1
+    return blind if 0 <= blind <= 2 else None
+
+
+def _derived_tool_inputs(line, ret, eligibility):
     """Inputs for `line`'s tool re-derived from the return and eligibility, not the record."""
     status = _status(eligibility.get("filing_status"))
     joint = status == "married_filing_jointly"
-    married = status in ("married_filing_jointly", "married_filing_separately")
     taxpayer_65 = eligibility.get("taxpayer_qualifies") is True
     spouse_65 = eligibility.get("spouse_qualifies") is True
     if line == "line_12e":
+        # each box adds the same amount, so only the count of blindness boxes matters
+        blind = _blind_boxes(eligibility) or 0
         return {
             "filing_status": status,
             "age_65_or_older": taxpayer_65,
-            "blind": _yes(_fact(facts, "taxpayer_blind")),
-            "spouse_age_65_or_older": married and spouse_65,
-            "spouse_blind": married and _yes(_fact(facts, "spouse_blind")),
+            "blind": blind >= 1,
+            # spouse boxes only on a joint return (as Computation does)
+            "spouse_age_65_or_older": joint and spouse_65,
+            "spouse_blind": joint and blind >= 2,
         }
     if line == "line_13b":
         return {
@@ -294,9 +342,13 @@ def _derived_tool_inputs(line, ret, eligibility, facts):
     raise KeyError(line)
 
 
-def check_recompute(ret, eligibility, facts, tools):
+def check_recompute(ret, eligibility, tools):
     findings, verified = [], set()
     status = _status(eligibility.get("filing_status"))
+    if ret.has("line_12e") and _blind_boxes(eligibility) is None:
+        findings.append(_finding(
+            "recompute", "line_12e",
+            f"Rules' line 12d box count ({eligibility.get('age_blindness_boxes')}) does not fit the ages it found"))
     for line, tool in TOOL_LINES.items():
         if not ret.has(line):
             continue
@@ -318,7 +370,7 @@ def check_recompute(ret, eligibility, facts, tools):
         except (TypeError, ValueError) as exc:
             findings.append(_finding("recompute", line, f"its recorded inputs are invalid: {exc}"))
         # 2) the inputs are right: independently derived inputs give the same value
-        derived = _derived_tool_inputs(line, ret, eligibility, facts)
+        derived = _derived_tool_inputs(line, ret, eligibility)
         try:
             expected = tools.call(tool, **derived)["value"]
         except (TypeError, ValueError) as exc:
@@ -347,9 +399,13 @@ def _totals(ret):
         "line_11a": v("line_9") - v("line_10"),
         "line_14": v("line_12e") + v("line_13a") + v("line_13b"),
         "line_15": max(0.0, v("line_11a") - v("line_14")),
+        "line_18": v("line_16") + v("line_17"),
+        "line_22": max(0.0, v("line_16") + v("line_17") - v("line_19") - v("line_20")),
         "line_24": max(0.0, v("line_16") + v("line_17") - v("line_19") - v("line_20")) + v("line_23"),
         "line_25d": v("line_25a") + v("line_25b") + v("line_25c"),
-        "line_33": v("line_25d") + v("line_26") + v("line_32"),
+        # line 32 is the total of 27-31; use it when present, else its parts
+        "line_33": v("line_25d") + v("line_26") + (
+            v("line_32") if ret.has("line_32") else sum(v(f"line_{n}") for n in range(27, 32))),
         "line_34": max(0.0, v("line_33") - v("line_24")),
         "line_37": max(0.0, v("line_24") - v("line_33")),
     }
@@ -404,14 +460,16 @@ def check_completeness(ret, extracted, eligibility, verified):
     return findings
 
 
-def check_scope(ret, extracted, eligibility, facts):
+def check_scope(ret, extracted, eligibility, human_decisions):
     findings = []
-    if eligibility.get("in_scope") is not True:
-        findings.append(_finding("scope", None, "eligibility does not mark the return in scope",
-                                 condition=OUT_OF_SCOPE))
-    if eligibility.get("eligible_1040sr") is not True:
-        findings.append(_finding("scope", None, "Form 1040-SR eligibility is not established",
-                                 condition=OUT_OF_SCOPE))
+    # False is a decision (escalate); None means Rules never decided (fail, do not mislabel)
+    for key, what in (("in_scope", "whether the return is in scope"),
+                      ("eligible_1040sr", "Form 1040-SR eligibility")):
+        if eligibility.get(key) is False:
+            findings.append(_finding("scope", None, f"Rules decided against {what}",
+                                     condition=OUT_OF_SCOPE))
+        elif eligibility.get(key) is not True:
+            findings.append(_finding("scope", None, f"Rules has not decided {what}"))
     for doc_id, record in sorted(extracted.items()):
         if not isinstance(record, dict):
             continue
@@ -428,9 +486,9 @@ def check_scope(ret, extracted, eligibility, facts):
                                      condition=OUT_OF_SCOPE))
     if ret.value("line_7") != 0:
         findings.append(_finding("scope", "line_7", "capital gains are out of scope", condition=OUT_OF_SCOPE))
-    decided = facts.get("filing_status")
-    if isinstance(decided, dict) and str(decided.get("source", "")).startswith("human:"):
-        if _status(decided.get("value")) != _status(eligibility.get("filing_status")):
+    for decision in human_decisions:
+        decided = (decision.get("resolution") or {}).get("filing_status")
+        if decided and _status(decided) != _status(eligibility.get("filing_status")):
             findings.append(_finding(
                 "scope", None, "eligibility does not use the filing status the volunteer decided"))
     return findings
@@ -470,12 +528,13 @@ def review_return(view, tools):
     ret = _Return(computed)
 
     source_findings, doc_verified = check_sources(ret, extracted)
-    recompute_findings, tool_verified = check_recompute(ret, eligibility, facts, tools)
+    recompute_findings, tool_verified = check_recompute(ret, eligibility, tools)
     total_findings, total_verified = check_totals(ret)
     verified = doc_verified | tool_verified | total_verified
     return [
-        *check_scope(ret, extracted, eligibility, facts),
+        *check_scope(ret, extracted, eligibility, view.get("human_decisions") or []),
         *check_provenance(computed),
+        *check_direct_inputs(ret, facts),
         *source_findings,
         *recompute_findings,
         *total_findings,

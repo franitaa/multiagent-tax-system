@@ -178,20 +178,78 @@ def test_who_and_when_may_sit_next_to_the_value_as_in_answer_names():
     assert run_review(view)["review"]["verdict"] == "pass"
 
 
-@pytest.mark.parametrize("answer,boxes_add", [("yes", 2000), ("no", 0), ("not_sure", 0)])
-def test_blindness_answers_are_read_as_yes_no_not_sure(answer, boxes_add):
+def line_12e_errors(view):
+    return [f for f in errors(run_review(view), "recompute") if f["line"] == "line_12e"]
+
+
+@pytest.mark.parametrize("boxes,blind", [(1, False), (2, True)])
+def test_blindness_comes_from_rules_box_count(boxes, blind):
     view = correct_view()
-    view["facts"]["taxpayer_blind"] = {"value": answer, "source": "user"}
+    view["eligibility"]["age_blindness_boxes"] = boxes
     view["computed"]["line_12e"] = tax_math.calculate_standard_deduction(
-        FS, age_65_or_older=True, blind=boxes_add > 0)
-    hits = [f for f in errors(run_review(view), "recompute") if f["line"] == "line_12e"]
-    assert hits == []
+        FS, age_65_or_older=True, blind=blind)
+    assert line_12e_errors(view) == []
+
+
+def test_blindness_box_missing_from_the_deduction_fails():
+    view = correct_view()
+    view["eligibility"]["age_blindness_boxes"] = 2  # 65+ and blind
+    failed_on(view, "recompute", "line_12e")  # 12e only counted the age box
+
+
+@pytest.mark.parametrize("boxes", [0, 4])
+def test_box_count_that_does_not_fit_the_ages_fails(boxes):
+    view = correct_view()
+    view["eligibility"]["age_blindness_boxes"] = boxes
+    hits = failed_on(view, "recompute", "line_12e")
+    assert any("box count" in f["issue"] for f in hits)
+
+
+def test_review_needs_no_text_answers():
+    """Review gets numeric facts only; it must not depend on yes/no answers or notes."""
+    view = correct_view()
+    view["facts"] = {}
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def typed_line_26(amount):
+    return {**rec(amount, {"field_name": "estimated_payments_amount", "entered_value": amount,
+                           "entered_by": "taxpayer", "entered_on": "2026-10-27"}),
+            "source": review.DIRECT_INPUT}
+
+
+def test_typed_in_amount_matching_the_answer_passes():
+    view = correct_view()
+    view["facts"]["estimated_payments_amount"] = {"value": 0.0, "source": "direct user input"}
+    view["computed"]["line_26"] = typed_line_26(0.0)
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def test_typed_in_amount_not_matching_the_answer_fails():
+    view = correct_view()
+    view["facts"]["estimated_payments_amount"] = {"value": 400.0, "source": "direct user input"}
+    view["computed"]["line_26"] = typed_line_26(0.0)
+    hits = failed_on(view, "provenance", "line_26")
+    assert any("taxpayer gave" in f["issue"] for f in hits)
 
 
 def test_a_line_nobody_can_verify_fails():
     view = correct_view()
-    view["computed"]["line_8"] = rec(0.0, {}, tool="mystery")
+    view["computed"]["line_8"] = rec(50.0, {}, tool="mystery")
     failed_on(view, "completeness", "line_8")
+
+
+def test_a_blank_line_built_from_nothing_passes():
+    view = correct_view()
+    view["computed"]["line_3b"] = rec(0.0, {}, source="No matching documents; amount is zero")
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def test_a_blank_line_still_fails_when_a_document_should_feed_it():
+    view = correct_view()
+    view["extracted"]["div-1"] = doc("1099-DIV", box_1a=300.0)
+    view["computed"]["line_3b"] = rec(0.0, {})
+    failed_on(view, "sources", "line_3b")
 
 
 # ---- sources -------------------------------------------------------------------------
@@ -226,6 +284,45 @@ def test_dropped_withholding_fails():
     view = correct_view()
     del view["computed"]["line_25b"]
     failed_on(view, "sources", "line_25b")
+
+
+def test_citing_a_blank_line_as_zero_passes():
+    view = correct_view()
+    c = view["computed"]
+    tax = c["line_16"]["value"]
+    c["line_18"] = rec(tax, {"line_16": tax, "line_17": 0})
+    c["line_22"] = rec(tax, {"line_18": tax, "line_20": 0})
+    c["line_24"]["inputs"] = {"line_22": tax, "line_23": 0}
+    c["line_33"]["inputs"] = {"line_25d": 2500.0, "line_26": 0, "line_31": 0}
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def test_citing_a_blank_line_as_non_zero_fails():
+    view = correct_view()
+    view["computed"]["line_24"]["inputs"]["line_23"] = 75.0
+    failed_on(view, "sources", "line_24")
+
+
+@pytest.mark.parametrize("text", ["20000.00", "$20,000.00"])
+def test_amounts_extracted_as_text_are_read(text):
+    view = correct_view()
+    view["extracted"]["w2-1"]["fields"]["box_1"]["value"] = text
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def test_text_amount_on_a_w2_that_never_reaches_line_1a_fails():
+    """Extraction writes "20000.00" as text; a Computation that skips text shows $0 wages."""
+    view = correct_view()
+    view["extracted"]["w2-1"]["fields"]["box_1"]["value"] = "20000.00"
+    view["computed"]["line_1a"] = rec(0.0, {})
+    hits = failed_on(view, "sources", "line_1a")
+    assert any("does not reach" in f["issue"] for f in hits)
+
+
+def test_unreadable_document_amount_fails():
+    view = correct_view()
+    view["extracted"]["w2-1"]["fields"]["box_1"]["value"] = "illegible"
+    failed_on(view, "sources", "line_1a")
 
 
 def test_stale_line_reference_fails():
@@ -301,13 +398,43 @@ def test_qualified_dividends_only_warn_about_the_rate_schedule():
 
 
 @pytest.mark.parametrize("line", [
-    "line_1z", "line_9", "line_11a", "line_14", "line_15", "line_24", "line_25d", "line_33",
-    "line_34", "line_37",
+    "line_1z", "line_9", "line_11a", "line_14", "line_15", "line_18", "line_22", "line_24",
+    "line_25d", "line_33", "line_34", "line_37",
 ])
 def test_every_total_is_recomputed(line):
     view = correct_view()
+    tax = view["computed"]["line_16"]["value"]
+    view["computed"]["line_18"] = rec(tax, {"line_16": tax})
+    view["computed"]["line_22"] = rec(tax, {"line_18": tax})
     set_value(view, line, view["computed"][line]["value"] + 100.0)
     failed_on(view, "totals", line)
+
+
+def test_line_33_includes_schedule_3_payments_on_line_31():
+    view = correct_view()
+    c = view["computed"]
+    tax = c["line_24"]["value"]
+    c["line_31"] = {**rec(100.0, {"entered_by": "taxpayer", "entered_on": "2026-10-27"}),
+                    "source": review.DIRECT_INPUT}
+    c["line_33"] = rec(2600.0, {"line_25d": 2500.0, "line_31": 100.0})
+    c["line_34"] = rec(max(0.0, 2600.0 - tax), {"line_33": 2600.0, "line_24": tax})
+    c["line_37"] = rec(max(0.0, tax - 2600.0), {"line_24": tax, "line_33": 2600.0})
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def test_spouse_boxes_do_not_count_when_filing_separately():
+    view = correct_view()
+    mfs = "married_filing_separately"
+    view["eligibility"].update(filing_status="mfs", spouse_qualifies=True, age_blindness_boxes=2)
+    c = view["computed"]
+    c["line_6b"] = tax_math.calculate_taxable_social_security(24000.0, 30500.0, 200.0, mfs)
+    line_9 = 30500.0 + c["line_6b"]["value"]
+    c["line_9"] = rec(line_9, {"line_1z": 20000.0, "line_6b": c["line_6b"]["value"]})
+    c["line_11a"] = rec(line_9, {"line_9": line_9})
+    c["line_12e"] = tax_math.calculate_standard_deduction(mfs, age_65_or_older=True)
+    c["line_13b"] = tax_math.calculate_senior_deduction(line_9, 1, mfs)
+    hits = [f for f in errors(run_review(view), "recompute") if f["line"] == "line_12e"]
+    assert hits == []
 
 
 def test_rounding_to_whole_dollars_is_tolerated():
@@ -404,13 +531,20 @@ def test_most_severe_scope_problem_is_raised():
     assert "FORM_1099R_BOX_2B" in update["escalation"]["reason"]
 
 
-@pytest.mark.parametrize("change", [
-    {"in_scope": False}, {"in_scope": None}, {"eligible_1040sr": False},
-])
-def test_eligibility_not_clean_escalates(change):
+@pytest.mark.parametrize("change", [{"in_scope": False}, {"eligible_1040sr": False}])
+def test_eligibility_decided_against_escalates(change):
     view = correct_view()
     view["eligibility"].update(change)
     escalated(view, S.OUT_OF_SCOPE)
+
+
+@pytest.mark.parametrize("change", [{"in_scope": None}, {"eligible_1040sr": None}])
+def test_eligibility_never_decided_fails_without_calling_it_out_of_scope(change):
+    view = correct_view()
+    view["eligibility"].update(change)
+    hits = failed_on(view, "scope")
+    assert any("has not decided" in f["issue"] for f in hits)
+    assert "escalation" not in run_review(view)
 
 
 @pytest.mark.parametrize("line", ["schedule_c_net_profit", "line_7"])
@@ -423,9 +557,16 @@ def test_out_of_scope_line_escalates(line):
 
 def test_eligibility_ignoring_the_volunteers_filing_status_fails():
     view = correct_view()
-    view["facts"]["filing_status"] = {"value": "head_of_household",
-                                      "source": "human:FILING_STATUS_AMBIGUITY"}
+    view["human_decisions"] = [{"condition": "FILING_STATUS_AMBIGUITY", "decision": "continue",
+                                "note": "test", "resolution": {"filing_status": "head_of_household"}}]
     failed_on(view, "scope")
+
+
+def test_eligibility_using_the_volunteers_filing_status_passes():
+    view = correct_view()
+    view["human_decisions"] = [{"condition": "FILING_STATUS_AMBIGUITY", "decision": "continue",
+                                "note": "test", "resolution": {"filing_status": "single"}}]
+    assert run_review(view)["review"]["verdict"] == "pass"
 
 
 def test_escalation_reason_carries_no_document_details():
@@ -482,10 +623,14 @@ def consistent_computation(view, tools):
     return {"computed": c}
 
 
-def test_the_teammates_computation_stub_is_rejected(tmp_path):
-    """Until the real Computation lands, Review fails the one-line stub and the loop ends
-    with a human, as it should."""
-    graph = build_graph(trace_dir=tmp_path)
+def one_line_computation(view, tools):
+    """Like the original Computation placeholder: a single line and nothing else."""
+    return {"computed": {"line_1a": rec(1000.0, {"doc-1.box_1": 1000.0})}}
+
+
+def test_an_incomplete_return_is_rejected_until_a_human_takes_over(tmp_path):
+    """Review fails a one-line return every round, so the loop ends with a human."""
+    graph = build_graph(trace_dir=tmp_path, agents={"computation": one_line_computation})
     result = graph.invoke(clean_case(), cfg("stub"))
     assert result["__interrupt__"][0].value["condition"] == S.REVIEW_BOUND_EXCEEDED
     findings = graph.get_state(cfg("stub")).values["review_history"][0]["findings"]
