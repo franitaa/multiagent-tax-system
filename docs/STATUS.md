@@ -1,26 +1,31 @@
 # Status: orchestration (Person 1)
 
-Updated at the end of every phase. Branch: `orchestration-setup`.
+Updated at the end of every phase. Branch: `orchestration-phase5` (stacked on `orchestration-phase4`).
 
 ## Done
-- **Phase 1, scaffold:** state contract, hub-and-spoke graph, runner with JSONL tracing, five stub agents, scoped views, bounded orchestrator view, clean case runs end to end.
-- **Phase 2, routing and HITL:** full routing table with decision-table test, interrupt/resume for all six conditions, stop-only rules, required notes, human-supplied resolutions, access-control tests.
-- **Phase 3, parallelism and loops:** parallel extraction (Send fan-out, order-independent reducers for `extracted`, `handoff_request` and `escalation`, with simultaneous escalations queued rather than lost), bounded review loop (default 3, clears the stale verdict), loop guard (state repeated / same hop repeated). 124 tests.
-- **Phase 4, context management:** scoped and narrowed views, Intake chat window (6), deterministic rolling summary, `--no-context-strategy`, long-session scenario (30 turns, 12 documents), `scripts/measure_context.py` and `docs/metrics.md`, full decision record. Orchestrator control channel (guard history and review findings kept out of its view). Spouse-died demo (eval case 2). 149 tests.
-- `docs/handoff-contract.md` for agent owners.
+- **Phases 1-3 (merged):** state contract, hub-and-spoke graph, runner with JSONL tracing, routing table, human interrupt with stop-only rules, parallel extraction with order-independent reducers, bounded review loop, loop guard.
+- **Phase 4 (PR open):** scoped views, Intake chat window (6), deterministic rolling summary, `--no-context-strategy`, long-session scenario, `scripts/measure_context.py` and `docs/metrics.md`, full decision record, orchestrator control channel, spouse-died demo.
+- **Phase 5:** README with run instructions and a diagram generated from the compiled graph (`scripts/draw_graph.py`, with a test that fails if it goes stale); plain `pytest` now collects the root-level tests too.
+- **Integration check of the real Intake with the real Rules** (`docs/intake-rules-contract.md`, `tests/test_e2e_intake.py`, `tests/test_rules_intake_contract.py`). Real Intake works in our graph (24-question interview, 6-message window, escalation of a spouse who died). Rules does not understand its output yet.
 
 ## In progress
-- Waiting for review of Phase 4 (and merge of the Phase 3 PR, which Phase 4 is stacked on).
+- Review of the Phase 4 PR. Matthew is reworking Rules; Supriya's Intake PR is not merged yet.
 
 ## Next
-- **Phase 5:** README run instructions and graph diagram generated from the compiled graph.
-- Possible follow-up (not built): retrieve only the facts relevant to Intake's current question, so its view stops growing with the number of facts.
+- **Wire in the real Intake:** point `AGENTS["intake"]` at `intake_agent.run` *after* the Intake PR is merged and Rules is fixed, so `main` never has a pipeline whose demos break.
+- Wire Sahana's computation agent through the tool allow-list (`TOOLS` / `POLICY`); decide where PII redaction hooks in (suggestion: the runner).
+- Find the Extraction and Review owners; both are still stubs.
+- Possible follow-up (not built): give Intake only the facts relevant to its current question.
 
 ## Open questions
+- **For Matthew (Rules), four things, all with failing tests that define "done":**
+  1. Read the fact names Intake writes (`taxpayer_birth_date`, `spouse_died_2025`, ...); see the table in `docs/intake-rules-contract.md`.
+  2. Parse Intake's `"yes"/"no"/"not_sure"` strings. Today `bool("no")` is `True`, so a taxpayer who answered "no" to blindness is counted as blind (2 boxes instead of 1).
+  3. Use `facts["filing_status"]` (a volunteer's answer, source `human:...`) before deriving a status.
+  4. Decide what Rules does when it cannot decide eligibility or filing status. Today the run still ends "complete".
+- **For the team:** should the orchestrator also refuse to finish while `eligibility.filing_status` is empty? (My lean: yes, in addition to Rules escalating.)
 - **For the instructor:** the assignment's context section talks about "10 invoices", which does not match a tax project. We are treating it as "a long session or a batch of many documents". Is that acceptable?
-- **For the Review owner:** `send_back_to` currently supports only `computation`; a request for `rules` is routed to computation and recorded. Sending work back to Rules would also invalidate computed lines; do we want that path? Also: Review must return exactly `pass` or `fail`.
-- **Decided, please confirm:** `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` are stop-only (a human may not "continue" past a failed review or a loop).
-- **Branches:** `orchestration-phase3` (PR open) holds Phase 3; `orchestration-phase4` is stacked on it. Open the Phase 4 PR against `main` after Phase 3 merges.
-- **For the Rules owner:** please read `facts["filing_status"]` (a volunteer's answer, source `human:FILING_STATUS_AMBIGUITY`) before deriving a status. Today Rules reads only `filing_status_claim`, so the spouse-died demo ends with a draft that ignores the human's answer. `test_the_human_supplied_filing_status_reaches_the_draft` is a strict expected-failure until then.
-- **Wiring status:** only Rules is real in the graph. Intake (`feature/intake-agent`) and Sahana's computation agent are not yet plugged into `AGENTS`; Extraction and Review are still stubs.
+- **For the Review owner:** `send_back_to` supports only `computation`; Review must return exactly `pass` or `fail`.
+- **Decided:** `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` are stop-only.
 - **For the memory owner:** the checkpointer is `InMemorySaver` (`SqliteSaver` optional); it needs replacing for persistence across restarts.
+- **Process:** two Rules commits went straight to `main` without a PR. Suggest branch protection requiring PRs.
