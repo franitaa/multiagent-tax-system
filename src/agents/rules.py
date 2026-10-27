@@ -1,33 +1,33 @@
-"""STUB. Owned by the Eligibility & Rules teammate."""
+"""Eligibility & Rules Agent for SilverFile.
 
+The implementation follows docs/answer-names.md:
+- Intake records factual answers using the shared names and string values.
+- Rules derives filing status.
+- A human filing-status override takes precedence.
+- Rules interprets yes/no/not_sure explicitly; Python string truthiness is never
+  used for Intake answers.
+"""
 
 from datetime import datetime
 from typing import Any
 
 from src.state import (
+    EXPLOITATION_SIGNS,
+    FILING_STATUS_AMBIGUITY,
+    FORM_1099R_BOX_2B,
     OUT_OF_SCOPE,
     SOURCE_CONFLICT,
-    FORM_1099R_BOX_2B,
     TAX_ADVICE_REQUEST,
-    FILING_STATUS_AMBIGUITY,
-    EXPLOITATION_SIGNS,
 )
 
 
-VALID_FILING_STATUSES = {
-    "single",
-    "mfj",
-    "mfs",
-    "hoh",
-    "qss",
-}
-
+VALID_FILING_STATUSES = {"single", "mfj", "mfs", "hoh", "qss"}
 YES_NO_NOT_SURE = {"yes", "no", "not_sure"}
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# Fact and answer helpers
+# -----------------------------------------------------------------------------
 
 
 def _fact_record(facts: dict[str, Any], name: str) -> dict[str, Any] | None:
