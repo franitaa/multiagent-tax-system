@@ -8,6 +8,8 @@ from src.agents import intake_agent as ia
 from src.ui import chat_session as chat
 from tests.test_intake_agent import FULL_ANSWERS, NAME
 
+_CHAT_PAGE = __import__('pathlib').Path(__file__).resolve().parents[1] / 'src' / 'ui' / 'taxpayer_chat.py'
+
 
 @pytest.fixture
 def graph(tmp_path):
@@ -173,7 +175,7 @@ def test_overview_shows_each_part_in_words(graph):
 def test_page_shows_answers_and_change_buttons():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30).run()
     page.button[0].click().run()
     for answer in [NAME, "no"]:
         page.text_input[0].input(answer)
@@ -189,7 +191,7 @@ def test_page_shows_answers_and_change_buttons():
 def test_page_date_boxes_send_a_date():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30).run()
     page.button[0].click().run()
     for answer in [NAME, "no", "single"]:
         page.text_input[0].input(answer)
@@ -206,7 +208,7 @@ def test_page_date_boxes_send_a_date():
 def test_page_loads_and_starts_a_session():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30).run()
     assert not page.exception
     assert page.button[0].label == "Start a new session"
     page.button[0].click().run()
@@ -224,7 +226,7 @@ def test_date_boxes_catch_a_day_that_does_not_exist():
 def test_page_does_not_send_april_31():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(_CHAT_PAGE), default_timeout=30).run()
     page.button[0].click().run()
     for answer in [NAME, "no", "single"]:
         page.text_input[0].input(answer)
