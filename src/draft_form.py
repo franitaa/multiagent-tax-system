@@ -149,10 +149,11 @@ def render_draft_html(computed: dict, facts: dict | None = None, eligibility: di
     )
 
 
-def write_draft_form(state: dict, directory="output", name: str | None = None):
+def write_draft_form(state: dict, directory="output", name: str | None = None, audit=None,
+                     actor: str = "system:draft_form"):
     """Render the draft from a final graph state and write it to `directory`. Returns the path.
     Raises ValueError when there are no computed lines or a line lacks provenance, so a draft
-    with an unsourced amount is never written."""
+    with an unsourced amount is never written. Pass an `AuditLog` (src/audit.py) to record it."""
     from pathlib import Path
 
     computed = state.get("computed") or {}
@@ -162,4 +163,6 @@ def write_draft_form(state: dict, directory="output", name: str | None = None):
     path = Path(directory) / f"{name or state.get('case_id') or 'draft'}_1040sr.html"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(html, encoding="utf-8")
+    if audit is not None:
+        audit.record(name or state.get("case_id") or "draft", "draft_form_written", actor)
     return path

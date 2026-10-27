@@ -27,6 +27,13 @@ boundary that every agent call passes through.
   similar: Computation stops and escalates to a human instead of calculating.
 - Not handled (documented in `docs/provenance.md`): qualified-dividend rates, QCD, dual-status
   aliens, special married-filing-separately Social Security rule.
+- Prompt injection: instruction-like document text is flagged and audited, not rewritten. Agents are
+  contained by allow-lists and shape checks (a dollar amount cannot exist without provenance), so an
+  agent that obeys a document still cannot write outside its fields. A model persuaded to misreport
+  a value inside its own fields is caught only by Review and the human gate.
+- Audit and retention: each case has a tamper-evident audit log (who decided what, no personal
+  data); cases can be deleted on request or expire after 30 idle days. Not done: encryption at
+  rest, authentication, wiping backups (docs/security.md).
 - Redaction is regex-based and can miss unusual formats; it is a defensive filter, not a guarantee.
   Document text is labelled as data, but nothing here can stop a model that is careless with it.
 - Tax tables were checked against IRS Rev. Proc. 2024-40; one error (the 12% bracket tops) was
@@ -35,7 +42,7 @@ boundary that every agent call passes through.
 ## Testing
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
-tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 734 passing.
+tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 788 passing.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed and the user is told why in plain language; no SSN is
