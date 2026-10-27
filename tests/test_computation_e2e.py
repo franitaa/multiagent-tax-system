@@ -62,12 +62,12 @@ def test_line_6b_feeds_total_income():
 def test_every_line_has_complete_provenance_and_direct_inputs_are_attributed():
     c, _ = compute(view(
         extracted={"d1": doc("W-2", box_1=20000, box_2=1000)},
-        estimated_tax_payments=500, schedule1_adjustments=300, schedule2_part1_tax=50,
+        estimated_payments_amount=500, adjustments_amount=300, schedule2_part1_tax=50,
     ))
     assert all(KEYS <= set(r) for r in c.values())
     est = c["line_26"]
     assert est["tool"] == "make_direct_input_provenance"
-    assert est["inputs"]["field_name"] == "estimated_tax_payments"
+    assert est["inputs"]["field_name"] == "estimated_payments_amount"
     assert est["inputs"]["entered_by"] and est["inputs"]["entered_on"]
     assert c["line_10"]["value"] == 300 and c["line_17"]["value"] == 50
     assert c["line_33"]["inputs"] == {"line_25a": 1000, "line_26": 500, "line_31": 0}
@@ -99,3 +99,23 @@ def test_provenance_survives_the_graph_and_renders_clickable_form(tmp_path):
 def test_form_refuses_amount_without_provenance():
     with pytest.raises(ValueError):
         render_draft_html({"line_9": {"value": 5}})
+
+
+def test_real_intake_answer_names_are_understood():
+    # docs/answer-names.md: birth date (not age), "yes"/"no" blindness, plain marital answers.
+    v = {"facts": {k: {"value": x, "source": "user"} for k, x in {
+        "married_dec31": "no", "household_situation": "single",
+        "taxpayer_birth_date": "1950-03-04", "taxpayer_blind": "yes"}.items()},
+        "extracted": {"d1": doc("W-2", box_1=20000)}, "eligibility": {}}
+    c, _ = compute(v)
+    assert c["line_12e"]["value"] == 15750 + 2000 * 2 and c["line_13b"]["value"] == 6000
+
+
+def test_birth_date_cutoff_is_before_january_2_1961():
+    base = {"married_dec31": "no", "household_situation": "single"}
+
+    def senior_deduction(birth):
+        facts = {k: {"value": x, "source": "user"} for k, x in {**base, "taxpayer_birth_date": birth}.items()}
+        c, _ = compute({"facts": facts, "extracted": {}, "eligibility": {}})
+        return c["line_13b"]["value"]
+    assert senior_deduction("1961-01-01") == 6000 and senior_deduction("1961-01-02") == 0
