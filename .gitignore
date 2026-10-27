@@ -7,3 +7,7 @@ __pycache__/
 *.db
 traces/*.jsonl
 draft_1040sr.html
+runtime/
+.env.*
+!.env.example
+*.egg-info/
