@@ -1,524 +1,246 @@
 """Focused tests for the Eligibility & Rules Agent."""
+import pytest
 
 from src.agents.rules import run
+from src.state import (
+    EXPLOITATION_SIGNS,
+    FILING_STATUS_AMBIGUITY,
+    FORM_1099R_BOX_2B,
+    OUT_OF_SCOPE,
+    TAX_ADVICE_REQUEST,
+)
 
 
-def fact(value, source="test"):
-    """
-    Helper to create facts in the same format used by SilverFile.
-    """
-    return {
-        "value": value,
-        "source": source,
-    }
+def fact(value, source="user"):
+    return {"value": value, "source": source}
 
 
-def make_view(facts=None, extracted=None, human_decisions=None):
-    """
-    Build a minimal scoped view for the Rules agent.
-    """
+def make_view(*, facts=None, extracted=None, escalation=None, human_decisions=None):
     return {
         "facts": facts or {},
         "extracted": extracted or {},
-        "session_summary": {},
-        "escalation": {},
+        "session_summary": "",
+        "escalation": escalation,
         "human_decisions": human_decisions or [],
     }
 
 
-# ---------------------------------------------------------------------
-# 1. Clean eligible taxpayer
-# ---------------------------------------------------------------------
+def single_facts(**overrides):
+    facts = {
+        "taxpayer_birth_date": fact("1950-05-10"),
+        "married_dec31": fact("no"),
+        "household_situation": fact("single"),
+        "taxpayer_blind": fact("no"),
+        "us_resident_all_year": fact("yes"),
+    }
+    facts.update(overrides)
+    return facts
+
+
+def mfj_facts(**overrides):
+    facts = {
+        "taxpayer_birth_date": fact("1950-05-10"),
+        "spouse_birth_date": fact("1965-08-20"),
+        "married_dec31": fact("yes"),
+        "file_jointly": fact("yes"),
+        "taxpayer_blind": fact("no"),
+        "spouse_blind": fact("no"),
+        "spouse_can_be_claimed": fact("no"),
+        "us_resident_all_year": fact("yes"),
+    }
+    facts.update(overrides)
+    return facts
+
 
 def test_single_taxpayer_is_eligible():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-        }
-    )
-
-    result = run(view, tools={})
-
-    eligibility = result["eligibility"]
-
-    assert eligibility["eligible_1040sr"] is True
-    assert eligibility["filing_status_valid"] is True
-    assert eligibility["in_scope"] is True
-
+    result = run(make_view(facts=single_facts()), tools={})
+    assert result["eligibility"]["filing_status"] == "single"
+    assert result["eligibility"]["eligible_1040sr"] is True
+    assert result["eligibility"]["in_scope"] is True
     assert result["handoff_request"]["to"] == "computation"
 
 
-# ---------------------------------------------------------------------
-# 2. Taxpayer too young
-# ---------------------------------------------------------------------
-
-def test_single_taxpayer_not_eligible():
-    view = make_view(
-        facts={
-            "age": fact(60),
-            "filing_status_claim": fact("single"),
-        }
-    )
-
-    result = run(view, tools={})
-
-    eligibility = result["eligibility"]
-
-    assert eligibility["eligible_1040sr"] is False
-    assert eligibility["in_scope"] is False
-
-    assert result["escalation"]["pending"] is True
-    assert result["handoff_request"]["to"] == "human"
-
-
-# ---------------------------------------------------------------------
-# 3. Exact DOB rule
-# ---------------------------------------------------------------------
-
 def test_exact_dob_rule_before_cutoff_is_eligible():
-    view = make_view(
-        facts={
-            "taxpayer_dob": fact("1961-01-01"),
-            "filing_status_claim": fact("single"),
-        }
+    facts = single_facts(
+        taxpayer_birth_date=fact("1961-01-01"),
     )
-
-    result = run(view, tools={})
-
-    assert (
-        result["eligibility"]["eligible_1040sr"]
-        is True
-    )
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["eligible_1040sr"] is True
 
 
 def test_exact_dob_rule_on_cutoff_is_not_eligible():
-    view = make_view(
-        facts={
-            "taxpayer_dob": fact("1961-01-02"),
-            "filing_status_claim": fact("single"),
-        }
+    facts = single_facts(
+        taxpayer_birth_date=fact("1961-01-02"),
     )
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["eligible_1040sr"] is False
+    assert result["eligibility"]["in_scope"] is False
+    assert result["escalation"]["condition"] == OUT_OF_SCOPE
 
-    result = run(view, tools={})
-
-    assert (
-        result["eligibility"]["eligible_1040sr"]
-        is False
-    )
-
-    assert (
-        result["handoff_request"]["to"]
-        == "human"
-    )
-
-
-# ---------------------------------------------------------------------
-# 4. MFJ: only one spouse needs to qualify
-# ---------------------------------------------------------------------
 
 def test_mfj_spouse_can_make_return_eligible():
-    view = make_view(
-        facts={
-            "age": fact(60),
-            "spouse_age": fact(70),
-            "filing_status_claim": fact("mfj"),
-        }
+    facts = mfj_facts(
+        taxpayer_birth_date=fact("1965-01-01"),
+        spouse_birth_date=fact("1950-01-01"),
     )
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["filing_status"] == "mfj"
+    assert result["eligibility"]["taxpayer_qualifies"] is False
+    assert result["eligibility"]["spouse_qualifies"] is True
+    assert result["eligibility"]["eligible_1040sr"] is True
 
-    result = run(view, tools={})
 
-    eligibility = result["eligibility"]
-
-    assert eligibility["taxpayer_qualifies"] is False
-    assert eligibility["spouse_qualifies"] is True
-    assert eligibility["eligible_1040sr"] is True
-
+def test_rules_derives_mfs_from_plain_intake_answers():
+    facts = mfj_facts(
+        file_jointly=fact("no"),
+        spouse_itemizing=fact("no"),
+    )
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["filing_status"] == "mfs"
     assert result["handoff_request"]["to"] == "computation"
 
 
-# ---------------------------------------------------------------------
-# 5. Invalid filing status
-# ---------------------------------------------------------------------
-
-def test_invalid_filing_status_escalates():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("invalid_status"),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert (
-        result["eligibility"]["filing_status_valid"]
-        is False
-    )
-
-    assert result["escalation"]["pending"] is True
-    assert result["handoff_request"]["to"] == "human"
+def test_human_filing_status_override_takes_precedence():
+    facts = {
+        "taxpayer_birth_date": fact("1950-05-10"),
+        "married_dec31": fact("no"),
+        "household_situation": fact("widowed"),
+        "spouse_death_year": fact(2023),
+        "filing_status": fact(
+            "qss",
+            source="human:FILING_STATUS_AMBIGUITY",
+        ),
+        "taxpayer_blind": fact("no"),
+        "us_resident_all_year": fact("yes"),
+    }
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["filing_status"] == "qss"
+    assert result["handoff_request"]["to"] == "computation"
 
 
-# ---------------------------------------------------------------------
-# 6. Missing information
-# ---------------------------------------------------------------------
-
-def test_missing_age_returns_to_intake():
-    view = make_view(
-        facts={
-            "filing_status_claim": fact("single"),
-        }
-    )
-
-    result = run(view, tools={})
-
+def test_missing_birth_date_returns_to_intake():
+    facts = {
+        "married_dec31": fact("no"),
+        "household_situation": fact("single"),
+        "taxpayer_blind": fact("no"),
+    }
+    result = run(make_view(facts=facts), tools={})
     assert result["handoff_request"]["to"] == "intake"
-
-    assert "Missing required information" in (
-        result["handoff_request"]["reason"]
-    )
+    assert "taxpayer_birth_date" in result["handoff_request"]["reason"]
 
 
-def test_missing_filing_status_returns_to_intake():
-    view = make_view(
-        facts={
-            "age": fact(70),
-        }
-    )
+def test_missing_filing_answers_escalate_as_ambiguous():
+    facts = {
+        "taxpayer_birth_date": fact("1950-05-10"),
+        "taxpayer_blind": fact("no"),
+    }
+    result = run(make_view(facts=facts), tools={})
+    assert result["escalation"]["condition"] == FILING_STATUS_AMBIGUITY
+    assert result["handoff_request"]["to"] == "human"
 
-    result = run(view, tools={})
 
+def test_no_blindness_does_not_add_box():
+    result = run(make_view(facts=single_facts()), tools={})
+    assert result["eligibility"]["age_blindness_boxes"] == 1
+
+
+def test_yes_blindness_adds_box():
+    facts = single_facts(taxpayer_blind=fact("yes"))
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["age_blindness_boxes"] == 2
+
+
+def test_not_sure_blindness_returns_to_intake():
+    facts = single_facts(taxpayer_blind=fact("not_sure"))
+    result = run(make_view(facts=facts), tools={})
     assert result["handoff_request"]["to"] == "intake"
+    assert "taxpayer_blind" in result["handoff_request"]["reason"]
 
 
-# ---------------------------------------------------------------------
-# 7. Age/blindness boxes
-# ---------------------------------------------------------------------
-
-def test_age_blindness_box_count_single():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "taxpayer_blind": fact(True),
-        }
+def test_mfj_age_blindness_boxes_include_relevant_spouse():
+    facts = mfj_facts(
+        spouse_birth_date=fact("1950-08-20"),
+        taxpayer_blind=fact("yes"),
+        spouse_blind=fact("yes"),
     )
-
-    result = run(view, tools={})
-
-    assert (
-        result["eligibility"]["age_blindness_boxes"]
-        == 2
-    )
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["age_blindness_boxes"] == 4
 
 
-def test_age_blindness_box_count_mfj():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "spouse_age": fact(70),
-            "filing_status_claim": fact("mfj"),
-            "taxpayer_blind": fact(True),
-            "spouse_blind": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert (
-        result["eligibility"]["age_blindness_boxes"]
-        == 4
-    )
-
-
-# ---------------------------------------------------------------------
-# 8. Schedule C / self-employment is out of scope
-# ---------------------------------------------------------------------
-
-def test_self_employment_is_out_of_scope():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "has_self_employment_income": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
+@pytest.mark.parametrize(
+    ("field_name", "reason_text"),
+    [
+        ("sold_stocks_or_property", "Stocks"),
+        ("business_or_rental_income", "Business"),
+        ("foreign_income_or_accounts", "Foreign"),
+        ("digital_assets", "Digital"),
+        ("has_other_tax_forms", "Other tax forms"),
+        ("can_be_claimed_as_dependent", "claimed as a dependent"),
+    ],
+)
+def test_yes_scope_screening_answer_escalates(field_name, reason_text):
+    facts = single_facts(**{field_name: fact("yes")})
+    result = run(make_view(facts=facts), tools={})
     assert result["eligibility"]["in_scope"] is False
-
-    assert result["escalation"]["pending"] is True
-
-    assert (
-        result["handoff_request"]["to"]
-        == "human"
-    )
-
-    assert any(
-        "Schedule C" in reason
-        for reason in result["eligibility"][
-            "out_of_scope_reasons"
-        ]
-    )
+    assert result["escalation"]["condition"] == OUT_OF_SCOPE
+    assert reason_text.lower() in result["escalation"]["reason"].lower()
 
 
-# ---------------------------------------------------------------------
-# 9. Rental income is out of scope
-# ---------------------------------------------------------------------
-
-def test_rental_income_is_out_of_scope():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "has_rental_income": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
+def test_not_sure_scope_answer_escalates_as_out_of_scope():
+    facts = single_facts(digital_assets=fact("not_sure"))
+    result = run(make_view(facts=facts), tools={})
     assert result["eligibility"]["in_scope"] is False
+    assert result["escalation"]["condition"] == OUT_OF_SCOPE
+    assert "not_sure" in result["escalation"]["reason"]
 
-    assert result["handoff_request"]["to"] == "human"
 
-
-# ---------------------------------------------------------------------
-# 10. Digital assets are out of scope
-# ---------------------------------------------------------------------
-
-def test_digital_assets_are_out_of_scope():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "has_digital_assets": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
+def test_not_us_resident_all_year_is_out_of_scope():
+    facts = single_facts(us_resident_all_year=fact("no"))
+    result = run(make_view(facts=facts), tools={})
     assert result["eligibility"]["in_scope"] is False
+    assert result["escalation"]["condition"] == OUT_OF_SCOPE
 
-    assert result["handoff_request"]["to"] == "human"
 
-
-# ---------------------------------------------------------------------
-# 11. 1099-R Box 2b escalation from facts
-# ---------------------------------------------------------------------
-
-def test_1099r_box_2b_from_facts_escalates():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "has_1099r_taxable_amount_not_determined":
-                fact(True),
-        }
+def test_mfs_spouse_itemizing_is_out_of_scope():
+    facts = mfj_facts(
+        file_jointly=fact("no"),
+        spouse_itemizing=fact("yes"),
     )
-
-    result = run(view, tools={})
-
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["filing_status"] == "mfs"
     assert result["eligibility"]["in_scope"] is False
-
-    assert result["escalation"]["pending"] is True
-
-    assert (
-        result["handoff_request"]["to"]
-        == "human"
-    )
+    assert result["escalation"]["condition"] == OUT_OF_SCOPE
 
 
-# ---------------------------------------------------------------------
-# 12. 1099-R Box 2b escalation from extracted document
-# ---------------------------------------------------------------------
+def test_spouse_can_be_claimed_is_out_of_scope_for_joint_return():
+    facts = mfj_facts(spouse_can_be_claimed=fact("yes"))
+    result = run(make_view(facts=facts), tools={})
+    assert result["eligibility"]["in_scope"] is False
+    assert result["escalation"]["condition"] == OUT_OF_SCOPE
 
-def test_1099r_box_2b_from_extracted_document():
+
+def test_1099r_box_2b_from_extracted_document_escalates():
     extracted = {
         "doc-1": {
             "kind": "1099-R",
-
             "fields": {
                 "box_2b": {
-                    "value": True,
+                    "value": "yes",
                     "source": "doc-1",
                 }
             },
         }
     }
-
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-        },
-        extracted=extracted,
+    result = run(
+        make_view(
+            facts=single_facts(),
+            extracted=extracted,
+        ),
+        tools={},
     )
-
-    result = run(view, tools={})
-
     assert result["eligibility"]["in_scope"] is False
+    assert result["escalation"]["condition"] == FORM_1099R_BOX_2B
 
-    assert result["escalation"]["pending"] is True
-
-    assert (
-        result["handoff_request"]["to"]
-        == "human"
-    )
-
-
-# ---------------------------------------------------------------------
-# 13. Filing-status ambiguity
-# ---------------------------------------------------------------------
-
-def test_filing_status_ambiguity_escalates():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "filing_status_ambiguous": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert result["escalation"]["pending"] is True
-
-    assert (
-        result["handoff_request"]["to"]
-        == "human"
-    )
-
-
-# ---------------------------------------------------------------------
-# 14. Spouse death during tax year
-# ---------------------------------------------------------------------
-
-def test_spouse_death_triggers_filing_status_review():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("mfj"),
-            "spouse_age": fact(70),
-            "spouse_died_during_tax_year": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert result["escalation"]["pending"] is True
-
-    assert result["handoff_request"]["to"] == "human"
-
-
-# ---------------------------------------------------------------------
-# 15. Source conflict
-# ---------------------------------------------------------------------
-
-def test_document_user_conflict_escalates():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "document_user_conflict": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert result["escalation"]["pending"] is True
-
-    assert (
-        result["handoff_request"]["to"]
-        == "human"
-    )
-
-
-# ---------------------------------------------------------------------
-# 16. Tax advice request
-# ---------------------------------------------------------------------
-
-def test_tax_advice_request_escalates():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "tax_advice_requested": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert result["escalation"]["pending"] is True
-
-    assert result["handoff_request"]["to"] == "human"
-
-
-# ---------------------------------------------------------------------
-# 17. Financial exploitation
-# ---------------------------------------------------------------------
-
-def test_exploitation_flag_escalates():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "financial_exploitation_flag": fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert result["escalation"]["pending"] is True
-
-    assert result["handoff_request"]["to"] == "human"
-
-
-# ---------------------------------------------------------------------
-# 18. Standard deduction exception
-# ---------------------------------------------------------------------
-
-def test_dependent_standard_deduction_exception():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "taxpayer_can_be_claimed_as_dependent":
-                fact(True),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert result["eligibility"]["in_scope"] is False
-    assert result["escalation"]["pending"] is True
-    assert result["handoff_request"]["to"] == "human"
-
-
-# ---------------------------------------------------------------------
-# 19. Senior deduction rule applicability
-# ---------------------------------------------------------------------
-
-def test_senior_deduction_rule_is_identified():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-        }
-    )
-
-    result = run(view, tools={})
-
-    assert (
-        "Schedule 1-A enhanced senior deduction"
-        in result["eligibility"]["applicable_rules"]
-    )
-
-
-# ---------------------------------------------------------------------
-# 20. Social Security rule dependency
-# ---------------------------------------------------------------------
 
 def test_ssa1099_adds_social_security_rule():
     extracted = {
@@ -527,45 +249,87 @@ def test_ssa1099_adds_social_security_rule():
             "fields": {},
         }
     }
-
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-        },
-        extracted=extracted,
+    result = run(
+        make_view(
+            facts=single_facts(),
+            extracted=extracted,
+        ),
+        tools={},
     )
-
-    result = run(view, tools={})
-
     assert (
         "Taxable Social Security worksheet"
         in result["eligibility"]["applicable_rules"]
     )
 
 
-# ---------------------------------------------------------------------
-# 21. Resolved condition should not be raised again
-# ---------------------------------------------------------------------
-
-def test_resolved_out_of_scope_condition_not_repeated():
-    view = make_view(
-        facts={
-            "age": fact(70),
-            "filing_status_claim": fact("single"),
-            "has_self_employment_income": fact(True),
-        },
-
-        human_decisions=[
-            {
-                "condition": "OUT_OF_SCOPE",
-                "decision": "continue",
-            }
-        ],
+def test_existing_intake_tax_advice_escalation_is_preserved():
+    escalation = {
+        "pending": True,
+        "condition": TAX_ADVICE_REQUEST,
+        "reason": "Taxpayer requested advice",
+        "raised_by": "intake",
+    }
+    result = run(
+        make_view(
+            facts=single_facts(),
+            escalation=escalation,
+        ),
+        tools={},
     )
+    assert result["escalation"] == escalation
+    assert result["handoff_request"]["to"] == "human"
 
-    result = run(view, tools={})
 
-    # The same OUT_OF_SCOPE escalation should not be
-    # raised again after human resolution.
+def test_existing_intake_exploitation_escalation_is_preserved():
+    escalation = {
+        "pending": True,
+        "condition": EXPLOITATION_SIGNS,
+        "reason": "Third-party pressure detected",
+        "raised_by": "intake",
+    }
+    result = run(
+        make_view(
+            facts=single_facts(),
+            escalation=escalation,
+        ),
+        tools={},
+    )
+    assert result["escalation"] == escalation
+    assert result["handoff_request"]["to"] == "human"
+
+
+def test_caring_for_someone_requires_filing_status_review():
+    facts = single_facts(
+        household_situation=fact("caring_for_someone"),
+    )
+    result = run(make_view(facts=facts), tools={})
+    assert result["escalation"]["condition"] == FILING_STATUS_AMBIGUITY
+
+
+def test_widowed_requires_filing_status_review():
+    facts = single_facts(
+        household_situation=fact("widowed"),
+        spouse_death_year=fact(2023),
+    )
+    result = run(make_view(facts=facts), tools={})
+    assert result["escalation"]["condition"] == FILING_STATUS_AMBIGUITY
+
+
+def test_resolved_out_of_scope_is_not_raised_again():
+    facts = single_facts(business_or_rental_income=fact("yes"))
+    decisions = [
+        {
+            "condition": OUT_OF_SCOPE,
+            "decision": "continue",
+        }
+    ]
+    result = run(
+        make_view(
+            facts=facts,
+            human_decisions=decisions,
+        ),
+        tools={},
+    )
     assert "escalation" not in result
+    assert result["eligibility"]["in_scope"] is False
+    assert result["handoff_request"]["to"] == "computation"

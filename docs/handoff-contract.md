@@ -18,11 +18,20 @@ Every agent can also read `escalation` and `human_decisions`, and write `escalat
 | Agent | Reads | Writes |
 |---|---|---|
 | Orchestrator | compact routing view (flags, counts; no documents or chat) | control fields only (`next_agent`, `status`, `step`, `handoff_log`, ...) |
-| Intake | `messages`, `facts`, `session_summary` | `messages`, `facts`, `pending_question`, `intake_complete` |
+| Intake | `messages` (**last 6 only**), `facts` (all), `session_summary` | `messages`, `facts`, `pending_question`, `intake_complete` |
 | Extraction | `documents` | `extracted` (keyed by `doc_id`) |
 | Rules | `facts`, `extracted`, `session_summary` | `eligibility` |
-| Computation | `facts`, `extracted`, `eligibility`, `pending_revision` | `computed` (line -> ProvenanceRecord) |
+| Computation | `facts` (**numeric values only**), `extracted`, `eligibility` (**`filing_status` only**), `pending_revision` | `computed` (line -> ProvenanceRecord) |
 | Review | `computed`, `eligibility`, `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything |
+
+**Your view is narrower than the table suggests, on purpose** (`docs/decisions/001-context-strategy.md`):
+- **Intake's chat window is not memory.** You see only the last 6 messages. Anything you must remember
+  (an early statement, a correction, a worry about pressure) has to be written to `facts` the turn you
+  hear it. `facts` is all you get of older turns.
+- `session_summary` is a one-line, orchestrator-built list of milestones and human decisions. It never
+  contains amounts or chat text; do not rely on it for values.
+- Need a field you are not shown? Change `POLICY`/`TRANSFORMS` by PR (tag Person 1); do not work around it.
+- Whole-state mode for comparison: `--no-context-strategy` / `build_graph(context_strategy=False)`.
 
 ## Handoff request
 Return `"handoff_request": {"to": "<next>", "reason": "<short text>"}`. `to` is one of
@@ -61,10 +70,11 @@ Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_
 adds `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` itself.
 When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
 and pauses the thread. The call returns `result["__interrupt__"][0].value` =
-`{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields}`.
+`{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields,
+also_pending}` (plus `error` if the previous answer was rejected).
 A volunteer answers on the same `thread_id` with
 `graph.invoke(Command(resume={"decision": ..., "note": ..., "resolution": {...}}), config)`
-(the value must be a dict).
+(the value must be a dict; `Command(resume=None)` crashes inside LangGraph).
 
 | Condition | Allowed decisions |
 |---|---|
@@ -78,6 +88,9 @@ A volunteer answers on the same `thread_id` with
   `SOURCE_CONFLICT` takes `{fact_name: value}`. It is written to `facts` as
   `{"value": ..., "source": "human:<CONDITION>"}`, so read it from `facts` like any other fact.
   `TAX_ADVICE_REQUEST` takes none: put the question in the note for the volunteer.
+  **Rules must honor it:** if `facts["filing_status"]` exists (source `human:...`), use it instead of
+  deriving a status; otherwise the volunteer's answer never reaches the draft. (Known gap: the Rules agent on
+  `main` reads only `filing_status_claim` today; see `tests/test_scenarios.py`, marked expected-failure.)
 - `stop` ends the case with `status == "halted_by_human"`; the note is optional.
 - An invalid answer does not raise: the call returns another interrupt whose payload has an `error`
   string. Show it and let the volunteer answer again.
@@ -93,11 +106,14 @@ read it): if an entry with your condition exists, carry on. If Rules returns
   (`view["documents"]` has one entry). Return `extracted` containing only that document's record,
   keyed by its id. Do not read or depend on other documents; results are merged by `doc_id`,
   independent of finishing order. Parallel workers may each set `escalation`; none is lost (the most
-  severe is shown first, the rest are queued and shown in turn).
+  severe is shown first, the rest are queued and shown in turn: `also_pending` lists the conditions
+  still waiting in the payload, and each decision records `also_raised` in `human_decisions`. If the
+  human stops the case, the queued conditions are recorded there and not shown separately).
 - **Review loop.** Review returns `review = {"verdict": "pass" | "fail", "findings": [...],
   "send_back_to": "computation"}`; any other verdict is an error. On `fail` the orchestrator clears
   the old verdict, counts a round, and sends the work to **Computation** (the only supported target
-  for now). Computation then sees `pending_revision = {"target", "round", "findings"}` in its view and
+  for now; a request for `rules` or anything else is routed to Computation anyway and logged in
+  `review_history` as `requested` vs `sent_to`). Computation then sees `pending_revision = {"target", "round", "findings"}` in its view and
   must address those findings. Review runs again from scratch. At most `max_revisions` rounds (input
   field, default 3); after that the orchestrator raises `REVIEW_BOUND_EXCEEDED` (stop-only).
 - **Loop guard.** If an agent's output changes nothing the router looks at (for example `{}`), or the
