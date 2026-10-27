@@ -92,7 +92,7 @@ class ToolBox:
     def __init__(self, agent: str, registry: dict[str, Callable] | None = None):
         self.agent = agent
         self._allowed = POLICY[agent].tools
-        self._registry = TOOLS if registry is None else registry
+        self._registry = {**TOOLS, **(registry or {})}  # a custom registry adds to the defaults
         self.calls: list[str] = []
         self.usage: list[dict] = []
 
