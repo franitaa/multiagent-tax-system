@@ -261,14 +261,20 @@ def run(view, tools):
     benefits = from_documents("line_6a")
     exempt = computed["line_2a"]["value"]
 
+    def direct_or_zero(line, fact_name, note):
+        """Direct user input for `line`; when none was entered, a tool-made zero that says so."""
+        value = direct(line, fact_name)
+        return value if value is not None else total(line, {}, note)
+
     # --- adjustments (Schedule 1, direct user input)
-    adjustments = direct("line_10", "adjustments_amount")
-    if adjustments is None:
-        adjustments = total("line_10", {}, "No Schedule 1 adjustments entered")
+    adjustments = direct_or_zero("line_10", "adjustments_amount", "No Schedule 1 adjustments entered")
 
     # --- 6b needs income other than Social Security, reduced by adjustments
+    income_before_benefits = call("sum_amounts", amounts={
+        "line_1z": wages, "line_2b": interest, "line_3b": dividends, "line_4b": ira,
+        "line_5b": pensions}, label="income_before_social_security_and_adjustments")["value"]
     other_income = call(
-        "subtract_amounts", start=wages + interest + dividends + ira + pensions,
+        "subtract_amounts", start=income_before_benefits,
         subtract={"line_10": adjustments}, label="income_before_social_security",
         start_name="lines_1z_2b_3b_4b_5b",
     )["value"]
@@ -297,9 +303,15 @@ def run(view, tools):
         age_65_or_older=senior_self, blind=_yes(facts, "blind", "taxpayer_blind"),
         spouse_age_65_or_older=spouse_senior,
         spouse_blind=joint and _yes(facts, "spouse_blind")))
+    # the tool needs MAGI that is not negative, and a count of qualifying people; both come from tools
+    magi = call("subtract_amounts", start=agi, subtract={}, label="magi_for_senior_deduction",
+                start_name="line_11a")["value"]
+    qualifying = int(call("sum_amounts", amounts={
+        "taxpayer_65_or_older": int(senior_self), "spouse_65_or_older": int(spouse_senior)},
+        label="qualifying_people")["value"])
     senior = add("line_13b", call(
-        "calculate_senior_deduction", magi=max(0, agi),
-        qualifying_people=int(senior_self) + int(spouse_senior), filing_status=status))
+        "calculate_senior_deduction", magi=magi, qualifying_people=qualifying,
+        filing_status=status))
     deductions = total("line_14", {"line_12e": std, "line_13b": senior})
     taxable = add("line_15", call(
         "subtract_amounts", start=agi, subtract={"line_14": deductions},
@@ -307,9 +319,10 @@ def run(view, tools):
 
     # --- tax (line 16 uses the rate schedule tool, then Schedules 2/3 direct inputs)
     tax = add("line_16", call("calculate_income_tax", taxable_income=taxable, filing_status=status))
-    schedule2 = direct("line_17", "schedule2_part1_tax") or 0
-    credits = direct("line_20", "schedule3_nonrefundable_credits") or 0
-    other_taxes = direct("line_23", "schedule2_other_taxes") or 0
+    schedule2 = direct_or_zero("line_17", "schedule2_part1_tax", "No Schedule 2 tax entered")
+    credits = direct_or_zero("line_20", "schedule3_nonrefundable_credits",
+                             "No Schedule 3 credits entered")
+    other_taxes = direct_or_zero("line_23", "schedule2_other_taxes", "No other taxes entered")
     line_18 = total("line_18", {"line_16": tax, "line_17": schedule2})
     line_22 = add("line_22", call(
         "subtract_amounts", start=line_18, subtract={"line_20": credits}, label="line_22",
@@ -320,8 +333,10 @@ def run(view, tools):
     withheld_w2 = from_documents("line_25a")
     withheld_1099 = from_documents("line_25b")
     withheld = total("line_25d", {"line_25a": withheld_w2, "line_25b": withheld_1099})
-    estimated = direct("line_26", "estimated_payments_amount") or 0
-    schedule3_payments = direct("line_31", "schedule3_payments") or 0
+    estimated = direct_or_zero("line_26", "estimated_payments_amount",
+                              "No estimated payments entered")
+    schedule3_payments = direct_or_zero("line_31", "schedule3_payments",
+                                       "No Schedule 3 payments entered")
     payments = total("line_33", {
         "line_25d": withheld, "line_26": estimated, "line_31": schedule3_payments})
 
