@@ -1,6 +1,8 @@
 """STUB. Owned by the Eligibility & Rules teammate."""
 
+
 from datetime import datetime
+from typing import Any
 
 from src.state import (
     OUT_OF_SCOPE,
@@ -20,212 +22,89 @@ VALID_FILING_STATUSES = {
     "qss",
 }
 
+YES_NO_NOT_SURE = {"yes", "no", "not_sure"}
 
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
 
-def _fact_value(facts, key, default=None):
-    """
-    Extract a value from a fact stored as:
 
-    {
-        "value": ...,
-        "source": ...
+
+def _fact_record(facts: dict[str, Any], name: str) -> dict[str, Any] | None:
+    record = facts.get(name)
+    return record if isinstance(record, dict) else None
+
+
+def _fact_value(
+    facts: dict[str, Any],
+    name: str,
+    default: Any = None,
+) -> Any:
+    record = _fact_record(facts, name)
+    return record.get("value", default) if record is not None else default
+
+
+def _fact_source(
+    facts: dict[str, Any],
+    name: str,
+    default: Any = None,
+) -> Any:
+    record = _fact_record(facts, name)
+    return record.get("source", default) if record is not None else default
+
+
+def _normalize(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip().lower()
+
+
+def _is_yes(value: Any) -> bool:
+    return _normalize(value) == "yes"
+
+
+def _is_no(value: Any) -> bool:
+    return _normalize(value) == "no"
+
+
+def _is_not_sure(value: Any) -> bool:
+    return _normalize(value) == "not_sure"
+
+
+def _is_valid_yes_no_not_sure(value: Any) -> bool:
+    return _normalize(value) in YES_NO_NOT_SURE
+
+
+# -----------------------------------------------------------------------------
+# Escalation and compatibility helpers
+# -----------------------------------------------------------------------------
+
+
+def _resolved_conditions(view: dict[str, Any]) -> set[str]:
+    """Conditions a human resolved with a continue decision."""
+
+    return {
+        decision["condition"]
+        for decision in view.get("human_decisions", [])
+        if isinstance(decision, dict)
+        and decision.get("decision") == "continue"
+        and decision.get("condition")
     }
-    """
-    item = facts.get(key)
-
-    if isinstance(item, dict):
-        return item.get("value", default)
-
-    return default
-
-
-def _qualifies_for_1040sr(dob=None, age=None):
-    """
-    Determine Form 1040-SR eligibility for tax year 2025.
-
-    Assignment rule:
-    born before January 2, 1961.
-
-    The age fallback is retained because the current Intake stub
-    provides age rather than DOB.
-    """
-
-    if dob:
-        try:
-            birth_date = datetime.strptime(
-                dob,
-                "%Y-%m-%d"
-            )
-
-            cutoff = datetime(1961, 1, 2)
-
-            return birth_date < cutoff
-
-        except (ValueError, TypeError):
-            return None
-
-    if age is not None:
-        return age >= 65
-
-    return None
-
-
-def _count_age_blindness_boxes(
-    taxpayer_age_65_or_older=False,
-    taxpayer_blind=False,
-    spouse_age_65_or_older=False,
-    spouse_blind=False,
-):
-    """
-    Count Form 1040-SR line 12d age/blindness boxes.
-
-    This agent counts boxes only.
-    It does NOT calculate the dollar deduction.
-    """
-
-    return sum([
-        bool(taxpayer_age_65_or_older),
-        bool(taxpayer_blind),
-        bool(spouse_age_65_or_older),
-        bool(spouse_blind),
-    ])
-
-
-def _resolved_conditions(view):
-    """
-    Return escalation conditions that have already been resolved
-    by a human.
-
-    The handoff contract says an agent must not repeatedly raise
-    the same condition after a human has resolved it.
-    """
-
-    resolved = set()
-
-    for decision in view.get(
-        "human_decisions",
-        []
-    ):
-        condition = decision.get("condition")
-
-        if condition:
-            resolved.add(condition)
-
-    return resolved
-
-
-def _document_kinds(extracted):
-    """
-    Return normalized document kinds found by the Extraction agent.
-    """
-
-    kinds = set()
-
-    for record in extracted.values():
-
-        if not isinstance(record, dict):
-            continue
-
-        kind = record.get("kind")
-
-        if kind:
-            kinds.add(
-                str(kind).strip().lower()
-            )
-
-    return kinds
-
-
-def _field_value(record, field_name, default=None):
-    """
-    Read an extracted document field.
-
-    Example:
-
-    {
-        "fields": {
-            "box_2b": {
-                "value": True,
-                "source": "doc-1"
-            }
-        }
-    }
-    """
-
-    fields = record.get(
-        "fields",
-        {}
-    )
-
-    item = fields.get(field_name)
-
-    if isinstance(item, dict):
-        return item.get(
-            "value",
-            default
-        )
-
-    if item is not None:
-        return item
-
-    return default
-
-
-def _has_1099r_box_2b(extracted):
-    """
-    Check whether any extracted 1099-R has
-    'taxable amount not determined' checked.
-    """
-
-    for record in extracted.values():
-
-        if not isinstance(record, dict):
-            continue
-
-        kind = str(
-            record.get("kind", "")
-        ).strip().lower()
-
-        if kind not in {
-            "1099-r",
-            "1099r",
-        }:
-            continue
-
-        value = _field_value(
-            record,
-            "box_2b",
-            False
-        )
-
-        if bool(value):
-            return True
-
-    return False
 
 
 def _make_escalation(
-    condition,
-    reason,
-    eligibility,
-):
-    """
-    Standard escalation response for the Rules agent.
-    """
-
+    condition: str,
+    reason: str,
+    eligibility: dict[str, Any],
+) -> dict[str, Any]:
     return {
         "eligibility": eligibility,
-
         "escalation": {
             "pending": True,
             "condition": condition,
             "reason": reason,
             "raised_by": "rules",
         },
-
         "handoff_request": {
             "to": "human",
             "reason": condition,
@@ -233,694 +112,501 @@ def _make_escalation(
     }
 
 
-# ---------------------------------------------------------------------
-# Main Rules Agent
-# ---------------------------------------------------------------------
-
-def run(view, tools):
-    """
-    Eligibility & Rules Agent.
-
-    Allowed reads:
-    - facts
-    - extracted
-    - session_summary
-    - escalation
-    - human_decisions
-
-    Allowed writes:
-    - eligibility
-    - escalation
-    - handoff_request
-    """
-
-    facts = view.get(
-        "facts",
-        {}
-    )
-
-    extracted = view.get(
-        "extracted",
-        {}
-    )
-
-    resolved = _resolved_conditions(
-        view
-    )
-
-    # -----------------------------------------------------------------
-    # Read taxpayer information
-    # -----------------------------------------------------------------
-
-    age = _fact_value(
-        facts,
-        "age"
-    )
-
-    taxpayer_dob = _fact_value(
-        facts,
-        "taxpayer_dob"
-    )
-
-    filing_status = _fact_value(
-        facts,
-        "filing_status_claim"
-    )
-
-    spouse_age = _fact_value(
-        facts,
-        "spouse_age"
-    )
-
-    spouse_dob = _fact_value(
-        facts,
-        "spouse_dob"
-    )
-
-    taxpayer_blind = _fact_value(
-        facts,
-        "taxpayer_blind",
-        False
-    )
-
-    spouse_blind = _fact_value(
-        facts,
-        "spouse_blind",
-        False
-    )
-
-    # -----------------------------------------------------------------
-    # Prepare result
-    # -----------------------------------------------------------------
-
-    eligibility = {
-        "eligible_1040sr": None,
-        "taxpayer_qualifies": None,
-        "spouse_qualifies": None,
-
-        "filing_status": filing_status,
-        "filing_status_valid": False,
-
-        "age_blindness_boxes": 0,
-
-        "in_scope": True,
-
-        "applicable_rules": [],
-
-        "out_of_scope_reasons": [],
-
-        "citations": [],
+def _return_to_intake(
+    eligibility: dict[str, Any],
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "eligibility": eligibility,
+        "handoff_request": {
+            "to": "intake",
+            "reason": reason,
+        },
     }
 
-    # -----------------------------------------------------------------
-    # Missing required information
-    # -----------------------------------------------------------------
 
-    missing = []
-
-    if (
-        age is None
-        and taxpayer_dob is None
-    ):
-        missing.append(
-            "taxpayer age or date of birth"
-        )
-
-    if filing_status is None:
-        missing.append(
-            "filing status"
-        )
-
-    if missing:
-
-        return {
-            "eligibility": eligibility,
-
-            "handoff_request": {
-                "to": "intake",
-
-                "reason": (
-                    "Missing required information: "
-                    + ", ".join(missing)
-                ),
-            },
-        }
-
-    # -----------------------------------------------------------------
-    # Validate filing status
-    # -----------------------------------------------------------------
-
-    normalized_status = (
-        str(filing_status)
-        .strip()
-        .lower()
-    )
-
-    eligibility[
-        "filing_status"
-    ] = normalized_status
-
-    eligibility[
-        "filing_status_valid"
-    ] = (
-        normalized_status
-        in VALID_FILING_STATUSES
-    )
-
-    eligibility["citations"].append(
-        "Assignment 7 §3.3"
-    )
-
-    if not eligibility[
-        "filing_status_valid"
-    ]:
-
-        eligibility["in_scope"] = False
-
-        eligibility[
-            "out_of_scope_reasons"
-        ].append(
-            "Unsupported filing status"
-        )
-
-        if (
-            OUT_OF_SCOPE
-            not in resolved
-        ):
-
-            return _make_escalation(
-                OUT_OF_SCOPE,
-
-                (
-                    "Unsupported filing "
-                    f"status: {filing_status}"
-                ),
-
-                eligibility,
-            )
-
-    # -----------------------------------------------------------------
-    # Filing-status ambiguity
-    # -----------------------------------------------------------------
-
-    filing_status_ambiguous = (
-        _fact_value(
-            facts,
-            "filing_status_ambiguous",
-            False
-        )
-    )
-
-    spouse_died_during_tax_year = (
-        _fact_value(
-            facts,
-            "spouse_died_during_tax_year",
-            False
-        )
-    )
-
-    if (
-        filing_status_ambiguous
-        or spouse_died_during_tax_year
-    ):
-
-        if (
-            FILING_STATUS_AMBIGUITY
-            not in resolved
-        ):
-
-            return _make_escalation(
-                FILING_STATUS_AMBIGUITY,
-
-                (
-                    "Filing status requires "
-                    "human review."
-                ),
-
-                eligibility,
-            )
-
-    # -----------------------------------------------------------------
-    # Form 1040-SR eligibility
-    # -----------------------------------------------------------------
-
-    taxpayer_qualifies = (
-        _qualifies_for_1040sr(
-            dob=taxpayer_dob,
-            age=age
-        )
-    )
-
-    spouse_qualifies = (
-        _qualifies_for_1040sr(
-            dob=spouse_dob,
-            age=spouse_age
-        )
-    )
-
-    eligibility[
-        "taxpayer_qualifies"
-    ] = taxpayer_qualifies
-
-    eligibility[
-        "spouse_qualifies"
-    ] = spouse_qualifies
-
-    if normalized_status == "mfj":
-
-        eligible_1040sr = (
-            taxpayer_qualifies is True
-            or spouse_qualifies is True
-        )
-
-    else:
-
-        eligible_1040sr = (
-            taxpayer_qualifies is True
-        )
-
-    eligibility[
-        "eligible_1040sr"
-    ] = eligible_1040sr
-
-    eligibility[
-        "applicable_rules"
-    ].append(
-        "1040-SR eligibility"
-    )
-
-    eligibility["citations"].append(
-        "Assignment 7 §3.2 Rule 1"
-    )
-
-    if not eligible_1040sr:
-
-        eligibility["in_scope"] = False
-
-        eligibility[
-            "out_of_scope_reasons"
-        ].append(
-            "Not eligible for Form 1040-SR"
-        )
-
-        if (
-            OUT_OF_SCOPE
-            not in resolved
-        ):
-
-            return _make_escalation(
-                OUT_OF_SCOPE,
-
-                (
-                    "Taxpayer does not meet "
-                    "Form 1040-SR eligibility."
-                ),
-
-                eligibility,
-            )
-
-    # -----------------------------------------------------------------
-    # Age / blindness boxes
-    # -----------------------------------------------------------------
-
-    taxpayer_age_65_or_older = (
-        taxpayer_qualifies is True
-    )
-
-    spouse_age_65_or_older = (
-        spouse_qualifies is True
-    )
-
-    age_blindness_boxes = (
-        _count_age_blindness_boxes(
-
-            taxpayer_age_65_or_older=
-                taxpayer_age_65_or_older,
-
-            taxpayer_blind=
-                taxpayer_blind,
-
-            spouse_age_65_or_older=
-                spouse_age_65_or_older,
-
-            spouse_blind=
-                spouse_blind,
-        )
-    )
-
-    eligibility[
-        "age_blindness_boxes"
-    ] = age_blindness_boxes
-
-    eligibility[
-        "applicable_rules"
-    ].append(
-        "Standard deduction age/blindness rule"
-    )
-
-    eligibility["citations"].append(
-        "Assignment 7 §3.2 Rule 2"
-    )
-
-    # -----------------------------------------------------------------
-    # Senior deduction applicability
-    # -----------------------------------------------------------------
-
-    if (
-        taxpayer_age_65_or_older
-        or spouse_age_65_or_older
-    ):
-
-        eligibility[
-            "applicable_rules"
-        ].append(
-            "Schedule 1-A enhanced senior deduction"
-        )
-
-        eligibility["citations"].append(
-            "Assignment 7 §3.2 Rule 3"
-        )
-
-    # -----------------------------------------------------------------
-    # Social Security rule dependency
-    # -----------------------------------------------------------------
-
-    document_kinds = _document_kinds(
-        extracted
-    )
-
-    if (
-        "ssa-1099" in document_kinds
-        or "ssa1099" in document_kinds
-    ):
-
-        eligibility[
-            "applicable_rules"
-        ].append(
-            "Taxable Social Security worksheet"
-        )
-
-        eligibility["citations"].append(
-            "Assignment 7 §3.2 Rule 4"
-        )
-
-    # -----------------------------------------------------------------
-    # 1099-R Box 2b
-    # -----------------------------------------------------------------
-
-    box_2b_from_facts = (
-        _fact_value(
-            facts,
-            "has_1099r_taxable_amount_not_determined",
-            False
-        )
-    )
-
-    box_2b_from_documents = (
-        _has_1099r_box_2b(
-            extracted
-        )
-    )
-
-    if (
-        box_2b_from_facts
-        or box_2b_from_documents
-    ):
-
-        eligibility["in_scope"] = False
-
-        eligibility[
-            "out_of_scope_reasons"
-        ].append(
-            "1099-R taxable amount not determined"
-        )
-
-        if (
-            FORM_1099R_BOX_2B
-            not in resolved
-        ):
-
-            return _make_escalation(
-                FORM_1099R_BOX_2B,
-
-                (
-                    "1099-R Box 2b indicates "
-                    "taxable amount not determined."
-                ),
-
-                eligibility,
-            )
-
-    # -----------------------------------------------------------------
-    # Standard-deduction exception conditions
-    # -----------------------------------------------------------------
-
-    dependent = _fact_value(
-        facts,
-        "taxpayer_can_be_claimed_as_dependent",
-        False
-    )
-
-    spouse_itemizes = _fact_value(
-        facts,
-        "spouse_itemizes",
-        False
-    )
-
-    dual_status_alien = _fact_value(
-        facts,
-        "dual_status_alien",
-        False
-    )
-
-    standard_deduction_exceptions = []
-
-    if dependent:
-        standard_deduction_exceptions.append(
-            "Taxpayer can be claimed as a dependent"
-        )
-
-    if spouse_itemizes:
-        standard_deduction_exceptions.append(
-            "Separately filing spouse itemizes"
-        )
-
-    if dual_status_alien:
-        standard_deduction_exceptions.append(
-            "Dual-status alien"
-        )
-
-    if standard_deduction_exceptions:
-
-        eligibility["in_scope"] = False
-
-        eligibility[
-            "out_of_scope_reasons"
-        ].extend(
-            standard_deduction_exceptions
-        )
-
-        if (
-            OUT_OF_SCOPE
-            not in resolved
-        ):
-
-            return _make_escalation(
-                OUT_OF_SCOPE,
-
-                "; ".join(
-                    standard_deduction_exceptions
-                ),
-
-                eligibility,
-            )
-
-    # -----------------------------------------------------------------
-    # Other assignment out-of-scope conditions
-    # -----------------------------------------------------------------
-
-    out_of_scope_checks = [
-        (
-            "has_itemized_deductions",
-            "Itemized deductions / Schedule A",
-        ),
-
-        (
-            "has_self_employment_income",
-            "Self-employment / Schedule C",
-        ),
-
-        (
-            "has_rental_income",
-            "Rental income / Schedule E",
-        ),
-
-        (
-            "has_capital_gains_schedule_d",
-            "Capital gains requiring Schedule D",
-        ),
-
-        (
-            "has_digital_assets",
-            "Digital assets",
-        ),
-
-        (
-            "has_foreign_income_or_accounts",
-            "Foreign income or accounts",
-        ),
-
-        (
-            "has_amended_or_prior_year_return",
-            "Amended or prior-year return",
-        ),
-
-        (
-            "has_state_return",
-            "State return",
-        ),
-    ]
-
-    detected_out_of_scope = []
-
-    for fact_name, reason in out_of_scope_checks:
-
-        if _fact_value(
-            facts,
-            fact_name,
-            False
-        ):
-
-            detected_out_of_scope.append(
-                reason
-            )
-
-    if detected_out_of_scope:
-
-        eligibility["in_scope"] = False
-
-        eligibility[
-            "out_of_scope_reasons"
-        ].extend(
-            detected_out_of_scope
-        )
-
-        eligibility["citations"].append(
-            "Assignment 7 §3.3"
-        )
-
-        if (
-            OUT_OF_SCOPE
-            not in resolved
-        ):
-
-            return _make_escalation(
-                OUT_OF_SCOPE,
-
-                "; ".join(
-                    detected_out_of_scope
-                ),
-
-                eligibility,
-            )
-
-    # -----------------------------------------------------------------
-    # Source conflict
-    # -----------------------------------------------------------------
-
-    source_conflict = _fact_value(
-        facts,
-        "document_user_conflict",
-        False
-    )
-
-    if (
-        source_conflict
-        and SOURCE_CONFLICT
-        not in resolved
-    ):
-
-        return _make_escalation(
-            SOURCE_CONFLICT,
-
-            (
-                "Unresolved conflict between "
-                "taxpayer information and document."
-            ),
-
-            eligibility,
-        )
-
-    # -----------------------------------------------------------------
-    # Tax advice request
-    # -----------------------------------------------------------------
-
-    tax_advice_requested = (
-        _fact_value(
-            facts,
-            "tax_advice_requested",
-            False
-        )
-    )
-
-    if (
-        tax_advice_requested
-        and TAX_ADVICE_REQUEST
-        not in resolved
-    ):
-
-        return _make_escalation(
-            TAX_ADVICE_REQUEST,
-
-            (
-                "Request involves tax advice, "
-                "planning, or optimization."
-            ),
-
-            eligibility,
-        )
-
-    # -----------------------------------------------------------------
-    # Financial exploitation
-    # -----------------------------------------------------------------
-
-    exploitation_flag = (
-        _fact_value(
-            facts,
-            "financial_exploitation_flag",
-            False
-        )
-    )
-
-    if (
-        exploitation_flag
-        and EXPLOITATION_SIGNS
-        not in resolved
-    ):
-
-        return _make_escalation(
-            EXPLOITATION_SIGNS,
-
-            (
-                "Possible financial exploitation "
-                "or third-party pressure."
-            ),
-
-            eligibility,
-        )
-
-    # -----------------------------------------------------------------
-    # Successful rules evaluation
-    # -----------------------------------------------------------------
+def _preserve_pending_escalation(
+    view: dict[str, Any],
+    eligibility: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Preserve a safety condition already raised by Intake or another agent."""
+
+    escalation = view.get("escalation")
+    if not isinstance(escalation, dict) or not escalation.get("pending"):
+        return None
+
+    condition = escalation.get("condition")
+    if not condition:
+        return None
 
     return {
         "eligibility": eligibility,
+        "escalation": escalation,
+        "handoff_request": {
+            "to": "human",
+            "reason": condition,
+        },
+    }
 
+
+# -----------------------------------------------------------------------------
+# Filing status
+# -----------------------------------------------------------------------------
+
+
+def _human_filing_status_override(facts: dict[str, Any]) -> str | None:
+    """Use the volunteer's filing-status decision when it exists."""
+
+    value = _normalize(_fact_value(facts, "filing_status"))
+    source = _fact_source(facts, "filing_status", "")
+
+    if (
+        value in VALID_FILING_STATUSES
+        and source == "human:FILING_STATUS_AMBIGUITY"
+    ):
+        return value
+
+    return None
+
+
+def _derive_filing_status(
+    facts: dict[str, Any],
+) -> tuple[str | None, bool, str | None]:
+    """Derive status from Intake facts; return status, ambiguous, reason."""
+
+    override = _human_filing_status_override(facts)
+    if override is not None:
+        return override, False, "Human filing-status override applied"
+
+    married_dec31 = _fact_value(facts, "married_dec31")
+    file_jointly = _fact_value(facts, "file_jointly")
+    household_situation = _normalize(
+        _fact_value(facts, "household_situation")
+    )
+
+    # Narrow compatibility fallback for older repository fixtures. Real Intake
+    # does not write this field, so it is never preferred over the shared facts.
+    legacy_claim = _normalize(_fact_value(facts, "filing_status_claim"))
+    if married_dec31 is None and legacy_claim in VALID_FILING_STATUSES:
+        return legacy_claim, False, "Legacy fixture filing-status fallback"
+
+    if _is_not_sure(married_dec31):
+        return None, True, "married_dec31 is not_sure"
+
+    if _is_yes(married_dec31):
+        if _is_not_sure(file_jointly):
+            return None, True, "file_jointly is not_sure"
+        if _is_yes(file_jointly):
+            return "mfj", False, None
+        if _is_no(file_jointly):
+            return "mfs", False, None
+        return None, True, "file_jointly is missing or invalid"
+
+    if _is_no(married_dec31):
+        if household_situation in {None, "", "not_sure"}:
+            return None, True, "household_situation is missing or not_sure"
+
+        if household_situation == "single":
+            return "single", False, None
+
+        if household_situation == "caring_for_someone":
+            # The shared answer-name contract does not contain every fact needed
+            # to prove Head of Household status. Do not guess; ask a volunteer.
+            return (
+                None,
+                True,
+                "Potential Head of Household status requires human review",
+            )
+
+        if household_situation == "widowed":
+            spouse_death_year = _fact_value(facts, "spouse_death_year")
+
+            if spouse_death_year is None or _is_not_sure(spouse_death_year):
+                return None, True, "spouse_death_year is missing or not_sure"
+
+            try:
+                int(spouse_death_year)
+            except (TypeError, ValueError):
+                return None, True, "spouse_death_year is invalid"
+
+            # The shared answer-name contract alone does not establish all QSS
+            # requirements. A volunteer can resolve this and write the approved
+            # status to facts['filing_status'].
+            return (
+                None,
+                True,
+                "Widowed filing status requires human review",
+            )
+
+        return (
+            None,
+            True,
+            f"Unrecognized household_situation: {household_situation}",
+        )
+
+    return None, True, "married_dec31 is missing or invalid"
+
+
+# -----------------------------------------------------------------------------
+# Eligibility and document helpers
+# -----------------------------------------------------------------------------
+
+
+def _qualifies_for_1040sr(
+    birth_date: Any = None,
+    fallback_age: Any = None,
+) -> bool | None:
+    """2025 eligibility: born before January 2, 1961."""
+
+    if birth_date is not None:
+        if _is_not_sure(birth_date):
+            return None
+
+        try:
+            parsed = datetime.strptime(str(birth_date), "%Y-%m-%d")
+        except (TypeError, ValueError):
+            return None
+
+        return parsed < datetime(1961, 1, 2)
+
+    # Compatibility only for the original stub scenarios.
+    if fallback_age is not None:
+        try:
+            return int(fallback_age) >= 65
+        except (TypeError, ValueError):
+            return None
+
+    return None
+
+
+def _count_age_blindness_boxes(
+    taxpayer_age_65: bool,
+    taxpayer_blind: bool,
+    spouse_age_65: bool,
+    spouse_blind: bool,
+) -> int:
+    return sum(
+        [
+            taxpayer_age_65,
+            taxpayer_blind,
+            spouse_age_65,
+            spouse_blind,
+        ]
+    )
+
+
+def _field_value(
+    record: dict[str, Any],
+    field_name: str,
+    default: Any = None,
+) -> Any:
+    item = record.get("fields", {}).get(field_name)
+    if isinstance(item, dict):
+        return item.get("value", default)
+    return item if item is not None else default
+
+
+def _has_1099r_box_2b(extracted: dict[str, Any]) -> bool:
+    for record in extracted.values():
+        if not isinstance(record, dict):
+            continue
+
+        if _normalize(record.get("kind")) not in {"1099-r", "1099r"}:
+            continue
+
+        value = _field_value(record, "box_2b", False)
+        if value is True or _is_yes(value):
+            return True
+
+    return False
+
+
+def _document_kinds(extracted: dict[str, Any]) -> set[str]:
+    return {
+        _normalize(record.get("kind"))
+        for record in extracted.values()
+        if isinstance(record, dict) and record.get("kind")
+    }
+
+
+# -----------------------------------------------------------------------------
+# Main agent
+# -----------------------------------------------------------------------------
+
+
+def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
+    facts = view.get("facts", {})
+    extracted = view.get("extracted", {})
+    resolved = _resolved_conditions(view)
+
+    eligibility: dict[str, Any] = {
+        "eligible_1040sr": None,
+        "taxpayer_qualifies": None,
+        "spouse_qualifies": None,
+        "filing_status": "undetermined",
+        "filing_status_valid": False,
+        "age_blindness_boxes": 0,
+        "in_scope": True,
+        "applicable_rules": [],
+        "out_of_scope_reasons": [],
+        "citations": [],
+    }
+
+    pending = _preserve_pending_escalation(view, eligibility)
+    if pending is not None:
+        return pending
+
+    taxpayer_birth_date = _fact_value(facts, "taxpayer_birth_date")
+    spouse_birth_date = _fact_value(facts, "spouse_birth_date")
+
+    # Compatibility only for old fixtures.
+    taxpayer_age = _fact_value(facts, "age")
+    spouse_age = _fact_value(facts, "spouse_age")
+
+    if taxpayer_birth_date is None and taxpayer_age is None:
+        return _return_to_intake(
+            eligibility,
+            "Missing required information: taxpayer_birth_date",
+        )
+
+    if _is_not_sure(taxpayer_birth_date):
+        return _return_to_intake(
+            eligibility,
+            "taxpayer_birth_date is not_sure and needs follow-up",
+        )
+
+    filing_status, ambiguous, ambiguity_reason = _derive_filing_status(facts)
+
+    if filing_status is not None:
+        eligibility["filing_status"] = filing_status
+        eligibility["filing_status_valid"] = (
+            filing_status in VALID_FILING_STATUSES
+        )
+
+    eligibility["citations"].append("Assignment 7 §3.3")
+
+    if ambiguous and FILING_STATUS_AMBIGUITY not in resolved:
+        return _make_escalation(
+            FILING_STATUS_AMBIGUITY,
+            ambiguity_reason or "Filing status requires human review",
+            eligibility,
+        )
+
+    taxpayer_qualifies = _qualifies_for_1040sr(
+        birth_date=taxpayer_birth_date,
+        fallback_age=taxpayer_age,
+    )
+    spouse_qualifies = _qualifies_for_1040sr(
+        birth_date=spouse_birth_date,
+        fallback_age=spouse_age,
+    )
+
+    eligibility["taxpayer_qualifies"] = taxpayer_qualifies
+    eligibility["spouse_qualifies"] = spouse_qualifies
+
+    if filing_status == "mfj":
+        if taxpayer_qualifies is True or spouse_qualifies is True:
+            eligible_1040sr: bool | None = True
+        elif taxpayer_qualifies is False and spouse_qualifies is False:
+            eligible_1040sr = False
+        else:
+            eligible_1040sr = None
+    else:
+        eligible_1040sr = taxpayer_qualifies
+
+    eligibility["eligible_1040sr"] = eligible_1040sr
+    eligibility["applicable_rules"].append("1040-SR eligibility")
+    eligibility["citations"].append("Assignment 7 §3.2 Rule 1")
+
+    if eligible_1040sr is None:
+        return _return_to_intake(
+            eligibility,
+            "Unable to decide 1040-SR eligibility from the available birth dates",
+        )
+
+    if eligible_1040sr is False:
+        eligibility["in_scope"] = False
+        eligibility["out_of_scope_reasons"].append(
+            "Not eligible for Form 1040-SR"
+        )
+        if OUT_OF_SCOPE not in resolved:
+            return _make_escalation(
+                OUT_OF_SCOPE,
+                "Taxpayer does not meet Form 1040-SR eligibility.",
+                eligibility,
+            )
+
+    taxpayer_blind_answer = _fact_value(facts, "taxpayer_blind", "no")
+    spouse_blind_answer = _fact_value(facts, "spouse_blind", "no")
+
+    if not _is_valid_yes_no_not_sure(taxpayer_blind_answer):
+        return _return_to_intake(
+            eligibility,
+            "Invalid taxpayer_blind answer; expected yes, no, or not_sure",
+        )
+
+    if _is_not_sure(taxpayer_blind_answer):
+        return _return_to_intake(
+            eligibility,
+            "taxpayer_blind is not_sure and needs follow-up",
+        )
+
+    spouse_is_relevant = filing_status in {"mfj", "mfs"}
+
+    if spouse_is_relevant:
+        if not _is_valid_yes_no_not_sure(spouse_blind_answer):
+            return _return_to_intake(
+                eligibility,
+                "Invalid spouse_blind answer; expected yes, no, or not_sure",
+            )
+        if _is_not_sure(spouse_blind_answer):
+            return _return_to_intake(
+                eligibility,
+                "spouse_blind is not_sure and needs follow-up",
+            )
+
+    taxpayer_age_65 = taxpayer_qualifies is True
+    spouse_age_65 = spouse_is_relevant and spouse_qualifies is True
+
+    eligibility["age_blindness_boxes"] = _count_age_blindness_boxes(
+        taxpayer_age_65=taxpayer_age_65,
+        taxpayer_blind=_is_yes(taxpayer_blind_answer),
+        spouse_age_65=spouse_age_65,
+        spouse_blind=(
+            spouse_is_relevant and _is_yes(spouse_blind_answer)
+        ),
+    )
+    eligibility["applicable_rules"].append(
+        "Standard deduction age/blindness rule"
+    )
+    eligibility["citations"].append("Assignment 7 §3.2 Rule 2")
+
+    if taxpayer_age_65 or spouse_age_65:
+        eligibility["applicable_rules"].append(
+            "Schedule 1-A enhanced senior deduction"
+        )
+        eligibility["citations"].append("Assignment 7 §3.2 Rule 3")
+
+    document_kinds = _document_kinds(extracted)
+    if "ssa-1099" in document_kinds or "ssa1099" in document_kinds:
+        eligibility["applicable_rules"].append(
+            "Taxable Social Security worksheet"
+        )
+        eligibility["citations"].append("Assignment 7 §3.2 Rule 4")
+
+    if _has_1099r_box_2b(extracted):
+        eligibility["in_scope"] = False
+        eligibility["out_of_scope_reasons"].append(
+            "1099-R taxable amount not determined"
+        )
+        if FORM_1099R_BOX_2B not in resolved:
+            return _make_escalation(
+                FORM_1099R_BOX_2B,
+                "1099-R Box 2b indicates taxable amount not determined.",
+                eligibility,
+            )
+
+    # Each tuple is: fact name, triggering answer, human-readable reason.
+    screening_checks = [
+        (
+            "has_other_tax_forms",
+            "yes",
+            "Other tax forms outside the supported set",
+        ),
+        (
+            "sold_stocks_or_property",
+            "yes",
+            "Stocks, funds, or property sold in 2025",
+        ),
+        (
+            "business_or_rental_income",
+            "yes",
+            "Business, freelance, or rental income",
+        ),
+        (
+            "foreign_income_or_accounts",
+            "yes",
+            "Foreign income or accounts",
+        ),
+        (
+            "digital_assets",
+            "yes",
+            "Digital assets",
+        ),
+        (
+            "can_be_claimed_as_dependent",
+            "yes",
+            "Taxpayer can be claimed as a dependent",
+        ),
+        (
+            "us_resident_all_year",
+            "no",
+            "Taxpayer was not a US resident for all of 2025",
+        ),
+    ]
+
+    detected_out_of_scope: list[str] = []
+
+    for fact_name, trigger_value, reason in screening_checks:
+        answer = _fact_value(facts, fact_name)
+
+        # The contract says only use an answer if its question applies.
+        if answer is None:
+            continue
+
+        normalized = _normalize(answer)
+
+        # For scope-screening questions, uncertainty cannot safely continue.
+        if normalized == "not_sure":
+            detected_out_of_scope.append(
+                f"{reason} (answer not_sure)"
+            )
+        elif normalized == trigger_value:
+            detected_out_of_scope.append(reason)
+
+    if filing_status in {"mfj", "mfs"}:
+        spouse_can_be_claimed = _fact_value(
+            facts,
+            "spouse_can_be_claimed",
+        )
+        if _is_not_sure(spouse_can_be_claimed):
+            detected_out_of_scope.append(
+                "Whether the spouse can be claimed is not_sure"
+            )
+        elif _is_yes(spouse_can_be_claimed):
+            detected_out_of_scope.append(
+                "Spouse can be claimed as a dependent"
+            )
+
+    if filing_status == "mfs":
+        spouse_itemizing = _fact_value(facts, "spouse_itemizing")
+        if _is_not_sure(spouse_itemizing):
+            detected_out_of_scope.append(
+                "Whether the separately filing spouse itemizes is not_sure"
+            )
+        elif _is_yes(spouse_itemizing):
+            detected_out_of_scope.append(
+                "Separately filing spouse itemizes deductions"
+            )
+
+    if detected_out_of_scope:
+        eligibility["in_scope"] = False
+        eligibility["out_of_scope_reasons"].extend(
+            detected_out_of_scope
+        )
+        eligibility["citations"].append("Assignment 7 §3.3")
+
+        if OUT_OF_SCOPE not in resolved:
+            return _make_escalation(
+                OUT_OF_SCOPE,
+                "; ".join(detected_out_of_scope),
+                eligibility,
+            )
+
+    return {
+        "eligibility": eligibility,
         "handoff_request": {
             "to": "computation",
-
-            "reason": (
-                "Eligibility and scope checks passed"
-            ),
+            "reason": "Eligibility and scope checks passed",
         },
     }
