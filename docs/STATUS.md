@@ -21,4 +21,6 @@ Updated at the end of every phase. Branch: `orchestration-setup`.
 - **For the Review owner:** `send_back_to` currently supports only `computation`; a request for `rules` is routed to computation and recorded. Sending work back to Rules would also invalidate computed lines; do we want that path? Also: Review must return exactly `pass` or `fail`.
 - **Decided, please confirm:** `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` are stop-only (a human may not "continue" past a failed review or a loop).
 - **Branches:** `orchestration-phase3` (PR open) holds Phase 3; `orchestration-phase4` is stacked on it. Open the Phase 4 PR against `main` after Phase 3 merges.
+- **For the Rules owner:** please read `facts["filing_status"]` (a volunteer's answer, source `human:FILING_STATUS_AMBIGUITY`) before deriving a status. Today Rules reads only `filing_status_claim`, so the spouse-died demo ends with a draft that ignores the human's answer. `test_the_human_supplied_filing_status_reaches_the_draft` is a strict expected-failure until then.
+- **Wiring status:** only Rules is real in the graph. Intake (`feature/intake-agent`) and Sahana's computation agent are not yet plugged into `AGENTS`; Extraction and Review are still stubs.
 - **For the memory owner:** the checkpointer is `InMemorySaver` (`SqliteSaver` optional); it needs replacing for persistence across restarts.

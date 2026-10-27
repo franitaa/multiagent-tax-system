@@ -88,6 +88,9 @@ A volunteer answers on the same `thread_id` with
   `SOURCE_CONFLICT` takes `{fact_name: value}`. It is written to `facts` as
   `{"value": ..., "source": "human:<CONDITION>"}`, so read it from `facts` like any other fact.
   `TAX_ADVICE_REQUEST` takes none: put the question in the note for the volunteer.
+  **Rules must honor it:** if `facts["filing_status"]` exists (source `human:...`), use it instead of
+  deriving a status; otherwise the volunteer's answer never reaches the draft. (Known gap: the Rules agent on
+  `main` reads only `filing_status_claim` today; see `tests/test_scenarios.py`, marked expected-failure.)
 - `stop` ends the case with `status == "halted_by_human"`; the note is optional.
 - An invalid answer does not raise: the call returns another interrupt whose payload has an `error`
   string. Show it and let the volunteer answer again.
