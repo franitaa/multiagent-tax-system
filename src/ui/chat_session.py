@@ -10,7 +10,7 @@ What it does:
   - Sends the taxpayer's message into the graph, one graph call per message, as the
     handoff contract describes. Any real-looking SSN is removed BEFORE the message enters
     the graph, so it is never stored or logged. Practice numbers (900-999) are kept
-    because Intake needs them for dependents (agreed with Sahana's 900-999 rule).
+    because Intake needs them for dependents (per the 900-999 test-SSN rule).
   - Tells the page what to show: waiting for an answer, waiting for a volunteer (no new
     messages accepted, as the contract asks), finished, or stopped by a volunteer.
   - Gives a "welcome back, so far we've covered..." summary when a session is continued.

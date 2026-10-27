@@ -1,6 +1,6 @@
-# Report section: Computation, provenance and security (Person 5, Sahana)
+# Report section: Computation, provenance and security (Person 5)
 
-**Draft; edit into the final report. Bracketed items are for you to fill in.**
+**Draft for the team report (card REP-1).**
 
 ## Role
 Computation agent, provenance, and the Security focus area: tax-math tools, provenance records,
@@ -31,13 +31,13 @@ boundary that every agent call passes through.
 ## Testing
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
-tests that traces and the form never show real-looking SSNs. [Add: final test count and date.]
+tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch, Oct 26, 2026: 497 passing.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed and the user is told why in plain language; no SSN is
 requested for the taxpayer or spouse; the draft form masks dependents' SSNs and uses large type
-and keyboard-operable details. [Add demo timestamp.]
+and keyboard-operable details.
 
 ## Contribution
-Sahana: provenance schema and helpers, tax-math tools and tests, Computation agent, draft form,
+Person 5: provenance schema and helpers, tax-math tools and tests, Computation agent, draft form,
 fake-SSN validation, PII redaction, document security, MCP tool server.
