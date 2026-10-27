@@ -11,3 +11,4 @@ runtime/
 .env.*
 !.env.example
 *.egg-info/
+output/

@@ -24,11 +24,22 @@ MAX_INTAKE_MESSAGES = 6
 MAX_HUMAN_DECISIONS_IN_SUMMARY = 5
 
 
-def _numeric_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
-    """Computation works from numbers, not free text."""
+# Non-numeric answers Computation must still see: the volunteer's filing-status override, the
+# birth dates and blindness answers behind the line 12d boxes, and the two answers that make it
+# stop and escalate (docs/answer-names.md). Everything else non-numeric (names, free text,
+# dependents) stays out of its view.
+COMPUTATION_FACTS = frozenset({
+    "filing_status", "taxpayer_birth_date", "spouse_birth_date", "taxpayer_blind", "spouse_blind",
+    "can_be_claimed_as_dependent", "spouse_itemizing",
+})
+
+
+def _computation_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
+    """Computation works from numbers plus the few named answers above, not free text."""
     return {
         name: fact for name, fact in facts.items()
-        if isinstance(fact.get("value"), (int, float)) and not isinstance(fact.get("value"), bool)
+        if name in COMPUTATION_FACTS
+        or (isinstance(fact.get("value"), (int, float)) and not isinstance(fact.get("value"), bool))
     }
 
 
@@ -36,7 +47,7 @@ def _numeric_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
 TRANSFORMS = {
     "intake": {"messages": lambda messages: messages[-MAX_INTAKE_MESSAGES:]},
     "computation": {
-        "facts": _numeric_facts,
+        "facts": _computation_facts,
         "eligibility": lambda e: {"filing_status": e.get("filing_status")},
     },
 }

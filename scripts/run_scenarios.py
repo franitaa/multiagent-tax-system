@@ -15,6 +15,7 @@ import uuid
 from langgraph.types import Command
 
 from src import state as S
+from src.draft_form import write_draft_form
 from src.graph import build_graph
 from src.orchestration.human import CONTINUABLE, FILING_STATUSES
 from src.scenarios import CONDITION_SOURCES, clean_case, escalation_case, spouse_died_case
@@ -26,6 +27,8 @@ def main() -> int:
     parser.add_argument("--no-context-strategy", action="store_true",
                         help="give every agent the full state (for measurement)")
     parser.add_argument("--trace-dir", default=None)
+    parser.add_argument("--output-dir", default="output",
+                        help="where the draft 1040-SR (click any amount for its source) is written")
     parser.add_argument("--condition", default=S.TAX_ADVICE_REQUEST, choices=sorted(CONDITION_SOURCES),
                         help="interrupt scenario: which escalation the stub raises")
     parser.add_argument("--filing-status", default="married_filing_jointly", choices=FILING_STATUSES,
@@ -78,6 +81,11 @@ def main() -> int:
     print(f"computed:  {sorted(result.get('computed', {}))}")
     print(f"trace:     {(args.trace_dir or 'traces')}/{thread_id}.jsonl")
     if result["status"] == S.COMPLETE:
+        try:
+            print(f"draft form: {write_draft_form(result, args.output_dir, thread_id)}")
+        except ValueError as problem:  # no computed lines, or a line without provenance
+            print(f"NO DRAFT FORM WRITTEN: {problem}")
+            return 1
         print("DRAFT READY (nothing was filed)")
     return 0
 

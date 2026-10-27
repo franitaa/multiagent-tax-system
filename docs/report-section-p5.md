@@ -31,7 +31,7 @@ boundary that every agent call passes through.
 ## Testing
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
-tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch, Oct 26, 2026: 497 passing.
+tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 634 passing.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed and the user is told why in plain language; no SSN is
