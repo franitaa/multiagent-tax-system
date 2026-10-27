@@ -22,6 +22,19 @@ def is_fake_ssn(ssn: str) -> bool:
     return 900 <= prefix <= 999
 
 
+SSN_REMOVED = "[number removed]"
+_SSN_IN_TEXT = re.compile(r"\b(\d{3})[- ]?(\d{2})[- ]?(\d{4})\b")
+
+
+def remove_real_ssns(text: str) -> str:
+    """Replace every SSN-like number that is not a 900-999 practice number. Handles spaces and
+    dashes as well as plain digits, and uses the placeholder Intake already recognises."""
+    if not isinstance(text, str):
+        return text
+    return _SSN_IN_TEXT.sub(
+        lambda m: m.group(0) if is_fake_ssn("".join(m.groups())) else SSN_REMOVED, text)
+
+
 def redact_pii(text: str) -> str:
     """Redact sensitive identifiers while preserving approved test SSNs.
 
