@@ -125,9 +125,9 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
 - Still to do myself before submission: open `demo/sample_1040sr.html` in a browser, click
   amounts, and record what I saw here.
 
-## Sahana Jayaraman — Tue Oct 27, 2026 (Computation and Security follow-up)
+## Person 5 (Sahana) — Tue Oct 27, 2026 (Computation and Security follow-up)
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `p5/computation-no-arithmetic`
-and `p5/redact-messages-at-boundary`. Earlier P5 sessions are not logged here yet.
+and `p5/redact-messages-at-boundary`.
 
 **What the AI helped with**
 - Audited `src/agents/computation.py` against the rule "Computation must not do arithmetic;
