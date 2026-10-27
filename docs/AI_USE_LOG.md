@@ -53,7 +53,7 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
   account, spouse questions) and checked what the brief says about SSNs.
 - Code and tests for: date read-back and day/month checks, Change buttons, the 6 parts,
   progress list and "Skip for now".
-- Acting on Francesca's review: switching to Sahana's shared `is_fake_ssn()` and telling
+- Acting on Francesca's review: switching to the shared `is_fake_ssn()` and telling
   the person when a number was removed. Merging the latest main into my branch.
 - Re-checking Francesca's Phase 3 pull request before I approved it (merged with main,
   ran all tests, read her doc changes), and drafting PR #8 (shared answer names).
@@ -105,7 +105,7 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
   status), then sent the messages to Matthew and Francesca.
 - Chose a shorter, simpler PR description and opened PR #9 myself.
 
-## Sahana (Person 5: Computation, provenance, security)
+## Person 5 (Computation, provenance, security)
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on my branch `p5-integrated`.
 
 **What the AI helped with**
@@ -122,4 +122,5 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
 **What I decided or checked myself**
 - Chose to leave unresolved questions for teammates as TODO placeholders in
   `docs/provenance.md` instead of interrupting them, and approved each commit and push.
-- [Add anything else you checked yourself, e.g. opening demo/sample_1040sr.html and clicking amounts.]
+- Still to do myself before submission: open `demo/sample_1040sr.html` in a browser, click
+  amounts, and record what I saw here.
