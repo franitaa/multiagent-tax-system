@@ -12,7 +12,7 @@ from silverfile_extraction.review import apply_human_decision
 
 def team_record(doc_id, document, record):
     fields = {
-        'box_' + box: {'value': amount.value, 'formula': 'Transcribed from W-2 box ' + box,
+        'box_' + box: {'value': float(amount.value), 'formula': 'Transcribed from W-2 box ' + box,
                       'inputs': {'evidence': amount.source.model_dump(mode='json')},
                       'source': f'{doc_id}:page1:box{box}:sha256:{document.sha256}',
                       'tool': 'p3_human_verified' if record.status == 'ready_for_rules' else ('p3_anthropic_vision' if record.backend == 'anthropic-direct' else 'p3_openai_vision')}
