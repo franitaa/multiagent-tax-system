@@ -38,7 +38,7 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(update['escalation']['document_id'], ref['id'])
         field = record['fields']['box_1']
         self.assertEqual(set(field), {'value', 'formula', 'inputs', 'source', 'tool'})
-        self.assertEqual(field['value'], '30000.00')
+        self.assertEqual(field['value'], 30000.00)
         for key in ['source', 'formula', 'tool']:
             self.assertIsInstance(field[key], str)
         self.assertEqual(record['status'], 'needs_review')
@@ -47,7 +47,7 @@ class BridgeTests(unittest.TestCase):
         ref, record, _ = self.extract()
         updated = verify_w2(record, HumanDecision(action='accept', reviewer='test', reason='Checked',
                             confirmed_w2=True, corrections={'1': '29000.00'}).model_dump())
-        self.assertEqual(updated['fields']['box_1']['value'], '29000.00')
+        self.assertEqual(updated['fields']['box_1']['value'], 29000.00)
         self.assertEqual(updated['record']['review_history'][0]['previous_fields']['1']['value'], '30000.00')
         old, new = {ref['id']: record}, {ref['id']: updated}
         self.assertEqual(merge_extracted(old, new), new)
@@ -90,7 +90,7 @@ class BridgeTests(unittest.TestCase):
 
     def test_text_requires_explicit_amounts_and_fixture_marker(self):
         result = extract_text_fixture(document())
-        self.assertEqual(result['fields']['box_1']['value'], '1000.00')
+        self.assertEqual(result['fields']['box_1']['value'], 1000.00)
         with self.assertRaises(SafeInputError):
             extract_text_fixture({'id': 'x', 'kind': 'W-2', 'text': 'TEST DATA'})
 
@@ -132,7 +132,7 @@ class TeamGraphTests(unittest.TestCase):
                 self.assertFalse(result['pending'])
                 self.assertEqual(result['summary']['ready_for_rules'], 1)
                 values = service.graph.get_state({'configurable': {'thread_id': 'case'}}).values
-                self.assertEqual(next(iter(values['extracted'].values()))['fields']['box_1']['value'], '29000.00')
+                self.assertEqual(next(iter(values['extracted'].values()))['fields']['box_1']['value'], 29000.00)
 
     def test_parallel_documents_need_separate_approvals(self):
         from langgraph.types import Command

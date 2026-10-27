@@ -46,7 +46,7 @@ def extract_text_fixture(document, history=None):
         raise SafeInputError('The deterministic fixture must explicitly contain boxes 1 and 2.')
     digest = hashlib.sha256(text.encode()).hexdigest()
     return {'doc_id': document['id'], 'kind': document['kind'], 'status': 'test_fixture',
-            'fields': {'box_' + box: {'value': money_string(value),
+            'fields': {'box_' + box: {'value': float(money_string(value)),
                        'formula': 'Exact transcription of explicit synthetic text fixture',
                        'inputs': {'observed_text': value, 'box': box, 'sha256': digest},
                        'source': document['id'], 'tool': 'p3_text_fixture'} for box, value in pairs}}
