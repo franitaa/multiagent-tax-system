@@ -20,6 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Run as an unprivileged user, not root.
 RUN useradd --create-home --uid 1000 silverfile
 WORKDIR /app
+RUN chown silverfile:silverfile /app
 
 # Requirements first, so code changes do not reinstall every library.
 COPY requirements.txt .
