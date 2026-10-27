@@ -6,7 +6,7 @@ Owner: Supriya Patil. Draft for the team's five-page report (card REP-1).
 **What this section covers:** how the Intake agent talks to an older taxpayer, the design
 choices behind it (assignment §4.3), and the safety alarms that send a case to a human
 volunteer (§4.4, Guardrails & ethics).
-**Status:** everything described here is built and tested (326 automated tests). Still
+**Status:** everything described here is built and tested (about 490 automated tests in the team suite). Still
 open: permanent session storage (Memory owner) and switching the main graph from the
 placeholder Intake to the real one (after the Phase 3 merge).
 
@@ -105,19 +105,29 @@ The reasons: collect only what is needed; never make the person feel they did so
 wrong; and remove the number first so no later step can store it by accident.
 
 ## 6. Testing
-326 automated tests (no network or model calls) cover answer parsing, every question
+About 490 automated tests across the team suite (no network or model calls; Intake's own tests are the bulk) cover answer parsing, every question
 path, go back and corrections, skipping, date checks, SSN handling, the chat page (driven
 through Streamlit's test runner) and full conversations through the real LangGraph
 orchestrator, including a volunteer pausing and resuming or stopping a case. A separate
 adversarial set (`tests/test_guardrails.py`) has 20 tricky messages that must raise the
 right alarm (disguised advice, indirect pressure, "ignore your instructions...", ALL CAPS)
 and 15 innocent ones that must not; its first run found 11 misses and 3 false alarms,
-which were then fixed.
+which were then fixed. A teammate's review later found that realistic pressure phrasings
+("making me do this", "keeps my refund", "not to tell anyone") were still missed, because
+the check used exact phrases. It now recognises patterns (who *keeps / takes / controls*
+*my* refund or money, being *forced*, being told *not to tell anyone*), and the set grew to
+53 messages that must raise an alarm and 38 innocent ones that must not ("my daughter is
+making me lunch", "the bank keeps my statements", "my wife is scared of dogs"). The alarm
+messages now also cover someone changing the person's bank details or holding their
+passwords and ID, being told what to say, fear of a named person, and common scams aimed at
+older people ("pay the IRS with gift cards", "wire money").
 
 ## 7. Failure modes and limits
 - **Keyword matching can miss unusual wording** or, rarely, raise an alarm on an innocent
-  sentence. A missed answer leads to a polite re-ask; a false alarm leads to a volunteer
-  check. Both fail towards the safe side.
+  sentence. A missed answer leads to a polite re-ask, at most three times: after that,
+  Intake says "Let's not worry about this one" and notes the question for a volunteer, so
+  nobody is stuck in a loop. A false alarm leads to a volunteer check. Both fail towards
+  the safe side.
 - **Sessions are kept in memory** until the team's permanent checkpointer is connected;
   a restart of the app currently loses open sessions.
 - **Free-text answers** (names, the helper's description) are stored as typed; a
