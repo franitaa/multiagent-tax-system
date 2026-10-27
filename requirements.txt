@@ -1,5 +1,2 @@
-langgraph==1.2.17
-pytest==9.1.1
-# Taxpayer chat page (INT-6): streamlit run src/ui/taxpayer_chat.py
-streamlit==1.50.0
-# Optional (persistent checkpointer, replaces InMemorySaver): langgraph-checkpoint-sqlite
+-e .
+pytest>=8,<10
