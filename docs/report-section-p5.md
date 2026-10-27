@@ -7,8 +7,9 @@ Computation agent, provenance, and the Security focus area: tax-math tools, prov
 the draft 1040-SR with click-to-see sources, fake-SSN validation, and PII/document handling.
 
 ## Design
-Computation never does arithmetic itself. It calls deterministic tools (`tax_math.py`, also served
-over MCP) in a fixed dependency order, and every amount it returns is a provenance record: value,
+Computation never does arithmetic itself. It calls deterministic tools (`tax_math.py`) in a fixed dependency
+order, and each call goes over MCP to a tool server (`src/tax_math_mcp.py`, started over stdio by
+`src/mcp_client.py`) so no amount is computed in the agent's own process, and every amount it returns is a provenance record: value,
 formula, inputs, source and tool. Amounts from documents cite the document; amounts the taxpayer
 typed record the field name, date and who entered them (the "direct user input" fallback). The
 draft form shows each amount as click-to-expand, so a reviewer can trace any number to its inputs,
@@ -19,6 +20,8 @@ boundary that every agent call passes through.
 
 ## Failure modes and out-of-scope handling
 - Missing filing status: Computation fails loudly instead of guessing.
+- Tool server down: the run stops with a clear error. There is no silent fallback to in-process
+  arithmetic, because that would hide that the MCP rule is not being met.
 - Text amounts from Extraction (`"1000.00"`): the first pass does not use them, Review flags the
   line, and the send-back makes Computation read them (a repaired draft says so in its formula). A
   volunteer's filing-status decision is never replaced by Rules' stale one; Review keeps failing
@@ -42,7 +45,7 @@ boundary that every agent call passes through.
 ## Testing
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
-tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 788 passing.
+tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 805 passing.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed and the user is told why in plain language; no SSN is
