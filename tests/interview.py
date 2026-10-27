@@ -9,6 +9,9 @@ from src.scenarios import clean_case, user
 
 # (substring of the question, default answer); first match wins
 DEFAULT_ANSWERS = (
+    ("practice social security number", "900-00-0001"),
+    ("related to you", "son"),
+    ("anyone else depend on you", "no"),
     ("what is this person's full name", "Dana Dependent"),
     ("spouse's full name", "Sam Spouse"),
     ("full name", "Pat Taxpayer"),

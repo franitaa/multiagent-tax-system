@@ -71,6 +71,27 @@ Out of scope still wins, and `eligible_1040sr: False` is a verdict, not a gap.
 `eligible_1040sr: None` only to mean "I could not decide". Rules should still raise its own specific
 escalation when it can say why (that is a better message than the generic one).
 
+## 5. Out-of-scope screening: nobody escalates it yet
+Business rule 5: only the in-scope profile is handled; everything else goes to a human. Intake asks the
+screening questions (Q17a-e, plus Q21 and Q23) but, **by design, only records the answers**
+(`docs/intake-script.md`: "Rules decides"). Rules does not read those facts:
+
+| Intake records (answer `"yes"` or `"not_sure"` means out of scope or unclear) | Rules reads it? |
+|---|---|
+| `sold_stocks_or_property` | no |
+| `business_or_rental_income` | no |
+| `foreign_income_or_accounts` | no |
+| `digital_assets` | no |
+| `has_other_tax_forms` | no |
+| `can_be_claimed_as_dependent`, `us_resident_all_year` | not under these names |
+
+So today a taxpayer who says they have crypto, a business and foreign accounts is not turned away: the
+run pauses as `ELIGIBILITY_UNDECIDED` (for the wrong reason), and once Rules can read Intake's names it
+would **complete** unless it also handles these. **Owner: Matthew (Rules).** For each screening fact,
+`"yes"` (and, your call, `"not_sure"`) should raise `OUT_OF_SCOPE` with a reason that names the item.
+Status of this section: the fact list above is from running the real Intake; whether `not_sure` should
+escalate or be re-asked is a decision for Matthew and Supriya.
+
 ## Done means
 These strict expected failures start passing, and the `xfail` markers are removed:
 - `tests/test_rules_intake_contract.py::test_rules_finds_the_birth_date_under_intakes_name`
@@ -78,6 +99,7 @@ These strict expected failures start passing, and the `xfail` markers are remove
 - `tests/test_e2e_intake.py::test_rules_decides_eligibility_and_status_from_real_intake_facts`
   (runs once Intake is merged)
 - `tests/test_scenarios.py::test_the_human_supplied_filing_status_reaches_the_draft`
+- `tests/test_e2e_intake.py::test_an_out_of_scope_screening_answer_escalates_as_out_of_scope` (5 cases)
 
 Already guaranteed by orchestration, whatever Rules does: a run never ends "complete" without a filing
 status (`tests/test_eligibility_invariant.py`).

@@ -79,3 +79,25 @@ def test_rules_decides_eligibility_and_status_from_real_intake_facts(tmp_path):
     result, _ = start_interview(graph, cfg("e2e-rules"))
     assert result["eligibility"]["eligible_1040sr"] is True
     assert result["eligibility"]["filing_status"] == "single"
+
+
+SCREENING = {  # question text -> fact name Intake records it under (docs/intake-script.md Q17a-e)
+    "sell any stocks": "sold_stocks_or_property",
+    "own business": "business_or_rental_income",
+    "outside the united states": "foreign_income_or_accounts",
+    "digital assets": "digital_assets",
+    "other tax forms": "has_other_tax_forms",
+}
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "Out-of-scope items are not escalated as OUT_OF_SCOPE by anyone: Intake only records the screening "
+    "answers (docs/intake-script.md) and Rules does not read those facts. Today the run pauses as "
+    "ELIGIBILITY_UNDECIDED, for the wrong reason, and once Rules can read Intake's names it would "
+    "complete. See docs/intake-rules-contract.md, section 5."))
+@pytest.mark.parametrize("question", SCREENING, ids=SCREENING.values())
+def test_an_out_of_scope_screening_answer_escalates_as_out_of_scope(tmp_path, question):
+    graph = graph_with_real_intake(tmp_path)
+    result, _ = start_interview(graph, cfg("e2e-scope"), {question: "yes"})
+    assert "__interrupt__" in result, "a case with an out-of-scope item must not complete"
+    assert result["__interrupt__"][0].value["condition"] == S.OUT_OF_SCOPE
