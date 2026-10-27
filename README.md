@@ -90,6 +90,10 @@ python3.12 -m venv .venv
 .venv/bin/pytest                                              # all tests, offline and fast
 ```
 
+Computation and Review get every tax number from an MCP tool server (`src/tax_math_mcp.py`), started
+automatically over stdio the first time a tool is called. Trace records list `tool_transports`.
+`SILVERFILE_TOOL_TRANSPORT=local` runs the same functions in-process, for debugging only.
+
 Scenarios (all offline; each writes a trace to `traces/`):
 
 ```

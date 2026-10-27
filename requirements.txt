@@ -1,4 +1,4 @@
 -e .
 pytest>=8,<10
-# Tax-math tools served over MCP (src/tax_math_mcp.py; optional, its test skips without it)
+# Required: Computation and Review call the tax tools over MCP (src/mcp_client.py)
 mcp>=2

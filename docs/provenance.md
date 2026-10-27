@@ -6,8 +6,12 @@ Cards covered: PRV-1/2/3, CMP-1/2/3/4, SEC-1/2. Spec: Assignment 7 sections 3.1,
 Every dollar amount in `state["computed"]` is a record with `value`, `formula`, `inputs`,
 `source`, `tool` (`provenance.py`).
 - Calculated lines come from the tools in `tax_math.py`, called through the Computation agent's
-  `ToolBox` (the runner logs each call). The same tools are served over MCP by
-  `python -m src.tax_math_mcp` (`pip install "mcp>=2"`).
+  `ToolBox` (the runner logs each call). **Every call goes over MCP**: `src/mcp_client.py` starts
+  the server `python -m src.tax_math_mcp` (stdio) and the ToolBox sends the tool call there, so no
+  amount is computed in the agent's own process. Each trace record lists `tool_transports`
+  (`mcp`, or `local` for P3's extraction tool). `SILVERFILE_TOOL_TRANSPORT=local` runs the same
+  functions in-process, on purpose, for debugging. If the server cannot start the run stops with
+  `McpUnavailable`; there is no silent fallback. Review uses the same tools to recompute.
 - Amounts read from a document carry `source = "Document <id> (Document Extraction)"`.
 - Amounts the taxpayer typed (adjustments, estimated payments, Schedule 1/2/3) are direct-input
   records: `field_name`, `entered_by`, `entered_on` are in `inputs`.

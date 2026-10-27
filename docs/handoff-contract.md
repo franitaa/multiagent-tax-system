@@ -142,7 +142,9 @@ to Computation: it pauses for a human with `ELIGIBILITY_UNDECIDED` (stop-only) a
 ## Replacing a stub with a real agent
 1. Edit only `src/agents/<your_agent>.py`. Keep `run(view, tools) -> dict`. Do not rename the module or touch `src/agents/__init__.py`.
 2. Read only from `view`; write only the fields in your table row. If you need another field, open a PR that changes `POLICY` in `access.py` and `SilverState` in `state.py`, and tag Person 1. Do not work around it.
-3. Register deterministic tools in `TOOLS` (`access.py`) and add their names to your agent's `tools` in `POLICY`.
+3. Register deterministic tools in `TOOLS` (`access.py`). The tax tools (`src/tax_tools.py`) are
+   served over MCP (`src/tax_math_mcp.py`) and a ToolBox calls them there by default; add a new
+   tax tool to `TAX_TOOLS` and both sides pick it up. P3's tools stay in-process and add their names to your agent's `tools` in `POLICY`.
 4. Return your handoff request and, when a trigger applies, the escalation flag.
 5. Tests: no network or model calls in tests. `tests/test_clean_run.py` must still pass with your agent in place. Use `build_graph(trace_dir=tmp_path)` for your own tests.
 6. When you call a real model, record its `usage_metadata` in the runner instead of the estimate (`src/orchestration/tokens.py`); coordinate with Person 1.

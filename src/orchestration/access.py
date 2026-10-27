@@ -7,8 +7,7 @@ reachable through the ToolBox the runner hands in.
 from dataclasses import dataclass
 from typing import Callable
 
-import tax_math
-
+from src.mcp_client import mcp_registry, tool_transport
 # Fields every agent may set so that safety signals and handoffs always work.
 COMMON_WRITES = frozenset({"escalation", "handoff_request"})
 # Fields every agent can always read, so a safety signal can never be scoped away.
@@ -74,15 +73,11 @@ POLICY: dict[str, AgentPolicy] = {
 # Tool registry. Teammates register their deterministic tools here by name, then list the
 # name in the owning agent's `tools` above.
 from src.p3.bridge import extract_text_fixture, verify_w2
+from src.tax_tools import TAX_TOOLS
 
-TOOLS: dict[str, Callable] = {
-    fn.__name__: fn
-    for fn in (
-        tax_math.calculate_standard_deduction, tax_math.calculate_senior_deduction,
-        tax_math.calculate_taxable_social_security, tax_math.calculate_income_tax,
-        tax_math.sum_amounts, tax_math.subtract_amounts,
-    )
-}
+# The in-process functions. With SILVERFILE_TOOL_TRANSPORT=mcp (the default) a ToolBox swaps the
+# tax tools for calls to the MCP server (src/mcp_client.py); the P3 tools always run in-process.
+TOOLS: dict[str, Callable] = dict(TAX_TOOLS)
 TOOLS.update({"p3_extract_w2": extract_text_fixture, "p3_verify_w2": verify_w2})
 
 
@@ -96,15 +91,19 @@ class ToolBox:
     def __init__(self, agent: str, registry: dict[str, Callable] | None = None):
         self.agent = agent
         self._allowed = POLICY[agent].tools
-        self._registry = {**TOOLS, **(registry or {})}  # a custom registry adds to the defaults
+        defaults = {**TOOLS, **mcp_registry()} if tool_transport() == "mcp" else TOOLS
+        self._registry = {**defaults, **(registry or {})}  # a custom registry adds to the defaults
         self.calls: list[str] = []
+        self.transports: list[str] = []
         self.usage: list[dict] = []
 
     def call(self, name: str, **kwargs):
         if name not in self._allowed:
             raise AccessViolation(f"{self.agent} may not call tool {name!r}")
         self.calls.append(name)
-        result = self._registry[name](**kwargs)
+        function = self._registry[name]
+        self.transports.append(getattr(function, "transport", "local"))
+        result = function(**kwargs)
         if name == 'p3_extract_w2' and isinstance(result, dict):
             usage = result.get('usage') or {}
             if usage.get('api_input_tokens') is not None:

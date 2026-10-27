@@ -22,11 +22,9 @@ RUN useradd --create-home --uid 1000 silverfile
 WORKDIR /app
 RUN chown silverfile:silverfile /app
 
-# Requirements first, so code changes do not reinstall every library.
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
+# requirements.txt starts with "-e .", which needs the project files, so copy them first.
 COPY --chown=silverfile:silverfile . .
+RUN pip install -r requirements.txt
 USER silverfile
 
 EXPOSE 8501
