@@ -98,7 +98,8 @@ def _fact(facts, name):
 
 
 def _header(facts, eligibility) -> str:
-    status = ((eligibility or {}).get("filing_status") or _fact(facts, "filing_status")
+    # a volunteer's override (facts) wins over Rules' own decision, as it does in Computation
+    status = (_fact(facts, "filing_status") or (eligibility or {}).get("filing_status")
               or "not yet determined")
     boxes = (eligibility or {}).get("age_blindness_boxes")
     parts = [f"<p><b>Filing status:</b> {escape(STATUS_LABELS.get(status, str(status)))}</p>"]
@@ -146,3 +147,19 @@ def render_draft_html(computed: dict, facts: dict | None = None, eligibility: di
         "Click any amount to see how it was produced.</p>"
         f"{_header(facts, eligibility)}{''.join(body)}</body></html>"
     )
+
+
+def write_draft_form(state: dict, directory="output", name: str | None = None):
+    """Render the draft from a final graph state and write it to `directory`. Returns the path.
+    Raises ValueError when there are no computed lines or a line lacks provenance, so a draft
+    with an unsourced amount is never written."""
+    from pathlib import Path
+
+    computed = state.get("computed") or {}
+    if not computed:
+        raise ValueError("nothing computed yet, so there is no draft form to write")
+    html = render_draft_html(computed, state.get("facts"), state.get("eligibility"))
+    path = Path(directory) / f"{name or state.get('case_id') or 'draft'}_1040sr.html"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(html, encoding="utf-8")
+    return path
