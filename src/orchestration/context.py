@@ -42,6 +42,21 @@ TRANSFORMS = {
 }
 
 
+def eligibility_gaps(eligibility: Mapping[str, Any]) -> list[str]:
+    """What the Eligibility & Rules verdict is missing, by name (empty list = decided).
+
+    Required: a filing status and a boolean `in_scope`. If Rules also reports an
+    `eligible_1040sr` verdict and it is None, Rules tried and could not decide."""
+    gaps = []
+    if not eligibility.get("filing_status"):
+        gaps.append("filing_status")
+    if not isinstance(eligibility.get("in_scope"), bool):
+        gaps.append("in_scope")
+    if "eligible_1040sr" in eligibility and eligibility["eligible_1040sr"] is None:
+        gaps.append("eligible_1040sr")
+    return gaps
+
+
 def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
     """Compact, bounded view for the orchestrator: flags and counts only. No documents,
     no chat, no id lists, so its size does not grow with the length of the session."""
@@ -68,6 +83,7 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
         "n_docs_pending": len(pending_docs),
         "has_eligibility": bool(eligibility),
         "in_scope": eligibility.get("in_scope"),
+        "eligibility_gaps": eligibility_gaps(eligibility) if eligibility else [],
         "has_computed": bool(state.get("computed")),
         "review_verdict": review.get("verdict"),
         "revision_count": state.get("revision_count", 0),

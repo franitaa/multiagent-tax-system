@@ -17,15 +17,27 @@ intake_agent = pytest.importorskip(
     "src.agents.intake_agent", reason="Intake (feature/intake-agent) is not merged yet")
 
 
+def finished_or_paused_undecided(result):
+    """With today's Rules the real Intake's answers leave eligibility undecided, and the orchestrator
+    must pause for a human instead of ending "complete". Once Rules reads Intake's names this is a
+    plain complete run. Either way, a run never ends complete with an empty filing status."""
+    if "__interrupt__" in result:
+        payload = result["__interrupt__"][0].value
+        assert payload["condition"] == S.ELIGIBILITY_UNDECIDED and payload["options"] == ["stop"]
+    else:
+        assert result["status"] == S.COMPLETE and result["eligibility"]["filing_status"]
+
+
 def graph_with_real_intake(tmp_path):
     return build_graph(trace_dir=tmp_path, agents={"intake": intake_agent.run})
 
 
-def test_real_intake_completes_a_single_filer_interview(tmp_path):
+def test_real_intake_finishes_a_single_filer_interview(tmp_path):
     graph = graph_with_real_intake(tmp_path)
     result, asked = start_interview(graph, cfg("e2e-single"))
 
-    assert result["status"] == S.COMPLETE and result["intake_complete"] is True
+    assert result["intake_complete"] is True
+    finished_or_paused_undecided(result)
     assert asked > 15  # a real interview, one graph call per answer
     # far longer than Intake's 6-message window, and it still worked: it keeps its place in facts
     assert len(result["messages"]) > 2 * 6
@@ -52,7 +64,7 @@ def test_real_intake_escalates_when_a_spouse_died_and_the_interview_resumes(tmp_
     from tests.interview import finish_interview
     final, _ = finish_interview(graph, cfg("e2e-spouse"), after, overrides)
 
-    assert final["status"] == S.COMPLETE
+    finished_or_paused_undecided(final)
     assert final["facts"]["filing_status"] == {
         "value": "married_filing_jointly", "source": "human:FILING_STATUS_AMBIGUITY"}
     assert [d["condition"] for d in final["human_decisions"]] == [S.FILING_STATUS_AMBIGUITY]
