@@ -58,6 +58,7 @@ class Runner:
             "agent": name,
             "handoff": self._handoff(name, update),
             "fields_read": sorted(view),
+            "control_fields_read": sorted(getattr(view, "control", {})),
             "fields_written": sorted(update),
             "tools_called": tools.calls,
             "duration_ms": round((time.perf_counter() - started) * 1000, 3),

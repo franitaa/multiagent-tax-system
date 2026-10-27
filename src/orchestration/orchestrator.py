@@ -6,6 +6,7 @@ returns a state update plus a handoff_log entry. It does not extract, compute, o
 the user.
 """
 from src.orchestration.access import ToolBox
+from src.orchestration.context import summarise
 from src.orchestration.guard import apply_guard
 from src.orchestration.router import route
 from src.state import ALLOWED_HANDOFFS
@@ -24,7 +25,8 @@ def _check_request(request: dict | None, routed_to: str) -> dict:
 
 
 def orchestrate(view: dict, tools: ToolBox) -> dict:
-    decision = apply_guard(view, route(view))
+    inputs = {**view, **getattr(view, "control", {})}  # control: deterministic-only inputs
+    decision = apply_guard(inputs, route(inputs))
     step = view.get("step", 0) + 1
     entry = {
         "step": step,
@@ -38,5 +40,6 @@ def orchestrate(view: dict, tools: ToolBox) -> dict:
         "step": step,
         "handoff_log": [entry],
         "handoff_request": None,
+        "session_summary": summarise(inputs),
         **decision.update,
     }
