@@ -54,10 +54,21 @@ def _doc_amounts(extracted, mapping):
     return found
 
 
+def _intake_status(facts):
+    """TEMPORARY fallback until Rules writes eligibility["filing_status"] from the real Intake
+    answers (docs/answer-names.md). Only unambiguous plain answers; otherwise None."""
+    married, joint = _fact(facts, "married_dec31"), _fact(facts, "file_jointly")
+    if married == "no" and _fact(facts, "household_situation") == "single":
+        return "single"
+    if married == "yes" and joint in ("yes", "no"):
+        return "mfj" if joint == "yes" else "mfs"
+    return None
+
+
 def _status(view):
     facts, eligibility = view.get("facts", {}), view.get("eligibility") or {}
     raw = (_fact(facts, "filing_status") or eligibility.get("filing_status")
-           or _fact(facts, "filing_status_claim"))
+           or _fact(facts, "filing_status_claim") or _intake_status(facts))
     name = STATUS_NAMES.get(str(raw).strip().lower(), str(raw).strip().lower())
     if name not in FULL_NAMES:
         raise ValueError("Computation needs a valid filing status; Rules/Intake must supply it")
@@ -66,6 +77,22 @@ def _status(view):
 
 def _is_senior(age):
     return age is not None and age >= 65
+
+
+def _senior_by_birth_date(value):
+    """65 or older at the end of 2025 = born before January 2, 1961 (same cutoff as Rules)."""
+    return isinstance(value, str) and value[:10] < "1961-01-02" if value[:4].isdigit() else False
+
+
+def _is_65(facts, age_name, birth_name):
+    age = _fact(facts, age_name)
+    if age is not None:
+        return _is_senior(age)
+    return _senior_by_birth_date(str(_fact(facts, birth_name) or ""))
+
+
+def _yes(facts, *names):
+    return any(_fact(facts, n) in (True, "yes") for n in names)
 
 
 def run(view, tools):
@@ -113,7 +140,7 @@ def run(view, tools):
     exempt = sum(v for _, v, _ in _doc_amounts(extracted, TAX_EXEMPT_INTEREST))
 
     # --- adjustments (Schedule 1, direct user input)
-    adjustments = direct("line_10", "schedule1_adjustments")
+    adjustments = direct("line_10", "adjustments_amount")
     if adjustments is None:
         adjustments = add("line_10", call("sum_amounts", amounts={}, label="line_10"))
         computed["line_10"]["source"] = "No Schedule 1 adjustments entered"
@@ -136,17 +163,17 @@ def run(view, tools):
         label="line_11", start_name="line_9", floor_at_zero=False))
 
     # --- deductions
-    age, spouse_age = _fact(facts, "age"), _fact(facts, "spouse_age")
+    senior_self = _is_65(facts, "age", "taxpayer_birth_date")
     joint = status == "married_filing_jointly"
-    spouse_senior = joint and _is_senior(spouse_age)
+    spouse_senior = joint and _is_65(facts, "spouse_age", "spouse_birth_date")
     std = add("line_12e", call(
         "calculate_standard_deduction", filing_status=status,
-        age_65_or_older=_is_senior(age), blind=bool(_fact(facts, "blind", False)),
+        age_65_or_older=senior_self, blind=_yes(facts, "blind", "taxpayer_blind"),
         spouse_age_65_or_older=spouse_senior,
-        spouse_blind=bool(_fact(facts, "spouse_blind", False))))
+        spouse_blind=joint and _yes(facts, "spouse_blind")))
     senior = add("line_13b", call(
         "calculate_senior_deduction", magi=max(0, agi),
-        qualifying_people=int(_is_senior(age)) + int(spouse_senior), filing_status=status))
+        qualifying_people=int(senior_self) + int(spouse_senior), filing_status=status))
     deductions = call("sum_amounts", amounts={"line_12e": std, "line_13b": senior}, label="line_14")
     add("line_14", deductions)
     taxable = add("line_15", call(
@@ -168,7 +195,7 @@ def run(view, tools):
 
     # --- payments
     withheld = from_documents("line_25a", DOC_LINES["line_25a"])
-    estimated = direct("line_26", "estimated_tax_payments") or 0
+    estimated = direct("line_26", "estimated_payments_amount") or 0
     schedule3_payments = direct("line_31", "schedule3_payments") or 0
     payments = add("line_33", call("sum_amounts", amounts={
         "line_25a": withheld, "line_26": estimated, "line_31": schedule3_payments},
