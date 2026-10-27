@@ -104,3 +104,22 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
   names differ, why yes/no/not sure must stay, and why Intake cannot send a filing
   status), then sent the messages to Matthew and Francesca.
 - Chose a shorter, simpler PR description and opened PR #9 myself.
+
+## Sahana (Person 5: Computation, provenance, security)
+**Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on my branch `p5-integrated`.
+
+**What the AI helped with**
+- Inspected the repo and found that the Computation agent in the graph was still a stub and
+  that no draft form showed provenance. It wrote the real agent (`src/agents/computation.py`),
+  the extra tools (`sum_amounts`, `subtract_amounts`), the draft-form renderer
+  (`src/draft_form.py`), an MCP server for the tax tools, and tests for all of them.
+- Found two wrong 2025 bracket tops in `tax_math.py` (checked against IRS Rev. Proc. 2024-40
+  with a web search) and fixed them with tests.
+- Wired document redaction into the shared runner and added tests that traces hold no SSNs.
+- Merged the latest `main` into my branch and adapted Computation to the real Intake names.
+- Drafted `docs/provenance.md` and my report section.
+
+**What I decided or checked myself**
+- Chose to leave unresolved questions for teammates as TODO placeholders in
+  `docs/provenance.md` instead of interrupting them, and approved each commit and push.
+- [Add anything else you checked yourself, e.g. opening demo/sample_1040sr.html and clicking amounts.]
