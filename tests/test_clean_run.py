@@ -114,3 +114,23 @@ def test_orchestrator_view_is_bounded():
     assert big["n_docs_pending"] == 500
     # size does not grow with documents, log length or chat length
     assert estimate_tokens(big) - estimate_tokens(small) < 80
+
+
+def test_orchestrator_view_excludes_deterministic_only_inputs(tmp_path):
+    """The loop-guard history and review findings reach the orchestrator's code through
+    `control`, not through the view a model could be shown or the token count."""
+    from src.orchestration.context import view_for
+    from src.scenarios import clean_case
+
+    state = {**clean_case(), "guard": {"seen": ["abc"]},
+             "review": {"verdict": "fail", "findings": [{"issue": "x"}], "send_back_to": "computation"}}
+    view = view_for("orchestrator", state)
+    assert "guard" not in view and "review_fail" not in view and "review" not in view
+    assert view.control["guard"] == {"seen": ["abc"]}
+    assert view.control["review_fail"]["findings"] == [{"issue": "x"}]
+
+    graph = build_graph(trace_dir=tmp_path)
+    graph.invoke(clean_case(), cfg("t-ctl"))
+    orchestrator = [r for r in read_trace(tmp_path, "t-ctl") if r["agent"] == "orchestrator"]
+    assert all("guard" not in r["fields_read"] for r in orchestrator)
+    assert all(r["control_fields_read"] == ["guard", "human_summary", "review_fail"] for r in orchestrator)

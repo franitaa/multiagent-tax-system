@@ -5,7 +5,7 @@ import copy
 import pytest
 
 from src import state as S
-from src.orchestration.context import routing_view
+from src.orchestration.context import decision_inputs as routing_view
 from src.orchestration.router import route
 from src.scenarios import document
 
