@@ -64,7 +64,9 @@ class Runner:
             payload = make_untrusted_document_payload(doc.get("text", ""), str(doc.get("id", "document")))
             safe.append({**doc, "text": payload["content"], "trust_level": payload["trust_level"],
                          "ssn_redacted": payload["ssn_redacted"]})
-        return {**view, "documents": safe}
+        clean = type(view)({**view, "documents": safe})
+        clean.control = getattr(view, "control", {})  # keep the orchestrator's control inputs
+        return clean
 
     def _record(self, thread_id, name, step, view, tools, started, update, violations) -> dict:
         return {

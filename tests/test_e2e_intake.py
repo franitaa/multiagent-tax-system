@@ -70,10 +70,6 @@ def test_real_intake_escalates_when_a_spouse_died_and_the_interview_resumes(tmp_
     assert [d["condition"] for d in final["human_decisions"]] == [S.FILING_STATUS_AMBIGUITY]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "Rules reads fact names Intake does not write (taxpayer_dob, filing_status_claim, ...), so "
-    "with the real Intake it returns filing_status=None and eligible_1040sr=None, yet the run "
-    "still ends 'complete'. See docs/intake-rules-contract.md."))
 def test_rules_decides_eligibility_and_status_from_real_intake_facts(tmp_path):
     graph = graph_with_real_intake(tmp_path)
     result, _ = start_interview(graph, cfg("e2e-rules"))
@@ -90,11 +86,6 @@ SCREENING = {  # question text -> fact name Intake records it under (docs/intake
 }
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "Out-of-scope items are not escalated as OUT_OF_SCOPE by anyone: Intake only records the screening "
-    "answers (docs/intake-script.md) and Rules does not read those facts. Today the run pauses as "
-    "ELIGIBILITY_UNDECIDED, for the wrong reason, and once Rules can read Intake's names it would "
-    "complete. See docs/intake-rules-contract.md, section 5."))
 @pytest.mark.parametrize("question", SCREENING, ids=SCREENING.values())
 def test_an_out_of_scope_screening_answer_escalates_as_out_of_scope(tmp_path, question):
     graph = graph_with_real_intake(tmp_path)

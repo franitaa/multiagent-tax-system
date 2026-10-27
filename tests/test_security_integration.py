@@ -45,3 +45,14 @@ def test_traces_never_contain_real_looking_ssns(tmp_path):
     traces = "".join(p.read_text(encoding="utf-8") for p in tmp_path.glob("*.jsonl"))
     assert traces and "123-45-6789" not in traces
     assert any(json.loads(line)["agent"] == "extraction" for line in traces.splitlines())
+
+
+def test_sanitising_documents_keeps_the_orchestrators_control_inputs():
+    from src.orchestration.context import View
+    from src.orchestration.runner import Runner
+
+    view = View({"documents": [{"id": "d1", "text": "TEST DATA"}]})
+    view.control = {"review_fail": None, "guard": {}}
+    clean = Runner._sanitize_documents(view)
+    assert clean.control == view.control
+    assert clean["documents"][0]["trust_level"]
