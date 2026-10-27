@@ -170,3 +170,11 @@ if __name__ == "__main__":
 
     test_taxable_social_security_upper_range()
     print("All tax math tests passed!")
+
+
+def test_income_tax_2025_12_percent_bracket_tops():
+    # Rev. Proc. 2024-40: single 12% bracket ends at 48,475; joint at 96,950.
+    # Single 48,475: 1,192.50 + 0.12 * (48,475 - 11,925) = 5,578.50
+    assert calculate_income_tax(48475, "single")["value"] == 5578.5
+    # Joint 96,950: 2,385 + 0.12 * (96,950 - 23,850) = 11,157.00
+    assert calculate_income_tax(96950, "married_filing_jointly")["value"] == 11157.0
