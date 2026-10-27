@@ -61,9 +61,13 @@ POLICY: dict[str, AgentPolicy] = {
             "sum_amounts", "subtract_amounts",
         }),
     ),
+    # Review reads the sources (facts, extracted) so it can check each line against them,
+    # and re-runs the same deterministic tools to recompute independently.
     "review": AgentPolicy(
-        reads=frozenset({"computed", "eligibility", "session_summary"}),
+        reads=frozenset({"computed", "eligibility", "facts", "extracted", "session_summary"}),
         writes=COMMON_WRITES | {"review"},
+        tools=frozenset({"calculate_standard_deduction", "calculate_senior_deduction",
+                         "calculate_taxable_social_security", "calculate_income_tax"}),
     ),
 }
 

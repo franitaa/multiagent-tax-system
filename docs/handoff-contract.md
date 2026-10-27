@@ -21,8 +21,21 @@ Every agent can also read `escalation` and `human_decisions`, and write `escalat
 | Intake | `messages` (**last 6 only**), `facts` (all), `session_summary` | `messages`, `facts`, `pending_question`, `intake_complete` |
 | Extraction | `documents` | `extracted` (keyed by `doc_id`) |
 | Rules | `facts`, `extracted`, `session_summary` | `eligibility` |
-| Computation | `facts` (**numeric values only**), `extracted`, `eligibility` (**`filing_status` only**), `pending_revision` | `computed` (line -> ProvenanceRecord) |
-| Review | `computed`, `eligibility`, `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything |
+| Computation | `facts` (**numeric values plus a named few**, see `COMPUTATION_FACTS` in `context.py`), `extracted`, `eligibility`, `pending_revision` | `computed` (line -> ProvenanceRecord) |
+| Review | `computed`, `eligibility`, `facts`, `extracted`, `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything |
+
+### Labels for form lines and documents
+Taxpayer answers are named in `docs/answer-names.md`. This adds the two labels it does not
+cover, following the names the skeleton already uses. Review (`src/agents/review.py`) checks
+against them and sends work back that does not follow them.
+- **Form lines:** `computed` keys are `line_<n>` as on the 1040-SR: `line_1a`, `line_6b`,
+  `line_11a` (AGI), `line_12e` (standard deduction), `line_13b` (senior deduction), `line_25d`, ...
+- **Document boxes:** `extracted[doc_id] = {"kind": "W-2", "fields": {"box_1": {"value": ...}}}`.
+  A provenance input taken from a document is keyed `"<doc_id>.<box>"` (`"w2-1.box_1"`); one
+  taken from another line is keyed by that line (`"line_9"`).
+- **Tool lines:** 6b, 12e, 13b and 16 come from the `tax_math` tool of the same name in `TOOLS`.
+- **Typed-in amounts:** as in `docs/answer-names.md`: `source: "direct user input"` plus
+  `entered_by` and `entered_on`.
 
 **Your view is narrower than the table suggests, on purpose** (`docs/decisions/001-context-strategy.md`):
 - **Intake's chat window is not memory.** You see only the last 6 messages. Anything you must remember
