@@ -105,6 +105,11 @@ Scenarios (all offline; each writes a trace to `traces/`):
 .venv/bin/python -m scripts.draw_graph                        # regenerates the diagram above
 ```
 
+The draft 1040-SR (click any amount for its source) is written to `output/` by the scenarios, shown on
+the chat page when a case finishes, and rendered for any saved case with
+`python -m scripts.render_case <case id>`. Samples: `demo/eval_case_1_1040sr.html` (clean run) and
+`demo/eval_case_2_1040sr.html` (volunteer-resolved run). Details: [docs/provenance.md](docs/provenance.md).
+
 Security and privacy (what is protected, the audit log, deleting a case, what is not done):
 [docs/security.md](docs/security.md). Delete a case or apply the retention policy with
 `python -m scripts.purge_cases --case <id>` / `--expired --dry-run`.

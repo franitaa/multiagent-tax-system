@@ -11,10 +11,12 @@
 import argparse
 import sys
 import uuid
+from pathlib import Path
 
 from langgraph.types import Command
 
 from src import state as S
+from src.audit import AuditLog
 from src.draft_form import write_draft_form
 from src.graph import build_graph
 from src.orchestration.human import CONTINUABLE, FILING_STATUSES
@@ -82,7 +84,8 @@ def main() -> int:
     print(f"trace:     {(args.trace_dir or 'traces')}/{thread_id}.jsonl")
     if result["status"] == S.COMPLETE:
         try:
-            print(f"draft form: {write_draft_form(result, args.output_dir, thread_id)}")
+            audit = AuditLog(Path(args.trace_dir or "traces") / "audit")
+            print(f"draft form: {write_draft_form(result, args.output_dir, thread_id, audit=audit)}")
         except ValueError as problem:  # no computed lines, or a line without provenance
             print(f"NO DRAFT FORM WRITTEN: {problem}")
             return 1

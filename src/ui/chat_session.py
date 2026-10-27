@@ -31,6 +31,7 @@ import re
 import secrets
 
 from src.agents import intake_agent
+from src.draft_form import render_draft_html
 from src.graph import build_graph
 
 # What the page should show
@@ -99,6 +100,21 @@ def screen(graph, case_id: str) -> str:
     if values.get("done") or values.get("intake_complete"):
         return FINISHED
     return ASKING
+
+
+def draft_form_html(graph, case_id: str) -> str | None:
+    """The draft 1040-SR page for a case (PRV-3), or None when nothing has been computed yet.
+    Every amount expands to its formula, inputs, source and tool; nothing has been filed."""
+    values = graph.get_state(_config(case_id)).values
+    if not values.get("computed"):
+        return None
+    try:
+        return render_draft_html(
+            values["computed"], values.get("facts"), values.get("eligibility"),
+            review=values.get("review"), review_history=values.get("review_history"),
+            decisions=values.get("human_decisions"), case_id=case_id)
+    except ValueError:  # a line without provenance is never shown
+        return None
 
 
 def transcript(graph, case_id: str) -> list[dict]:
