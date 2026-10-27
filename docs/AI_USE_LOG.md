@@ -124,3 +124,36 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
   `docs/provenance.md` instead of interrupting them, and approved each commit and push.
 - Still to do myself before submission: open `demo/sample_1040sr.html` in a browser, click
   amounts, and record what I saw here.
+
+## Person 5 (Sahana) — Tue Oct 27, 2026 (Computation and Security follow-up)
+**Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `p5/computation-no-arithmetic`
+and `p5/redact-messages-at-boundary`.
+
+**What the AI helped with**
+- Audited `src/agents/computation.py` against the rule "Computation must not do arithmetic;
+  every number comes from a deterministic MCP tool". It found Python addition, a `max(0, ...)`
+  clamp, a head-count sum and bare `or 0` defaults, and moved all of them onto
+  `sum_amounts` / `subtract_amounts`, with a provenance note for amounts not entered.
+- Wrote `tests/test_computation_no_arithmetic.py`, an AST check that fails if arithmetic
+  returns to the agent, and checked that it fails when `wages + interest` is put back.
+- Closed a SEC-2 gap: real-looking SSNs could stay in `state["messages"]` when the graph
+  was called without the chat page. The messages reducer now removes them
+  (`remove_real_ssns`, `tests/test_boundary_redaction.py`).
+- Ran the three scenarios (clean, interrupt, spouse-died) before and after the changes, and
+  listed deliverables that are still missing from the repo.
+- Committed and pushed the branches after I asked for pull requests.
+
+**What I decided or checked myself**
+- Asked whether the arithmetic rule was met, approved the fixes, and chose to submit pull
+  requests rather than commit by hand.
+- Review the diffs and pull request text before merging.
+
+**How the AI's work was verified**
+- Full pytest run before each commit (825, then 831 passing, 2 expected failures), and the
+  scenario runs reached "DRAFT READY" with the two branches combined.
+
+**Limits I am aware of**
+- The AST test allows string and list joins with `+`; it checks the operators in one file,
+  not every route a number could take.
+- The redaction pattern removes any 9-digit number that is not 900-999, so a 9-digit
+  number that is not an SSN would also be removed from a chat message.
