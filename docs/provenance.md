@@ -49,6 +49,22 @@ once a human has resolved the condition.
 - Whole-dollar rounding is not applied; amounts are kept to cents.
 - QCD flag on 1099-R (spec 4a/4b) is not handled.
 
+## Review send-backs
+Review's findings arrive in `view["pending_revision"]` (`{"target", "round", "findings":
+[{"check", "line", "issue"}]}`). Computation re-runs everything and acts on two kinds:
+- `check == "sources"` (a document amount did not reach its line): amounts written as text, such as
+  `"20000.00"` or `"$20,000.00"`, are read as numbers. The first pass does not read them, so
+  Extraction's text amounts reach Review as a failure and the second pass fixes them. The line's
+  formula records that the text was read after a review finding.
+- `check == "recompute"` and the issue mentions the filing status: the status in `eligibility` is
+  used. Never when the status in `facts` is a volunteer's decision (`human:` source): that is not
+  Computation's to override, and Review keeps failing until Rules agrees with the volunteer.
+
+Anything else (scope, completeness, contradictions) is not acted on; the loop bound then sends the
+case to a human. The handoff reason names what was repaired (`lines computed again after review: ...`).
+Computation also uses Rules' `taxpayer_qualifies` / `spouse_qualifies` for the 65+ boxes when
+present, which is what Review checks them against.
+
 ## Draft form output
 `src/draft_form.py: write_draft_form(state, directory, name)` renders the final graph state to
 `<directory>/<name>_1040sr.html` and refuses to write when nothing is computed or an amount has
