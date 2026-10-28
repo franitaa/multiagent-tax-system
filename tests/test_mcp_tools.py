@@ -85,7 +85,9 @@ def test_a_server_that_cannot_start_stops_the_run_with_a_clear_error(monkeypatch
 
 
 def test_no_silent_fallback_when_the_shared_client_is_broken(monkeypatch, tmp_path):
-    """If MCP is selected and unreachable, Computation fails; it never computes in-process."""
+    """If MCP is selected and unreachable, Computation fails; it never computes in-process.
+    The run now ends with status halted_by_error (no traceback); the guarantee is unchanged:
+    no line is computed without the tool."""
     class Down:
         transport = "mcp"
 
@@ -96,8 +98,8 @@ def test_no_silent_fallback_when_the_shared_client_is_broken(monkeypatch, tmp_pa
             return call
 
     monkeypatch.setattr(mcp_client, "_shared", Down())
-    with pytest.raises(McpUnavailable):
-        build_graph(trace_dir=tmp_path).invoke(clean_case(), cfg("down"))
+    final = build_graph(trace_dir=tmp_path).invoke(clean_case(), cfg("down"))
+    assert final["status"] == "halted_by_error" and not final.get("computed")
 
 
 # ---- the whole graph over MCP ---------------------------------------------------------------
