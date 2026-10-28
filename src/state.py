@@ -26,6 +26,7 @@ AWAITING_USER = "awaiting_user"  # call returned normally; UI shows pending_ques
 AWAITING_HUMAN = "awaiting_human"  # call returned with an interrupt (volunteer)
 COMPLETE = "complete"
 HALTED_BY_HUMAN = "halted_by_human"
+HALTED_BY_ERROR = "halted_by_error"  # a tool the case needs was unreachable: stopped, nothing computed or filed
 
 # Escalation conditions (a human decides via interrupt).
 EXTRACTION_REVIEW = "EXTRACTION_REVIEW"

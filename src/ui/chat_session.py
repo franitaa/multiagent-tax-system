@@ -111,7 +111,7 @@ def screen(graph, case_id: str) -> str:
     values = snapshot.values
     if snapshot.interrupts:
         return WAITING_FOR_VOLUNTEER
-    if values.get("status") == "halted_by_human":
+    if values.get("status") in ("halted_by_human", "halted_by_error"):  # the taxpayer text is neutral for both
         return STOPPED
     if values.get("done") or values.get("intake_complete"):
         return FINISHED
