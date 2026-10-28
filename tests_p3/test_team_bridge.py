@@ -96,7 +96,10 @@ class BridgeTests(unittest.TestCase):
 
     def test_non_w2_does_not_call_model(self):
         update = run({'documents': [{'id': 'x', 'kind': '1099-R'}]}, ToolBox('extraction', self.runtime.registry()))
-        self.assertEqual(update['escalation']['condition'], 'OUT_OF_SCOPE')
+        self.assertNotIn('escalation', update)
+        self.assertEqual(update['extracted']['x']['status'], 'skipped')
+        self.assertEqual(update['extracted']['x']['fields'], {})
+        self.assertEqual(update['handoff_request']['to'], 'rules')
         self.assertEqual(len(self.runtime.reader.calls), 0)
 
     def test_previous_review_does_not_approve_new_document(self):
