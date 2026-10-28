@@ -34,6 +34,26 @@ COMPUTATION_FACTS = frozenset({
 })
 
 
+# The answers Rules reads (src/agents/rules.py): marital and household answers behind the filing
+# status, birth dates and blindness behind the age/blindness boxes, the out-of-scope screening
+# answers, and the volunteer's filing-status override. The first four names are legacy names Rules
+# still accepts. Names, dependents (with their test SSNs) and the volunteer notes are not here:
+# Rules has no use for them. tests/test_context_views.py fails if Rules starts reading a name
+# that is missing from this set.
+RULES_FACTS = frozenset({
+    "filing_status", "filing_status_claim", "age", "spouse_age",
+    "married_dec31", "file_jointly", "household_situation", "spouse_death_year",
+    "taxpayer_birth_date", "spouse_birth_date", "taxpayer_blind", "spouse_blind",
+    "spouse_itemizing", "spouse_can_be_claimed", "can_be_claimed_as_dependent", "us_resident_all_year",
+    "has_other_tax_forms", "sold_stocks_or_property", "business_or_rental_income",
+    "foreign_income_or_accounts", "digital_assets",
+})
+
+
+def _rules_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
+    return {name: fact for name, fact in facts.items() if name in RULES_FACTS}
+
+
 COMPUTATION_ELIGIBILITY = ("filing_status", "taxpayer_qualifies", "spouse_qualifies")
 
 
@@ -59,6 +79,7 @@ TRANSFORMS = {
         "eligibility": lambda e: {k: e.get(k) for k in COMPUTATION_ELIGIBILITY},
     },
     "review": {"facts": _numeric_facts},
+    "rules": {"facts": _rules_facts},
 }
 
 
