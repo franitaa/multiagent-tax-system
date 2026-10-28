@@ -12,6 +12,11 @@ Every dollar amount in `state["computed"]` is a record with `value`, `formula`, 
   (`mcp`, or `local` for P3's extraction tool). `SILVERFILE_TOOL_TRANSPORT=local` runs the same
   functions in-process, on purpose, for debugging. If the server cannot start the run stops with
   `McpUnavailable`; there is no silent fallback. Review uses the same tools to recompute.
+- Computation applies no arithmetic of its own: sums, differences, MAGI and the qualifying-people
+  count all go through `sum_amounts` / `subtract_amounts`, and an amount the taxpayer did not enter
+  becomes a tool-made zero whose formula says so (for example "No Schedule 2 tax entered").
+  `tests/test_computation_no_arithmetic.py` fails if `src/agents/computation.py` uses an arithmetic
+  operator or `min`, `max`, `sum`, `round` or `abs`.
 - Amounts read from a document carry `source = "Document <id> (Document Extraction)"`.
 - Amounts the taxpayer typed (adjustments, estimated payments, Schedule 1/2/3) are direct-input
   records: `field_name`, `entered_by`, `entered_on` are in `inputs`.
@@ -37,6 +42,9 @@ once a human has resolved the condition.
 ## Security
 - `security.py::is_fake_ssn` (900-999 only) is the one SSN rule; Intake uses it, and the draft
   form shows only numbers that pass it.
+- `security.remove_real_ssns` replaces any SSN-like number outside 900-999 with `[number removed]`.
+  The `messages` reducer in `src/state.py` applies it to every new chat message, so a caller that
+  skips the chat page's own cleaning cannot leave a real-looking SSN in state or a checkpoint.
 - The runner redacts non-test SSNs, EINs, emails and phone numbers in document text, labels
   documents `untrusted_document_data`, and redacts handoff reasons written to traces.
 - Limits: regex redaction is a defensive filter, not a guarantee. Embedded instructions are

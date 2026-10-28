@@ -45,10 +45,13 @@ boundary that every agent call passes through.
 ## Testing
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
-tests that traces and the form never show real-looking SSNs. Test suite on the integrated branch (with main, orchestration, Extraction and Docker work merged), Oct 27, 2026: 824 passing.
+tests that traces, the form and chat messages never show or hold a real-looking SSN, and a check
+that fails if the Computation agent does arithmetic itself. Full suite on `p5/oct27-followups`
+(Windows, Python 3.13), Oct 28, 2026: 832 passing and 2 expected failures.
 
 ## Accessibility and dignity (P5's part)
-Unsolicited real-looking SSNs are removed and the user is told why in plain language; no SSN is
+Unsolicited real-looking SSNs are removed (in the chat page and again where messages enter the
+graph state) and the user is told why in plain language; no SSN is
 requested for the taxpayer or spouse; the draft form masks dependents' SSNs and uses large type
 and keyboard-operable details.
 
