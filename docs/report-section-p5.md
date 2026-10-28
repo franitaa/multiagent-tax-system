@@ -47,7 +47,7 @@ Hand-calculated expected values for each tool including boundary cases, an end-t
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
 tests that traces, the form and chat messages never show or hold a real-looking SSN, and a check
 that fails if the Computation agent does arithmetic itself. Full suite on `p5/oct27-followups`
-(Windows, Python 3.13), Oct 28, 2026: 832 passing and 2 expected failures.
+(Windows, Python 3.13), Oct 28, 2026: 835 passing and 2 expected failures.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed (in the chat page and again where messages enter the
