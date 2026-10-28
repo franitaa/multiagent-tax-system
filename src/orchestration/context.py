@@ -34,13 +34,20 @@ COMPUTATION_FACTS = frozenset({
 })
 
 
-def _computation_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
-    """Computation works from numbers plus the few named answers above, not free text."""
+COMPUTATION_ELIGIBILITY = ("filing_status", "taxpayer_qualifies", "spouse_qualifies")
+
+
+def _numeric_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
+    """The amounts the taxpayer typed, not free text (Review checks them against the return)."""
     return {
         name: fact for name, fact in facts.items()
-        if name in COMPUTATION_FACTS
-        or (isinstance(fact.get("value"), (int, float)) and not isinstance(fact.get("value"), bool))
+        if isinstance(fact.get("value"), (int, float)) and not isinstance(fact.get("value"), bool)
     }
+
+
+def _computation_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
+    """Computation works from numbers plus the few named answers above, not free text."""
+    return {**_numeric_facts(facts), **{n: f for n, f in facts.items() if n in COMPUTATION_FACTS}}
 
 
 # Per-agent narrowing of the fields on the read allow-list.
@@ -48,8 +55,10 @@ TRANSFORMS = {
     "intake": {"messages": lambda messages: messages[-MAX_INTAKE_MESSAGES:]},
     "computation": {
         "facts": _computation_facts,
-        "eligibility": lambda e: {"filing_status": e.get("filing_status")},
+        # the status and the 65+ answers Rules decided (Review derives the 12d boxes from the same)
+        "eligibility": lambda e: {k: e.get(k) for k in COMPUTATION_ELIGIBILITY},
     },
+    "review": {"facts": _numeric_facts},
 }
 
 
