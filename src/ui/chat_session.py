@@ -37,7 +37,7 @@ import secrets
 from contextlib import ExitStack
 
 from silverfile_extraction.checkpointer import sqlite_checkpointer
-from src.agents import intake_agent
+from src.agents import intake_agent, live_agents
 from src.draft_form import render_draft_html
 from src.graph import build_graph
 
@@ -77,7 +77,7 @@ def open_saved_sessions(path=None):
 
 def make_graph(checkpointer=None, trace_dir="traces"):
     """The SilverFile graph with the real Intake. Without a checkpointer, sessions live in memory."""
-    return build_graph(checkpointer, trace_dir=trace_dir, agents={"intake": intake_agent.run})
+    return build_graph(checkpointer, trace_dir=trace_dir, agents=live_agents())
 
 
 def _config(case_id: str) -> dict:
