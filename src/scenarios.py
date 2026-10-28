@@ -176,5 +176,19 @@ def decided_rules(view, tools):
     }
 
 
+def text_extraction(view, tools):
+    """Scenario-owned stand-in for Document Extraction: the real one reads W-2 images only, and
+    this scenario's documents are plain-text test pages. One document per parallel worker."""
+    return {
+        "extracted": {
+            doc["id"]: {"doc_id": doc["id"], "kind": doc["kind"],
+                        "fields": {"box_1": {"value": 1000.0, "source": doc["id"]}}}
+            for doc in view.get("documents", [])
+        },
+        "handoff_request": {"to": "rules", "reason": "documents extracted"},
+    }
+
+
 def long_session_agents(turns: int = 30) -> dict:
-    return {"intake": long_intake(turns), "rules": decided_rules, **revising_agents()}
+    return {"intake": long_intake(turns), "extraction": text_extraction, "rules": decided_rules,
+            **revising_agents()}
