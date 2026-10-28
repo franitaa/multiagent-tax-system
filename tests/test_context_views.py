@@ -51,7 +51,8 @@ def test_rules_sees_facts_and_typed_records_but_no_chat_or_raw_documents():
 def test_computation_sees_numbers_and_filing_status_not_chat_or_free_text():
     view = view_for("computation", full_state())
     assert set(view["facts"]) == {"age", "wages_claim"}  # numeric only: not str, not bool
-    assert view["eligibility"] == {"filing_status": "single"}
+    assert view["eligibility"] == {"filing_status": "single", "taxpayer_qualifies": None,
+                                   "spouse_qualifies": None}  # what Rules decided, nothing else
     assert "messages" not in view and "documents" not in view
 
 
