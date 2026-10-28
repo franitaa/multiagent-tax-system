@@ -7,6 +7,9 @@ reachable through the ToolBox the runner hands in.
 from dataclasses import dataclass
 from typing import Callable
 
+from src.mcp_client import mcp_registry, tool_transport
+from src.tax_tools import TAX_TOOLS
+
 # Fields every agent may set so that safety signals and handoffs always work.
 COMMON_WRITES = frozenset({"escalation", "handoff_request"})
 # Fields every agent can always read, so a safety signal can never be scoped away.
@@ -51,6 +54,11 @@ POLICY: dict[str, AgentPolicy] = {
     "computation": AgentPolicy(
         reads=frozenset({"facts", "extracted", "eligibility", "pending_revision"}),
         writes=COMMON_WRITES | {"computed"},
+        tools=frozenset({
+            "calculate_standard_deduction", "calculate_senior_deduction",
+            "calculate_taxable_social_security", "calculate_income_tax",
+            "sum_amounts", "subtract_amounts",
+        }),
     ),
     "review": AgentPolicy(
         reads=frozenset({"computed", "eligibility", "session_summary"}),
@@ -60,7 +68,9 @@ POLICY: dict[str, AgentPolicy] = {
 
 # Tool registry. Teammates register their deterministic tools here by name, then list the
 # name in the owning agent's `tools` above.
-TOOLS: dict[str, Callable] = {}
+# The in-process functions. With SILVERFILE_TOOL_TRANSPORT=mcp (the default) a ToolBox swaps the
+# tax tools for calls to the MCP server (src/mcp_client.py).
+TOOLS: dict[str, Callable] = dict(TAX_TOOLS)
 
 
 class AccessViolation(Exception):
@@ -73,11 +83,15 @@ class ToolBox:
     def __init__(self, agent: str, registry: dict[str, Callable] | None = None):
         self.agent = agent
         self._allowed = POLICY[agent].tools
-        self._registry = TOOLS if registry is None else registry
+        defaults = {**TOOLS, **mcp_registry()} if tool_transport() == "mcp" else TOOLS
+        self._registry = {**defaults, **(registry or {})}  # a custom registry adds to the defaults
         self.calls: list[str] = []
+        self.transports: list[str] = []
 
     def call(self, name: str, **kwargs):
         if name not in self._allowed:
             raise AccessViolation(f"{self.agent} may not call tool {name!r}")
         self.calls.append(name)
-        return self._registry[name](**kwargs)
+        function = self._registry[name]
+        self.transports.append(getattr(function, "transport", "local"))
+        return function(**kwargs)
