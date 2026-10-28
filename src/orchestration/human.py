@@ -10,8 +10,8 @@ Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...}
   continue  allowed only for SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST,
             and only with a non-empty note (it is part of the audit record). A human cannot
             take responsibility for out-of-scope work, so OUT_OF_SCOPE, FORM_1099R_BOX_2B,
-            EXPLOITATION_SIGNS (and the orchestrator's own LOOP_GUARD and
-            REVIEW_BOUND_EXCEEDED) accept "stop" only.
+            EXPLOITATION_SIGNS (and the orchestrator's own LOOP_GUARD,
+            REVIEW_BOUND_EXCEEDED and ELIGIBILITY_UNDECIDED) accept "stop" only.
   resolution  optional resolving values, stored as facts with source "human:<CONDITION>":
             SOURCE_CONFLICT: {fact_name: value}; FILING_STATUS_AMBIGUITY: {"filing_status": ...}.
 

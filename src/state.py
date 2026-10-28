@@ -36,6 +36,7 @@ EXPLOITATION_SIGNS = "EXPLOITATION_SIGNS"
 # raised by the orchestrator itself
 LOOP_GUARD = "LOOP_GUARD"
 REVIEW_BOUND_EXCEEDED = "REVIEW_BOUND_EXCEEDED"
+ELIGIBILITY_UNDECIDED = "ELIGIBILITY_UNDECIDED"  # Rules returned no filing status or no verdict
 # Most severe first. Decides which of several simultaneous escalations a human sees first.
 ESCALATION_PRIORITY = (
     EXPLOITATION_SIGNS,
@@ -44,6 +45,7 @@ ESCALATION_PRIORITY = (
     FILING_STATUS_AMBIGUITY,
     SOURCE_CONFLICT,
     TAX_ADVICE_REQUEST,
+    ELIGIBILITY_UNDECIDED,
     LOOP_GUARD,
     REVIEW_BOUND_EXCEEDED,
 )

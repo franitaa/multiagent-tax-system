@@ -5,7 +5,8 @@ table is unit-testable. The orchestrator node applies `update` to state.
 
 Rules, first match wins: pending escalation -> human; done -> end; waiting for the taxpayer
 -> end (yield); intake -> extraction -> rules -> (out of scope -> human) -> computation ->
-review; a passed review ends the case; a failed review is sent back to Computation until
+review; a passed review ends the case (never with an empty filing status or eligibility
+verdict: that escalates as ELIGIBILITY_UNDECIDED, stop-only); a failed review is sent back to Computation until
 `max_revisions` is used up, then escalates. The loop guard (guard.py) wraps this function.
 
 Send-back clears the stale verdict (review=None) and counts the round, so the router can
@@ -15,8 +16,8 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from src.state import (
-    AWAITING_HUMAN, AWAITING_USER, COMPLETE, END_KEY, HUMAN_KEY, OUT_OF_SCOPE, RUNNING,
-    REVIEW_BOUND_EXCEEDED,
+    AWAITING_HUMAN, AWAITING_USER, COMPLETE, ELIGIBILITY_UNDECIDED, END_KEY, HUMAN_KEY,
+    OUT_OF_SCOPE, RUNNING, REVIEW_BOUND_EXCEEDED,
 )
 
 
@@ -30,6 +31,25 @@ class Route:
     next: str  # an agent name or END_KEY
     reason: str
     update: dict[str, Any] = field(default_factory=dict)
+
+
+def _undecided(view: Mapping[str, Any], base: dict[str, Any]) -> Route:
+    gaps = ", ".join(view["eligibility_gaps"])
+    return Route(
+        HUMAN_KEY,
+        f"eligibility undecided: missing {gaps}",
+        {
+            **base,
+            "status": AWAITING_HUMAN,
+            "escalation": {
+                "pending": True,
+                "condition": ELIGIBILITY_UNDECIDED,
+                "reason": f"Eligibility & Rules did not return: {gaps}. "
+                          "A draft cannot be completed without them.",
+                "raised_by": "orchestrator",
+            },
+        },
+    )
 
 
 def route(view: Mapping[str, Any]) -> Route:
@@ -78,6 +98,8 @@ def route(view: Mapping[str, Any]) -> Route:
                 },
             },
         )
+    if view["eligibility_gaps"]:
+        return _undecided(view, base)
     if not view["has_computed"]:
         return Route("computation", "no computed lines", base)
     verdict = view["review_verdict"]
@@ -86,6 +108,8 @@ def route(view: Mapping[str, Any]) -> Route:
         update = {**base, **({"pending_revision": None} if view["has_pending_revision"] else {})}
         return Route("review", "return not yet reviewed", update)
     if verdict == "pass":
+        if view["eligibility_gaps"]:  # never finish without a filing status and a verdict
+            return _undecided(view, base)
         return Route(END_KEY, "review passed: draft ready", {**base, "done": True, "status": COMPLETE})
     if verdict != "fail":
         raise ValueError(f"invalid review verdict {verdict!r}: expected 'pass' or 'fail'")
