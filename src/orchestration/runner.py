@@ -61,6 +61,7 @@ class Runner:
             raise AccessViolation(f"{name} wrote outside its allow-list: {violations}")
         if malformed:
             raise AccessViolation(f"{name} returned a malformed update: {malformed}")
+        update = self._redact_free_text(update)
         self._audit_update(thread_id, name, update)
         return update
 
@@ -93,6 +94,27 @@ class Runner:
             self.audit.record(thread_id, "draft_ready", f"agent:{name}")
         elif update.get("status") == HALTED_BY_HUMAN:
             self.audit.record(thread_id, "case_stopped", f"agent:{name}")
+
+    @staticmethod
+    def _redact_free_text(update: dict) -> dict:
+        """Escalation reasons and volunteer notes are free text that goes into graph state and
+        checkpoints. Redact identifiers in them (the audit log already does for its own copy)."""
+        def clean(item: dict, key: str) -> dict:
+            value = item.get(key)
+            return {**item, key: redact_pii(value)} if isinstance(value, str) else item
+
+        out = dict(update)
+        flag = out.get("escalation")
+        if isinstance(flag, dict):
+            flag = clean(flag, "reason")
+            if isinstance(flag.get("queued"), list):
+                flag = {**flag, "queued": [clean(q, "reason") if isinstance(q, dict) else q
+                                           for q in flag["queued"]]}
+            out["escalation"] = flag
+        if isinstance(out.get("human_decisions"), list):
+            out["human_decisions"] = [clean(d, "note") if isinstance(d, dict) else d
+                                      for d in out["human_decisions"]]
+        return out
 
     @staticmethod
     def _sanitize_documents(view: dict) -> dict:
