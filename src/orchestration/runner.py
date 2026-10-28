@@ -123,6 +123,7 @@ class Runner:
             "control_fields_read": sorted(getattr(view, "control", {})),
             "fields_written": sorted(update),
             "tools_called": tools.calls,
+            "tool_transports": sorted(set(tools.transports)),
             "duration_ms": round((time.perf_counter() - started) * 1000, 3),
             "input_tokens": estimate_tokens(view),
             "output_tokens": estimate_tokens(update),
