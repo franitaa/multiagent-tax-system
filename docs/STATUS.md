@@ -1,13 +1,15 @@
 # Status: orchestration (Person 1)
 
-Updated at the end of every phase. Branch: `orchestration-phase5` (stacked on `orchestration-phase4`).
+Updated at the end of every phase. Branch: `p1/phase5-integration` (phase 5 plus the orchestration hooks Computation and the P5 security work need; stacked on `p5/clean`, PR #24).
 
 ## Done
 - **Phases 1-3 (merged):** state contract, hub-and-spoke graph, runner with JSONL tracing, routing table, human interrupt with stop-only rules, parallel extraction with order-independent reducers, bounded review loop, loop guard.
 - **Phase 4 (PR open):** scoped views, Intake chat window (6), deterministic rolling summary, `--no-context-strategy`, long-session scenario, `scripts/measure_context.py` and `docs/metrics.md`, full decision record, orchestrator control channel, spouse-died demo.
 - **Phase 5:** README with run instructions and a diagram generated from the compiled graph (`scripts/draw_graph.py`, with a test that fails if it goes stale); plain `pytest` now collects the root-level tests too.
 - **Orchestrator invariant:** a case can never end "complete" without a filing status and an eligibility verdict; it pauses with `ELIGIBILITY_UNDECIDED` (orchestrator-raised, stop-only) right after Rules.
-- **Integration check of the real Intake with the real Rules** (`docs/intake-rules-contract.md`, `tests/test_e2e_intake.py`, `tests/test_rules_intake_contract.py`). Real Intake works in our graph (24-question interview, 6-message window, escalation of a spouse who died). Rules does not understand its output yet.
+- **P5 integration hooks (this branch):** the runner's document sanitising, update shape check (`validate.py`), audit events, free-text redaction and tool-transport trace; the human gate's `reviewer`; `append_messages`; Computation's scoped view (`COMPUTATION_FACTS`); the long-session scenario's decided Rules stand-in. Hunks are Sahana's, cherry-picked with authorship kept (one commit per source commit).
+- **Rules landed:** the strict xfail markers for Intake's names, the real-Intake eligibility run and the out-of-scope screening answers are removed (they pass). One xfail remains: a volunteer's filing status needs Rules to map the gate's full names (HUMAN_GATE_NAMES, PR #21).
+- **Integration check of the real Intake with the real Rules** (`docs/intake-rules-contract.md`, `tests/test_e2e_intake.py`, `tests/test_rules_intake_contract.py`). Real Intake works in our graph (24-question interview, 6-message window, escalation of a spouse who died). Rules now understands it (see above).
 
 ## In progress
 - Review of the Phase 4 PR. Matthew is reworking Rules. Supriya's Intake PR (`feature/intake-agent`) is under review; my findings are listed below.
