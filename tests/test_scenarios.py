@@ -38,9 +38,9 @@ def test_spouse_died_pauses_then_finishes_with_the_human_supplied_filing_status(
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "Rules (src/agents/rules.py) reads only facts['filing_status_claim'], so a volunteer's "
-    "facts['filing_status'] never reaches the draft. Remove this marker once Rules reads "
-    "facts['filing_status'] first (see docs/answer-names.md and docs/handoff-contract.md)."))
+    "The human gate writes full names (married_filing_jointly) and Rules only accepts its codes "
+    "(mfj), so a volunteer's facts['filing_status'] is ignored. Remove this marker once Rules maps "
+    "the gate's names (HUMAN_GATE_NAMES, PR #21; see docs/handoff-contract.md)."))
 def test_the_human_supplied_filing_status_reaches_the_draft(tmp_path):
     case, agents = spouse_died_case()
     graph = build_graph(trace_dir=tmp_path, agents=agents)

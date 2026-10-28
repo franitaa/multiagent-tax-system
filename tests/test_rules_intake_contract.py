@@ -1,9 +1,8 @@
 """Rules must understand the facts Intake writes (docs/intake-rules-contract.md).
 
 Intake (Supriya, docs/answer-names.md) is the source of truth for fact names and value shapes;
-Rules adapts. Each test below fails today for the reason in its marker. They are STRICT
-expected failures: when Rules is fixed the test passes, strict mode fails the run, and the
-marker should be removed.
+Rules adapts. These were strict expected failures until Matthew's Rules read Intake's names;
+they are now plain regression tests.
 """
 import pytest
 
@@ -15,24 +14,18 @@ def eligibility(facts):
                       "extracted": {}}, None)["eligibility"]
 
 
-def test_sanity_rules_works_with_the_names_it_reads_today():
-    result = eligibility({"taxpayer_dob": "1950-03-04", "filing_status_claim": "single"})
+def test_sanity_rules_decides_a_single_filer_from_intakes_names():
+    result = eligibility({"taxpayer_birth_date": "1950-03-04", "married_dec31": "no",
+                          "household_situation": "single"})
     assert result["eligible_1040sr"] is True and result["filing_status"] == "single"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "Rules counts Intake's string answer 'no' as blind: it runs bool(taxpayer_blind) on the "
-    "string, and bool('no') is True. Born 1950 and not blind should give 1 age/blindness box, "
-    "Rules gives 2 (an overstated deduction). Parse yes/no/not_sure strings; see the contract doc."))
 def test_a_no_answer_to_blindness_is_not_counted_as_blind():
-    result = eligibility({"taxpayer_dob": "1950-03-04", "filing_status_claim": "single",
-                          "taxpayer_blind": "no"})
+    result = eligibility({"taxpayer_birth_date": "1950-03-04", "married_dec31": "no",
+                          "household_situation": "single", "taxpayer_blind": "no"})
     assert result["age_blindness_boxes"] == 1
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "Rules reads taxpayer_dob / age, but Intake writes taxpayer_birth_date (ISO date string), "
-    "so Rules cannot decide eligibility from real Intake output. See the contract doc."))
 def test_rules_finds_the_birth_date_under_intakes_name():
     result = eligibility({"taxpayer_birth_date": "1950-03-04", "household_situation": "single",
                           "married_dec31": "no"})
