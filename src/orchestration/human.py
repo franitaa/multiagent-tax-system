@@ -4,7 +4,8 @@ Agents only set an `escalation` flag; the router sends control here. The interru
 FIRST statement because LangGraph re-executes the node from the top on resume, so nothing
 before it may have side effects.
 
-Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...} | absent}.
+Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...} | absent,
+"reviewer": str | absent}. `reviewer` names the volunteer for the audit log (src/audit.py).
 
   stop      always allowed. The case ends with status "halted_by_human". Note optional.
   continue  allowed only for SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST,
@@ -70,6 +71,11 @@ def _validate(answer, condition: str) -> tuple[str, str, dict]:
     return decision, note, dict(resolution)
 
 
+def _reviewer(answer) -> str:
+    name = answer.get("reviewer") if isinstance(answer, dict) else None
+    return " ".join(str(name).split())[:80] if name else ""
+
+
 def human_gate(view: dict, tools: ToolBox) -> dict:
     escalation = view["escalation"]
     condition = escalation["condition"]
@@ -97,7 +103,7 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
     update = {
         "human_decisions": [
             {"condition": condition, "decision": decision, "note": note,
-             "resolution": resolution or None}
+             "resolution": resolution or None, **({"reviewer": _reviewer(answer)} if _reviewer(answer) else {})}
         ],
         "escalation": None,
         "status": RUNNING,
