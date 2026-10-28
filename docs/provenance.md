@@ -49,7 +49,7 @@ once a human has resolved the condition.
   documents `untrusted_document_data`, and redacts handoff reasons written to traces.
 - Limits: regex redaction is a defensive filter, not a guarantee. Embedded instructions are
   labelled as data; the Extraction agent must not treat document text as instructions.
-  Escalation reasons and human-decision notes written by other agents are not redacted.
+  Escalation reasons and volunteer notes are redacted by the runner before they reach state.
 - Dual-status aliens (section 3.2 rule 2) are not detected here; Rules/Intake must escalate.
 
 ## Known limitations

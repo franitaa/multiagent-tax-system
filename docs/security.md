@@ -10,6 +10,7 @@ Chat messages are cleaned in the `messages` reducer in `src/state.py` (`append_m
 | A real SSN entered by mistake | Only 900-999 test SSNs are accepted; real-looking ones are removed and the user told why | `security.py`, Intake, chat page |
 | A real SSN in a chat message, even when the caller skips the chat page | Every new message is cleaned as it enters state: an SSN-like number outside 900-999 (dashes, spaces or plain digits) becomes `[number removed]`; practice numbers stay | `security.remove_real_ssns`, `src/state.py` |
 | Identifiers in documents and traces | Redaction of SSN/EIN/email/phone; traces hold field names, never values | `security.redact_pii`, runner |
+| Identifiers in escalation reasons and volunteer notes | The runner redacts these free-text fields (including queued escalations) before an update reaches state or a checkpoint; the audit log redacts its own copy | `Runner._redact_free_text` |
 | Instructions hidden in a document (prompt injection) | Text is labelled as data, invisible control characters removed, instruction-like text flagged and audited | `document_security.py`, runner |
 | An agent talked into misbehaving | Write allow-list per agent, then shape checks: size, plain data, known handoff targets and conditions, **no dollar amount without a provenance record** | `access.py`, `validate.py` |
 | Nobody can say who decided what | Append-only, hash-chained audit log per case | `src/audit.py` |
@@ -53,4 +54,3 @@ Limits: this deletes rows and files; it does not securely wipe disk blocks or ba
 - Dependents' test SSNs are stored unencrypted in the checkpoint database.
 - Redaction does not cover names or addresses, and is regex-based.
 - No authentication: a case ID is not a secret, and volunteer names are not verified.
-- Escalation reasons and human-decision notes in graph state are not redacted (the audit copy is).
