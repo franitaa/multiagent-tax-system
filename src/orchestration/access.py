@@ -33,8 +33,9 @@ POLICY: dict[str, AgentPolicy] = {
     ),
     # The human gate is orchestrator-owned: it performs the interrupt and records the decision.
     "human": AgentPolicy(
-        reads=frozenset({"case_id"}),
-        writes=COMMON_WRITES | {"human_decisions", "status", "done", "facts", "eligibility"},
+        reads=frozenset({"case_id", "extracted"}),
+        writes=COMMON_WRITES | {"human_decisions", "status", "done", "facts", "extracted", "eligibility"},
+        tools=frozenset({"p3_verify_w2"}),
     ),
     "intake": AgentPolicy(
         reads=frozenset({"messages", "facts", "session_summary"}),
@@ -43,6 +44,7 @@ POLICY: dict[str, AgentPolicy] = {
     "extraction": AgentPolicy(
         reads=frozenset({"documents"}),
         writes=COMMON_WRITES | {"extracted"},
+        tools=frozenset({"p3_extract_w2"}),
     ),
     "rules": AgentPolicy(
         reads=frozenset({"facts", "extracted", "session_summary"}),
@@ -60,7 +62,9 @@ POLICY: dict[str, AgentPolicy] = {
 
 # Tool registry. Teammates register their deterministic tools here by name, then list the
 # name in the owning agent's `tools` above.
-TOOLS: dict[str, Callable] = {}
+from src.p3.bridge import extract_text_fixture, verify_w2
+
+TOOLS: dict[str, Callable] = {"p3_extract_w2": extract_text_fixture, "p3_verify_w2": verify_w2}
 
 
 class AccessViolation(Exception):
@@ -75,9 +79,15 @@ class ToolBox:
         self._allowed = POLICY[agent].tools
         self._registry = TOOLS if registry is None else registry
         self.calls: list[str] = []
+        self.usage: list[dict] = []
 
     def call(self, name: str, **kwargs):
         if name not in self._allowed:
             raise AccessViolation(f"{self.agent} may not call tool {name!r}")
         self.calls.append(name)
-        return self._registry[name](**kwargs)
+        result = self._registry[name](**kwargs)
+        if name == 'p3_extract_w2' and isinstance(result, dict):
+            usage = result.get('usage') or {}
+            if usage.get('api_input_tokens') is not None:
+                self.usage.append(usage)
+        return result

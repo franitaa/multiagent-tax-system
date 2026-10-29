@@ -1,0 +1,5 @@
+# AI-use disclosure
+
+OpenAI ChatGPT/Codex assisted with design and implementation of this P3 component, including direct image extraction, the Streamlit interface, typed data contracts, review checks, durable memory, checkpointer adapters, synthetic fixtures, tests, documentation and packaging. Generated code was exercised with available local tests; unexecuted checks and the lack of live API validation are listed in VALIDATION.md. At runtime an OpenAI vision model transcribes synthetic W-2 images, deterministic Python validates the structure, and a human verifies every amount before handoff. Team members must review this code, complete dependency-enabled and live-image testing, record their actual contributions, and update this disclosure for subsequent work.
+
+This integration additionally adapted P3 to the supplied team run/view/tools contract, tool registry, source-record schema, parallel worker context, revision reducer and orchestrator-owned human gate. Team changes and unexecuted integration checks are listed in P3_CHANGED_FILES.md and VALIDATION.md; no commit or push was performed.
