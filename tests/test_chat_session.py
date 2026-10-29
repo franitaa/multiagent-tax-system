@@ -1,4 +1,5 @@
 """Tests for the taxpayer chat page (card INT-6): the chat logic and a page smoke test."""
+import html
 import re
 
 import pytest
@@ -12,6 +13,15 @@ from tests.test_intake_agent import FULL_ANSWERS, NAME
 @pytest.fixture
 def graph(tmp_path):
     return chat.make_graph(trace_dir=tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def saved_sessions_in_a_temp_file(tmp_path, monkeypatch):
+    """The page tests save sessions to a temporary file, never the real runtime/ one."""
+    import streamlit as st
+
+    monkeypatch.setattr(chat, "SAVED_SESSIONS_FILE", str(tmp_path / "sessions.sqlite"))
+    st.cache_resource.clear()
 
 
 def start_named(graph, case_id):
@@ -106,6 +116,22 @@ def test_continuing_a_session_gives_a_summary(graph):
     )
 
 
+def test_a_session_survives_the_app_restarting(tmp_path):
+    """Stopped on Tuesday, continued on Friday: the answers are still there after a restart."""
+    saved = tmp_path / "sessions.sqlite"
+    first = chat.make_graph(chat.open_saved_sessions(saved), trace_dir=tmp_path)
+    case_id = "SF-000-010"
+    start_named(first, case_id)
+    chat.send(first, case_id, "no")
+
+    after_restart = chat.make_graph(chat.open_saved_sessions(saved), trace_dir=tmp_path)
+    assert chat.exists(after_restart, case_id)
+    assert [r["answer"] for r in chat.answers(after_restart, case_id)] == [NAME, "no"]
+    assert chat.welcome_back(after_restart, case_id).startswith("Welcome back. So far we've covered:")
+    chat.send(after_restart, case_id, "single")  # carries on where it left off
+    assert [r["answer"] for r in chat.answers(after_restart, case_id)] == [NAME, "no", "single"]
+
+
 def test_answers_list_and_change(graph):
     case_id = "SF-000-008"
     start_named(graph, case_id)
@@ -118,11 +144,30 @@ def test_answers_list_and_change(graph):
 
 
 def test_date_answer_from_the_three_boxes():
-    assert chat.MONTH_OPTIONS[2] == "3 - March"
-    assert chat.date_answer("3 - March", 4, 1950) == "March 4, 1950"
-    assert chat.date_answer("12 - December", 4.0, 1950.0) == "December 4, 1950"
+    assert chat.MONTH_OPTIONS[2] == "March"
+    assert chat.date_answer("March", 4, 1950) == "March 4, 1950"
+    assert chat.date_answer("December", 4.0, 1950.0) == "December 4, 1950"
     assert chat.date_answer(None, 4, 1950) is None
-    assert chat.date_answer("3 - March", None, 1950) is None
+    assert chat.date_answer("March", None, 1950) is None
+
+
+@pytest.mark.parametrize("typed, expected", [
+    ("03-04-1950", "March 4, 1950"), ("03/04/1950", "March 4, 1950"), ("03041950", "March 4, 1950"),
+    ("3-4-1950", "March 4, 1950"), (" 12 - 25 - 1949 ", "December 25, 1949"),
+    ("March 4, 1950", "March 4, 1950"),  # words: sent as typed, Intake reads them
+    ("13-04-1950", "13-04-1950"),  # month 13 means day-first: sent as typed, Intake checks it
+])
+def test_typed_date_is_read_month_first(typed, expected):
+    assert chat.typed_date(typed) == expected
+
+
+def test_typed_date_is_read_back_before_it_is_saved(graph):
+    case_id = "SF-000-011"
+    start_named(graph, case_id)
+    for answer in ["no", "single"]:
+        chat.send(graph, case_id, answer)
+    chat.send(graph, case_id, chat.typed_date("03-04-1950"))
+    assert "March 4, 1950" in chat.transcript(graph, case_id)[-1]["content"]
 
 
 def test_date_boxes_only_while_asking_for_a_date(graph):
@@ -132,7 +177,7 @@ def test_date_boxes_only_while_asking_for_a_date(graph):
     chat.send(graph, case_id, "no")
     chat.send(graph, case_id, "single")
     assert chat.asking_for_a_date(graph, case_id)
-    chat.send(graph, case_id, chat.date_answer("3 - March", 4, 1950))
+    chat.send(graph, case_id, chat.date_answer("March", 4, 1950))
     assert not chat.asking_for_a_date(graph, case_id)  # now reading it back to check
     assert chat.transcript(graph, case_id)[-1]["content"].endswith("March 4, 1950. Is that right?")
 
@@ -194,8 +239,8 @@ def test_page_date_boxes_send_a_date():
     for answer in [NAME, "no", "single"]:
         page.text_input[0].input(answer)
         next(b for b in page.button if b.label == "Send my answer").click().run()
-    assert page.selectbox[0].options[2] == "3 - March"
-    page.selectbox[0].select("3 - March")
+    assert page.selectbox[0].options[2] == "March"
+    page.selectbox[0].select("March")
     page.number_input[0].set_value(4)
     page.number_input[1].set_value(1950)
     next(b for b in page.button if b.label == "Send this date").click().run()
@@ -215,9 +260,21 @@ def test_page_loads_and_starts_a_session():
     assert any("What is your full name?" in m.value for m in page.markdown)
 
 
+def test_page_shows_the_current_question_only_once():
+    """No repeat: the question appears once, in large text, not also as a chat message above it."""
+    from streamlit.testing.v1 import AppTest
+
+    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "src" / "ui" / "taxpayer_chat.py"), default_timeout=30).run()
+    page.button[0].click().run()
+    page.text_input[0].input(NAME)
+    next(b for b in page.button if b.label == "Send my answer").click().run()
+    current = ia.question_for_key("Q1", {}).text  # "On December 31, 2025, were you married?"
+    assert sum(m.value.count(html.escape(current)) for m in page.markdown) == 1
+
+
 def test_date_boxes_catch_a_day_that_does_not_exist():
-    assert chat.date_problem("4 - April", 31, 1950) == "April has only 30 days. Please check the day."
-    assert chat.date_problem("4 - April", 30, 1950) is None
+    assert chat.date_problem("April", 31, 1950) == "April has only 30 days. Please check the day."
+    assert chat.date_problem("April", 30, 1950) is None
     assert chat.date_problem(None, 31, 1950) is None  # empty boxes are handled separately
 
 
@@ -229,7 +286,7 @@ def test_page_does_not_send_april_31():
     for answer in [NAME, "no", "single"]:
         page.text_input[0].input(answer)
         next(b for b in page.button if b.label == "Send my answer").click().run()
-    page.selectbox[0].select("4 - April")
+    page.selectbox[0].select("April")
     page.number_input[0].set_value(31)
     page.number_input[1].set_value(1950)
     next(b for b in page.button if b.label == "Send this date").click().run()
