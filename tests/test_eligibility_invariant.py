@@ -82,7 +82,10 @@ def test_not_eligible_for_the_1040sr_is_a_verdict_not_a_gap(tmp_path):
     graph = build_graph(trace_dir=tmp_path, agents={"rules": rules_returning(
         {"in_scope": True, "filing_status": "single", "eligible_1040sr": False, "citations": ["x"]})})
     result = graph.invoke(clean_case(), cfg("not-eligible"))
-    assert "__interrupt__" not in result  # what Rules does with "not eligible" is Rules' call
+    # what Rules does with "not eligible" is Rules' call; the orchestrator must not call it a gap.
+    # (Review may still stop the case as OUT_OF_SCOPE: a non-1040-SR return is not drafted.)
+    interrupts = [i.value["condition"] for i in result.get("__interrupt__", [])]
+    assert S.ELIGIBILITY_UNDECIDED not in interrupts
 
 
 def test_the_default_clean_run_is_unaffected(tmp_path):
