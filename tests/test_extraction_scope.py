@@ -5,7 +5,7 @@ in-scope forms are W-2, SSA-1099, 1099-R, 1099-INT and 1099-DIV. Only the W-2 is
   * an unsupported kind (1099-NEC, Schedule C, a K-1, no kind at all): OUT_OF_SCOPE, stop-only;
   * a 1099-R: its box 2b decides whether the return is in scope and nothing here can read it, so
     it is escalated (FORM_1099R_BOX_2B), never waved through;
-  * SSA-1099, 1099-INT, 1099-DIV: skipped with a reason. KNOWN GAP (see the issue linked in the PR):
+  * SSA-1099, 1099-INT, 1099-DIV: skipped with a reason. KNOWN GAP (issue #27):
     their amounts are not captured anywhere, because Intake only asks yes/no. Those tests pin the
     current behaviour so that changing it is a decision, not an accident.
 """
