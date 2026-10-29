@@ -193,7 +193,8 @@ def test_unclear_answer_is_asked_again_and_nothing_saved():
     chat.say("purple")
     assert chat.question.startswith("Sorry, I didn't quite understand.")
     assert chat.question.endswith("were you married?")
-    assert set(chat.facts) == {ia.PROGRESS, "taxpayer_name"}
+    assert set(chat.facts) == {ia.PROGRESS, "taxpayer_name", ia.TRIES}  # no answer saved, only bookkeeping
+    assert "married_dec31" not in chat.facts
 
 
 def test_not_sure_is_saved_and_acknowledged():

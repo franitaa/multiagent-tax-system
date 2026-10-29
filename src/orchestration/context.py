@@ -24,22 +24,57 @@ MAX_INTAKE_MESSAGES = 6
 MAX_HUMAN_DECISIONS_IN_SUMMARY = 5
 
 
+# Non-numeric answers Computation must still see: the volunteer's filing-status override, the
+# birth dates and blindness answers behind the line 12d boxes, and the two answers that make it
+# stop and escalate (docs/answer-names.md). Everything else non-numeric (names, free text,
+# dependents) stays out of its view.
+COMPUTATION_FACTS = frozenset({
+    "filing_status", "taxpayer_birth_date", "spouse_birth_date", "taxpayer_blind", "spouse_blind",
+    "can_be_claimed_as_dependent", "spouse_itemizing",
+})
+
+
+COMPUTATION_ELIGIBILITY = ("filing_status", "taxpayer_qualifies", "spouse_qualifies")
+
+
 def _numeric_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
-    """Computation works from numbers, not free text."""
+    """The amounts the taxpayer typed, not free text (Review checks them against the return)."""
     return {
         name: fact for name, fact in facts.items()
         if isinstance(fact.get("value"), (int, float)) and not isinstance(fact.get("value"), bool)
     }
 
 
+def _computation_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
+    """Computation works from numbers plus the few named answers above, not free text."""
+    return {**_numeric_facts(facts), **{n: f for n, f in facts.items() if n in COMPUTATION_FACTS}}
+
+
 # Per-agent narrowing of the fields on the read allow-list.
 TRANSFORMS = {
     "intake": {"messages": lambda messages: messages[-MAX_INTAKE_MESSAGES:]},
     "computation": {
-        "facts": _numeric_facts,
-        "eligibility": lambda e: {"filing_status": e.get("filing_status")},
+        "facts": _computation_facts,
+        # the status and the 65+ answers Rules decided (Review derives the 12d boxes from the same)
+        "eligibility": lambda e: {k: e.get(k) for k in COMPUTATION_ELIGIBILITY},
     },
+    "review": {"facts": _numeric_facts},
 }
+
+
+def eligibility_gaps(eligibility: Mapping[str, Any]) -> list[str]:
+    """What the Eligibility & Rules verdict is missing, by name (empty list = decided).
+
+    Required: a filing status and a boolean `in_scope`. If Rules also reports an
+    `eligible_1040sr` verdict and it is None, Rules tried and could not decide."""
+    gaps = []
+    if not eligibility.get("filing_status"):
+        gaps.append("filing_status")
+    if not isinstance(eligibility.get("in_scope"), bool):
+        gaps.append("in_scope")
+    if "eligible_1040sr" in eligibility and eligibility["eligible_1040sr"] is None:
+        gaps.append("eligible_1040sr")
+    return gaps
 
 
 def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
@@ -68,6 +103,7 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
         "n_docs_pending": len(pending_docs),
         "has_eligibility": bool(eligibility),
         "in_scope": eligibility.get("in_scope"),
+        "eligibility_gaps": eligibility_gaps(eligibility) if eligibility else [],
         "has_computed": bool(state.get("computed")),
         "review_verdict": review.get("verdict"),
         "revision_count": state.get("revision_count", 0),

@@ -11,6 +11,7 @@ import json
 from typing import Annotated, Any, TypedDict
 
 from provenance import ProvenanceRecord
+from security import remove_real_ssns
 
 DEFAULT_MAX_REVISIONS = 3
 
@@ -27,15 +28,19 @@ COMPLETE = "complete"
 HALTED_BY_HUMAN = "halted_by_human"
 
 # Escalation conditions (a human decides via interrupt).
+EXTRACTION_REVIEW = "EXTRACTION_REVIEW"
 OUT_OF_SCOPE = "OUT_OF_SCOPE"
 SOURCE_CONFLICT = "SOURCE_CONFLICT"
 FORM_1099R_BOX_2B = "FORM_1099R_BOX_2B"
 TAX_ADVICE_REQUEST = "TAX_ADVICE_REQUEST"
 FILING_STATUS_AMBIGUITY = "FILING_STATUS_AMBIGUITY"
 EXPLOITATION_SIGNS = "EXPLOITATION_SIGNS"
+ANSWER_UNCERTAIN = "ANSWER_UNCERTAIN"
+
 # raised by the orchestrator itself
 LOOP_GUARD = "LOOP_GUARD"
 REVIEW_BOUND_EXCEEDED = "REVIEW_BOUND_EXCEEDED"
+ELIGIBILITY_UNDECIDED = "ELIGIBILITY_UNDECIDED"  # Rules returned no filing status or no verdict
 # Most severe first. Decides which of several simultaneous escalations a human sees first.
 ESCALATION_PRIORITY = (
     EXPLOITATION_SIGNS,
@@ -43,17 +48,22 @@ ESCALATION_PRIORITY = (
     FORM_1099R_BOX_2B,
     FILING_STATUS_AMBIGUITY,
     SOURCE_CONFLICT,
+    ANSWER_UNCERTAIN,
     TAX_ADVICE_REQUEST,
+    EXTRACTION_REVIEW,
+    ELIGIBILITY_UNDECIDED,
     LOOP_GUARD,
     REVIEW_BOUND_EXCEEDED,
 )
 AGENT_CONDITIONS = (
+    EXTRACTION_REVIEW,
     OUT_OF_SCOPE,
     SOURCE_CONFLICT,
     FORM_1099R_BOX_2B,
     TAX_ADVICE_REQUEST,
     FILING_STATUS_AMBIGUITY,
     EXPLOITATION_SIGNS,
+    ANSWER_UNCERTAIN,
 )
 
 # Which hops an agent may *request*. The orchestrator treats a request as advisory:
@@ -72,10 +82,13 @@ class Message(TypedDict):
     content: str
 
 
-class DocRef(TypedDict):
+class DocRef(TypedDict, total=False):
     id: str
     kind: str  # e.g. "W-2", "1099-R"
     text: str
+    image_ref: str  # hash handle; no raw bytes, credentials, or arbitrary filesystem path
+    synthetic_confirmed: bool
+    fixture_format: str  # explicit deterministic test fixture only
 
 
 class Handoff(TypedDict):
@@ -90,6 +103,7 @@ class Escalation(TypedDict, total=False):
     condition: str  # one of the conditions above
     reason: str
     raised_by: str
+    document_id: str  # scopes extraction review to one document
     queued: list  # other escalations raised at the same moment; shown to the human in turn
 
 
@@ -98,6 +112,15 @@ class Escalation(TypedDict, total=False):
 
 def append_list(old: list | None, new: list | None) -> list:
     return [*(old or []), *(new or [])]
+
+
+def append_messages(old: list | None, new: list | None) -> list:
+    """Append chat messages, removing real-looking SSNs from any new message on the way in, so
+    a caller that skips the chat page's own cleaning cannot put one into state or a checkpoint."""
+    cleaned = [{**m, "content": remove_real_ssns(m["content"])}
+               if isinstance(m, dict) and isinstance(m.get("content"), str) else m
+               for m in new or []]
+    return [*(old or []), *cleaned]
 
 
 def merge_dict(old: dict | None, new: dict | None) -> dict:
@@ -119,7 +142,14 @@ def merge_extracted(old: dict | None, new: dict | None) -> dict:
     merged: dict = {}
     for key in sorted(old.keys() | new.keys()):
         candidates = [side[key] for side in (old, new) if key in side]
-        merged[key] = max(candidates, key=_canonical)
+        if any('revision' in c for c in candidates):
+            top_revision = max(c.get('revision', 0) for c in candidates)
+            newest = [c for c in candidates if c.get('revision', 0) == top_revision]
+            if any(c != newest[0] for c in newest[1:]):
+                raise ValueError('Conflicting extraction records at the same revision')
+            merged[key] = newest[0]
+        else:
+            merged[key] = max(candidates, key=_canonical)  # compatibility with legacy test records
     return merged
 
 
@@ -162,7 +192,7 @@ class SilverState(TypedDict, total=False):
     case_id: str
     documents: list[DocRef]
     # --- Intake (the only agent that talks to the taxpayer)
-    messages: Annotated[list[Message], append_list]
+    messages: Annotated[list[Message], append_messages]
     facts: Annotated[dict[str, Any], merge_dict]  # name -> {"value": ..., "source": ...}
     pending_question: str | None  # Intake sets; orchestrator clears once the user replies
     intake_complete: bool
