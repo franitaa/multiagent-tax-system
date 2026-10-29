@@ -17,6 +17,14 @@ docker run --rm -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
 
 Secrets are never built into the image; pass them at run time with `--env-file .env`.
 
+## Eval cases
+End-to-end cases (a clean return, the spouse-died case, each escalation) are in [evals/cases.json](evals/cases.json); how to read and add them: [evals/README.md](evals/README.md). Eval case 1 (clean run) and eval case 2 (HITL, resolved): [demo/eval_case_1.md](demo/eval_case_1.md), [demo/eval_case_2.md](demo/eval_case_2.md).
+
+```
+python -m evals.runner                       # PASS / FAIL / PENDING for every case
+docker run --rm silverfile python -m evals.runner
+```
+
 ## P3 document extraction workbench
 This folder combines the team files supplied in this conversation with P3's W-2 extraction and memory implementation. It is an integration candidate, not a completed six-agent tax product. **The supplied Intake, Computation and Review agents still contain stubs.** A `complete` graph status does not mean a valid return has been prepared.
 
