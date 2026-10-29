@@ -30,7 +30,11 @@ What it can do today:
     someone else answering without permission, or pressure about money or the refund
     account. Intake replies calmly, notes the person's words for the volunteer, and raises
     the escalation flag so the system pauses for a human. The flag itself holds no
-    personal details.
+    personal details. Pressure is recognised from patterns, not only exact phrases
+    ("my son keeps my refund", "I'm being forced", "she told me not to tell anyone"),
+    shaped so that innocent sentences ("my daughter is making me lunch") do not match.
+  - No endless loops: if Intake cannot understand an answer 3 times in a row, it says
+    "Let's not worry about this one..." and notes the question for a volunteer.
   - Tested against tricky messages (GRD-3, tests/test_guardrails.py): disguised advice,
     indirect pressure, "ignore your instructions...", ALL CAPS, plus innocent sentences
     that must NOT raise an alarm. A real-looking SSN typed inside a sentence is replaced
@@ -42,10 +46,10 @@ What it can do today:
     (security.py), so there is one shared rule. How and why: docs/intake-script.md.
 
 What is still missing:
-  - The chat page (INT-6). It should also remove an SSN from a message before it enters
-    the chat history, which Intake cannot do itself.
-  - It uses keyword matching, not AI, so unusual wording can be missed. When in doubt it
-    points the person to "go back" or a volunteer.
+  - It uses keyword and pattern matching, not AI, so very unusual wording can still be
+    missed. When in doubt it re-asks (at most 3 times) or notes it for a volunteer.
+  - A real SSN typed outside the chat page (a direct graph call) stays in the chat
+    history; that needs redaction at the graph boundary (orchestration / security owners).
 
 Notes for teammates:
   - Rules: Q21 (can someone claim you) and Q23 (lived in the US) are only recorded; Rules
@@ -94,6 +98,12 @@ VOLUNTEER_ACK = "Of course. I'll note that you'd like a volunteer to help with t
 NOTES = "volunteer_notes"
 REASON_NOT_SURE = "taxpayer not sure"
 REASON_ASKED = "taxpayer asked for a person"
+# After this many answers Intake cannot understand, it stops re-asking and notes the question
+# for a volunteer instead (so nobody is stuck in a loop).
+MAX_TRIES = 3
+REASON_STUCK = "answer not understood after 3 tries"
+STUCK_ACK = "Let's not worry about this one. I'll note it for a volunteer to help with, and we'll move on."
+TRIES = "intake_tries"
 
 # Safety alarms (GRD-1, GRD-2). Replies are calm and never accuse anyone: a helper may be
 # sitting next to the taxpayer. Alarm reasons are generic (they are written to traces);
@@ -403,6 +413,16 @@ def _skipped(facts: dict) -> list[str]:
     return list(_value(facts, SKIPPED) or [])
 
 
+def _tries(facts: dict, question: Question) -> int:
+    """How many answers to this question Intake has not understood so far."""
+    tries = _value(facts, TRIES) or {}
+    return tries.get("count", 0) if tries.get("key") == question.key else 0
+
+
+def _tries_fact(key: str | None, count: int) -> dict:
+    return {TRIES: {"value": {"key": key, "count": count}, "source": "intake"}}
+
+
 def _skipped_fact(keys: list[str]) -> dict:
     return {SKIPPED: {"value": keys, "source": "intake"}}
 
@@ -553,16 +573,60 @@ _ADVICE_SHOULD = re.compile(
     r"take|withdraw|sell|pay|itemi[sz]e|ira|separately|jointly|invest|move)"
 )
 # Always a warning sign.
-_PRESSURE_STRONG = ("pressur", "threaten", "forcing me", "forced me", "or else", "scared of", "not my account",
+_PRESSURE_STRONG = ("pressur", "threaten", "forcing me", "forced me", "or else", "not my account",
                     "not my bank", "whose account", "don't know the account", "don't know which account",
                     "don't know the bank", "takes my money", "took my money", "takes my refund",
                     "took my refund", "keeps my bank card", "keeps my card", "has my bank card", "took my card")
+# Patterns that are a warning sign on their own (from the Orchestrator owner's review: realistic
+# phrasings the exact phrases above missed). Each is shaped so innocent sentences do not match.
+_MY_MONEY = r"(?:all )?my (?:refund|money|check|cheque|social security|savings|card|bank|pension|benefits)"
+_PERSON = (r"(?:my|our|his|her) (?:son|daughter|husband|wife|nephew|niece|grandson|granddaughter|caregiver|"
+           r"carer|neighbou?r|friend|new friend|boyfriend|girlfriend|son-in-law|daughter-in-law|brother|sister)")
+_PRESSURE_PATTERNS = re.compile("|".join((
+    # "he is making me do this"; not "my daughter is making me lunch"
+    r"\bmaking me (?:do|sign|say|answer|give|send|fill|lie)\b",
+    r"\b(?:being|been|am|was|were|feel|felt) forced\b",
+    r"\b(?:not to|don't|do not|never) tell (?:anyone|anybody|the bank|the volunteer|you)\b",
+    r"\bkeep (?:it|this) (?:a )?secret\b",
+    # "my son keeps my refund", "he takes my social security check"; not "the bank keeps my statements"
+    rf"\b(?:keeps|kept|takes|took|controls|controlled|holds|handles) {_MY_MONEY}",
+    # fear of a person; not "my wife is scared of dogs"
+    rf"\b(?:afraid|scared) of (?:what )?(?:him|her|them|he|she|they|{_PERSON})\b",
+    r"\bscared to (?:say no|tell|refuse|ask|speak)\b",
+    r"\b(?:yells?|shouts?|screams?|swears?) at me\b",
+    r"\bput me in a (?:nursing )?home\b",
+    # "he'll be angry if I don't", "she gets really upset if I ask about my money"
+    r"\b(?:he|she|they)(?:'ll| will| would|'d)? (?:be|get|gets|got) (?:really |very |so )?"
+    r"(?:angry|mad|upset) (?:if|when) i\b",
+    # "the refund goes to her"; not "the refund goes to my own account"
+    rf"\brefund (?:goes|go|will go|should go|is going|gets sent) to (?:him|her|them|{_PERSON})\b",
+    # "I have to give him whatever I get back"; not "I have to give him a call"
+    r"\bhave to give (?:him|her|them) (?:whatever|everything|all|my|the refund|the money|it all|half|most)\b",
+    r"\b(?:owe|owes) (?:him|her|them) (?:the |my )?(?:refund|money|check)\b",
+    # someone else changing the money's destination or holding the keys to it
+    rf"\b(?:he|she|they|someone|somebody|{_PERSON}) (?:has |have |had )?changed my "
+    r"(?:bank|account|bank account|bank details|direct deposit|address)\b",
+    r"\b(?:has|have|took|takes|keeps|kept) (?:all )?my (?:passwords?|pin|id|id card|identification|"
+    r"social security card|bank card|debit card|checkbook)\b",
+    r"\bwon'?t (?:tell|show) me (?:anything|where|how much)\b",
+    r"\b(?:don'?t|do not) know where my (?:refund|money|check|savings) (?:went|is|goes)\b",
+    # being told what to say, or having no choice
+    r"\b(?:telling|tells|told) me what to (?:say|answer|type|write|do)\b",
+    r"\bhave to do what (?:he|she|they) (?:says|say|tells me|tell me)\b",
+    r"\b(?:don'?t|do not) have (?:a|any) choice\b",
+    r"\bmakes? me sign\b",
+    r"\bnot supposed to (?:talk|tell|say|speak)\b",
+    # common scams aimed at older people: "pay the IRS with gift cards", "wire money"
+    r"\bgift cards?\b.*\b(?:irs|tax|pay|owe)\b|\b(?:irs|tax|pay|owe)\b.*\bgift cards?\b",
+    r"\b(?:wire|send) (?:the |some )?money\b.*\b(?:irs|tax|phone|called|online)\b",
+)))
 # A warning sign only when money or answers are mentioned too ("my doctor told me to rest" is fine).
-_PRESSURE_WEAK = ("told me to", "telling me to", "making me", "made me", "gets angry", "get angry",
-                  "says i have to", "says i must", "have to give", "must give",
-                  "his account", "her account", "their account")
+_PRESSURE_WEAK = ("told me to", "telling me to", "was told to", "were told to", "making me", "made me",
+                  "gets angry", "get angry", "says i have to", "says i must", "have to give", "must give",
+                  "won't let me", "will not let me", "doesn't let me", "does not let me", "not allowed to",
+                  "in trouble", "his account", "her account", "their account")
 # Whole words only, so "accountant" does not count as "account".
-_MONEY_WORDS = re.compile(r"\b(?:refund|money|account|bank|sign|say|answer|check)\b")
+_MONEY_WORDS = re.compile(r"\b(?:refund|money|account|bank|sign|say|answer|check|statements?|everything)\b")
 _RELATIVES = (r"(?:(?:my|our) )?(?:mother|mom|mum|father|dad|grandmother|grandma|grandfather|grandpa|"
               r"aunt|uncle|husband|wife|parents?|sister|brother|friend|neighbou?r)")
 # "I'm answering for mom", "doing it for her", "filling this out for my grandmother", "on behalf of"
@@ -588,7 +652,7 @@ def asks_for_advice(text: str) -> bool:
 
 def mentions_pressure(text: str) -> bool:
     lowered = _lower(text)
-    if any(p in lowered for p in _PRESSURE_STRONG):
+    if any(p in lowered for p in _PRESSURE_STRONG) or _PRESSURE_PATTERNS.search(lowered):
         return True
     return any(p in lowered for p in _PRESSURE_WEAK) and bool(_MONEY_WORDS.search(lowered))
 
@@ -835,7 +899,7 @@ def update_notes(question: Question, value, reason: str | None, facts: dict) -> 
     A real answer given later marks the open note resolved; notes are never deleted."""
     notes = [dict(n) for n in _value(facts, NOTES) or []]
     open_note = next((n for n in notes if n["question"] == question.key and not n["resolved"]
-                      and n["reason"] in (REASON_NOT_SURE, REASON_ASKED)), None)
+                      and n["reason"] in (REASON_NOT_SURE, REASON_ASKED, REASON_STUCK)), None)
     if value == NOT_SURE and open_note is None:
         notes.append({"question": question.key, "question_text": question.text,
                       "reason": reason or REASON_NOT_SURE, "resolved": False})
@@ -1232,8 +1296,13 @@ def run(view, tools):
             return _ask(f"That date doesn't exist: {problem} {question.text}")
         if is_correction(reply):
             return _ask(WHICH_ANSWER)
-        hint = question.hint or HINTS[question.kind]
-        return _ask(f"Sorry, I didn't quite understand. {hint} {GO_BACK_TIP} {question.text}")
+        # Never re-ask forever: after MAX_TRIES misunderstandings the question goes to a volunteer.
+        tries = _tries(facts, question) + 1
+        if tries < MAX_TRIES:
+            hint = question.hint or HINTS[question.kind]
+            return _ask(f"Sorry, I didn't quite understand. {hint} {GO_BACK_TIP} {question.text}",
+                        _tries_fact(question.key, tries))
+        value, reason = NOT_SURE, REASON_STUCK
     if value == AMBIGUOUS_DATE:  # 03/04/1950 could be March 4 or 3 April: never guess
         return _ask(DATE_AMBIGUOUS, _progress_fact(question.key, answered))
     if question.kind == DATE and value != NOT_SURE and not confirmed:
@@ -1245,6 +1314,8 @@ def run(view, tools):
     was_skipped = question.key in skipped
     if was_skipped:
         saved.update(_skipped_fact([k for k in skipped if k != question.key]))
+    if TRIES in facts:
+        saved.update(_tries_fact(None, 0))  # answered: start counting afresh for the next question
     facts.update(saved)
     following = next_question(facts)  # first question still unanswered: carries on where we left off
     alarm = answer_alarm(question, value)
@@ -1252,7 +1323,10 @@ def run(view, tools):
         note = _safety_note(question, alarm[1], reply, facts)
         progress = _progress_fact(following.key if following else None, answered)
         return _raise_alarm(alarm, {**saved, **note, **progress}, intake_complete=following is None)
-    prefix = f"{VOLUNTEER_ACK} " if reason else f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
+    if reason == REASON_STUCK:
+        prefix = f"{STUCK_ACK} "
+    else:
+        prefix = f"{VOLUNTEER_ACK} " if reason else f"{NOT_SURE_ACK} " if value == NOT_SURE else ""
     prefix = ssn_note + prefix
     if following is not None and following.key in _skipped(facts) and not was_skipped:
         prefix += _second_round_text(facts) + " "

@@ -1,5 +1,23 @@
-# SilverFile — team snapshot with P3 integration
+# multiagent-tax-system
 
+## Teammates start here
+If you own an agent, read [docs/handoff-contract.md](docs/handoff-contract.md) first: what state you may read and write, the handoff format, how to escalate to a human, and how to replace your stub.
+Project status: [docs/STATUS.md](docs/STATUS.md).
+
+## Run with Docker
+No local Python needed. The image is built and checked in CI on every push.
+
+```
+docker build -t silverfile .
+docker run --rm silverfile                                    # a clean case to "DRAFT READY"
+docker run --rm silverfile pytest -q                          # all tests, inside the container
+docker run --rm -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
+                                                              # taxpayer chat page: http://localhost:8501
+```
+
+Secrets are never built into the image; pass them at run time with `--env-file .env`.
+
+## P3 document extraction workbench
 This folder combines the team files supplied in this conversation with P3's W-2 extraction and memory implementation. It is an integration candidate, not a completed six-agent tax product. **The supplied Intake, Computation and Review agents still contain stubs.** A `complete` graph status does not mean a valid return has been prepared.
 
 ## Windows / VS Code

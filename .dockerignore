@@ -1,0 +1,14 @@
+# Kept out of the image: secrets, local environments, caches and run output.
+.env
+.git
+.github
+.venv
+venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+traces/*.jsonl
+*.sqlite
+*.db
+.DS_Store
+.claude/

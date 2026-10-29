@@ -11,6 +11,7 @@ from src.state import (
     TAX_ADVICE_REQUEST,
     FILING_STATUS_AMBIGUITY,
     EXPLOITATION_SIGNS,
+    ANSWER_UNCERTAIN,
 )
 
 
@@ -96,7 +97,10 @@ def _make_escalation(
     condition: str,
     reason: str,
     eligibility: dict[str, Any],
+    fact: str | None = None,
 ) -> dict[str, Any]:
+    """`fact` names the unresolved answer (ANSWER_UNCERTAIN): the human gate asks the volunteer
+    for exactly that fact and accepts nothing else."""
     return {
         "eligibility": eligibility,
         "escalation": {
@@ -104,6 +108,7 @@ def _make_escalation(
             "condition": condition,
             "reason": reason,
             "raised_by": "rules",
+            **({"fact": fact} if fact else {}),
         },
         "handoff_request": {
             "to": "human",
@@ -152,12 +157,27 @@ def _preserve_pending_escalation(
 # -----------------------------------------------------------------------------
 # Filing status
 # -----------------------------------------------------------------------------
+HUMAN_GATE_NAMES = {
+    "single": "single",
+    "married_filing_jointly": "mfj",
+    "married_filing_separately": "mfs",
+    "head_of_household": "hoh",
+    "qualifying_surviving_spouse": "qss",
+}
 
+FILING_STATUS_OUTPUT = {
+    "single": "single",
+    "mfj": "married_filing_jointly",
+    "mfs": "married_filing_separately",
+    "hoh": "head_of_household",
+    "qss": "qualifying_surviving_spouse",
+}
 
 def _human_filing_status_override(facts: dict[str, Any]) -> str | None:
     """Use the volunteer's filing-status decision when it exists."""
 
     value = _normalize(_fact_value(facts, "filing_status"))
+    value = HUMAN_GATE_NAMES.get(value, value)  # the human gate writes full names, Rules uses codes
     source = _fact_source(facts, "filing_status", "")
 
     if (
@@ -246,7 +266,18 @@ def _derive_filing_status(
 
     return None, True, "married_dec31 is missing or invalid"
 
+def _uncertain_filing_fact(facts: dict[str, Any]) -> str | None:
+    """Return the relevant explicitly unknown filing-status fact, if any."""
+    married = _normalize(_fact_value(facts, "married_dec31"))
 
+    if married == "not_sure":
+        return "married_dec31"
+    if married == "yes" and _is_not_sure(_fact_value(facts, "file_jointly")):
+        return "file_jointly"
+    if married == "no" and _is_not_sure(_fact_value(facts, "household_situation")):
+        return "household_situation"
+    return None
+    
 # -----------------------------------------------------------------------------
 # Eligibility and document helpers
 # -----------------------------------------------------------------------------
@@ -328,6 +359,22 @@ def _document_kinds(extracted: dict[str, Any]) -> set[str]:
         if isinstance(record, dict) and record.get("kind")
     }
 
+# -----------------------------------------------------------------------------
+# Rule/citation evidence for the Review agent
+# -----------------------------------------------------------------------------
+
+
+def _record_rule(
+    eligibility: dict[str, Any], rule: str, section: str
+) -> None:
+    entry = {
+        "rule": rule,
+        "citation": f"policy.md §{section}",
+    }
+
+    if entry not in eligibility["rule_citations"]:
+        eligibility["rule_citations"].append(entry)
+
 
 # -----------------------------------------------------------------------------
 # Main agent
@@ -347,9 +394,8 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
         "filing_status_valid": False,
         "age_blindness_boxes": 0,
         "in_scope": True,
-        "applicable_rules": [],
         "out_of_scope_reasons": [],
-        "citations": [],
+        "rule_citations": [],
     }
 
     pending = _preserve_pending_escalation(view, eligibility)
@@ -378,14 +424,26 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
     filing_status, ambiguous, ambiguity_reason = _derive_filing_status(facts)
 
     if filing_status is not None:
-        eligibility["filing_status"] = filing_status
+        eligibility["filing_status"] = FILING_STATUS_OUTPUT[filing_status]
         eligibility["filing_status_valid"] = (
             filing_status in VALID_FILING_STATUSES
         )
 
-    eligibility["citations"].append("Assignment 7 §3.3")
+    _record_rule(eligibility, "Filing status validation", "2.2")
 
-    if ambiguous and FILING_STATUS_AMBIGUITY not in resolved:
+    if ambiguous:
+        unknown_fact = _uncertain_filing_fact(facts)
+        if unknown_fact is not None:
+            # A previous 'continue' must not bypass an unresolved answer.
+            return _make_escalation(
+                ANSWER_UNCERTAIN,
+                f"{unknown_fact} is not_sure; volunteer clarification required",
+                eligibility,
+                fact=unknown_fact,
+            )
+
+        # Other filing-status ambiguities require a status decision rather
+        # than resolving a specific not_sure answer.
         return _make_escalation(
             FILING_STATUS_AMBIGUITY,
             ambiguity_reason or "Filing status requires human review",
@@ -415,8 +473,7 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
         eligible_1040sr = taxpayer_qualifies
 
     eligibility["eligible_1040sr"] = eligible_1040sr
-    eligibility["applicable_rules"].append("1040-SR eligibility")
-    eligibility["citations"].append("Assignment 7 §3.2 Rule 1")
+    _record_rule(eligibility, "1040-SR eligibility", "2.1")
 
     if eligible_1040sr is None:
         return _return_to_intake(
@@ -437,33 +494,9 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
             )
 
     taxpayer_blind_answer = _fact_value(facts, "taxpayer_blind", "no")
-    spouse_blind_answer = _fact_value(facts, "spouse_blind", "no")
-
-    if not _is_valid_yes_no_not_sure(taxpayer_blind_answer):
-        return _return_to_intake(
-            eligibility,
-            "Invalid taxpayer_blind answer; expected yes, no, or not_sure",
-        )
-
-    if _is_not_sure(taxpayer_blind_answer):
-        return _return_to_intake(
-            eligibility,
-            "taxpayer_blind is not_sure and needs follow-up",
-        )
-
+    spouse_blind_answer = _fact_value(facts, "spouse_blind", "no")   
     spouse_is_relevant = filing_status in {"mfj", "mfs"}
 
-    if spouse_is_relevant:
-        if not _is_valid_yes_no_not_sure(spouse_blind_answer):
-            return _return_to_intake(
-                eligibility,
-                "Invalid spouse_blind answer; expected yes, no, or not_sure",
-            )
-        if _is_not_sure(spouse_blind_answer):
-            return _return_to_intake(
-                eligibility,
-                "spouse_blind is not_sure and needs follow-up",
-            )
 
     taxpayer_age_65 = taxpayer_qualifies is True
     spouse_age_65 = spouse_is_relevant and spouse_qualifies is True
@@ -476,25 +509,61 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
             spouse_is_relevant and _is_yes(spouse_blind_answer)
         ),
     )
-    eligibility["applicable_rules"].append(
-        "Standard deduction age/blindness rule"
-    )
-    eligibility["citations"].append("Assignment 7 §3.2 Rule 2")
+    _record_rule(eligibility, "Standard deduction age/blindness rule", "2.3")
 
-    if taxpayer_age_65 or spouse_age_65:
-        eligibility["applicable_rules"].append(
-            "Schedule 1-A enhanced senior deduction"
+    if not _is_valid_yes_no_not_sure(taxpayer_blind_answer):
+        return _return_to_intake(
+            eligibility,
+            "Invalid taxpayer_blind answer; expected yes, no, or not_sure",
         )
-        eligibility["citations"].append("Assignment 7 §3.2 Rule 3")
+    if _is_not_sure(taxpayer_blind_answer):
+        _record_rule(eligibility, "Uncertain blindness: human review", "3.3")
+        return _make_escalation(
+            ANSWER_UNCERTAIN,
+            "taxpayer_blind is not_sure; volunteer clarification required.",
+            eligibility,
+            fact="taxpayer_blind",
+        )
+
+    if spouse_is_relevant:
+        if not _is_valid_yes_no_not_sure(spouse_blind_answer):
+            return _return_to_intake(
+                eligibility,
+                "Invalid spouse_blind answer; expected yes, no, or not_sure",
+            )
+        if _is_not_sure(spouse_blind_answer):
+            _record_rule(eligibility, "Uncertain blindness: human review", "3.3")
+            return _make_escalation(
+                ANSWER_UNCERTAIN,
+                "spouse_blind is not_sure; volunteer clarification required.",
+                eligibility,
+                fact="spouse_blind",
+            )
+    _record_rule(eligibility, "Standard deduction chart applicability", "2.4")
+
+    if filing_status != "mfs" and (taxpayer_age_65 or (filing_status == "mfj" and spouse_age_65)):
+        _record_rule(eligibility, "Schedule 1-A enhanced senior deduction", "2.5")
 
     document_kinds = _document_kinds(extracted)
     if "ssa-1099" in document_kinds or "ssa1099" in document_kinds:
-        eligibility["applicable_rules"].append(
-            "Taxable Social Security worksheet"
+        _record_rule(eligibility, "Taxable Social Security worksheet", "2.6")
+# Form 1099-NEC is outside the supported tax scope.
+
+    if "1099-nec" in document_kinds or "1099nec" in document_kinds:
+        _record_rule(eligibility, "Form 1099-NEC screening", "3.4")
+        eligibility["in_scope"] = False
+        eligibility["out_of_scope_reasons"].append(
+            "Form 1099-NEC is outside the supported tax scope"
         )
-        eligibility["citations"].append("Assignment 7 §3.2 Rule 4")
+        if OUT_OF_SCOPE not in resolved:
+            return _make_escalation(
+                OUT_OF_SCOPE,
+                "Form 1099-NEC is outside the supported tax scope.",
+                eligibility,
+            )
 
     if _has_1099r_box_2b(extracted):
+        _record_rule(eligibility,"Form 1099-R Box 2b screening","3.2",)
         eligibility["in_scope"] = False
         eligibility["out_of_scope_reasons"].append(
             "1099-R taxable amount not determined"
@@ -505,6 +574,7 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
                 "1099-R Box 2b indicates taxable amount not determined.",
                 eligibility,
             )
+    
 
     # Each tuple is: fact name, triggering answer, human-readable reason.
     screening_checks = [
@@ -594,7 +664,7 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
         eligibility["out_of_scope_reasons"].extend(
             detected_out_of_scope
         )
-        eligibility["citations"].append("Assignment 7 §3.3")
+        _record_rule(eligibility, "Out-of-scope screening", "3.1")
 
         if OUT_OF_SCOPE not in resolved:
             return _make_escalation(
@@ -602,6 +672,8 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
                 "; ".join(detected_out_of_scope),
                 eligibility,
             )
+        
+    _record_rule(eligibility, "Supported tax scope screening", "3.1")
 
     return {
         "eligibility": eligibility,
