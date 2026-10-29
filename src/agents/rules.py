@@ -97,7 +97,10 @@ def _make_escalation(
     condition: str,
     reason: str,
     eligibility: dict[str, Any],
+    fact: str | None = None,
 ) -> dict[str, Any]:
+    """`fact` names the unresolved answer (ANSWER_UNCERTAIN): the human gate asks the volunteer
+    for exactly that fact and accepts nothing else."""
     return {
         "eligibility": eligibility,
         "escalation": {
@@ -105,6 +108,7 @@ def _make_escalation(
             "condition": condition,
             "reason": reason,
             "raised_by": "rules",
+            **({"fact": fact} if fact else {}),
         },
         "handoff_request": {
             "to": "human",
@@ -435,6 +439,7 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
                 ANSWER_UNCERTAIN,
                 f"{unknown_fact} is not_sure; volunteer clarification required",
                 eligibility,
+                fact=unknown_fact,
             )
 
         # Other filing-status ambiguities require a status decision rather
@@ -517,7 +522,8 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
             ANSWER_UNCERTAIN,
             "taxpayer_blind is not_sure; volunteer clarification required.",
             eligibility,
-            )
+            fact="taxpayer_blind",
+        )
 
     if spouse_is_relevant:
         if not _is_valid_yes_no_not_sure(spouse_blind_answer):
@@ -531,6 +537,7 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
                 ANSWER_UNCERTAIN,
                 "spouse_blind is not_sure; volunteer clarification required.",
                 eligibility,
+                fact="spouse_blind",
             )
     _record_rule(eligibility, "Standard deduction chart applicability", "2.4")
 
