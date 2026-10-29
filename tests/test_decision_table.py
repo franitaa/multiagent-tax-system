@@ -5,7 +5,7 @@ import copy
 import pytest
 
 from src import state as S
-from src.orchestration.context import routing_view
+from src.orchestration.context import decision_inputs as routing_view
 from src.orchestration.router import route
 from src.scenarios import document
 
@@ -42,6 +42,21 @@ TABLE = [
     ("7 out of scope", st(extracted=EXTRACTED, eligibility={"in_scope": False}), "human"),
     ("7 out of scope then human stop ends the case", st(
         extracted=EXTRACTED, eligibility={"in_scope": False}, done=True), "end"),
+    ("7b eligibility without a filing status", st(
+        extracted=EXTRACTED, eligibility={"in_scope": True, "citations": ["x"]}), "human"),
+    ("7b eligibility with in_scope missing", st(
+        extracted=EXTRACTED, eligibility={"filing_status": "single"}), "human"),
+    ("7b Rules tried and could not decide (eligible_1040sr is None)", st(
+        extracted=EXTRACTED, eligibility={"in_scope": True, "filing_status": "single",
+                                          "eligible_1040sr": None}), "human"),
+    ("7b a decided 'not eligible' is a verdict, not a gap", st(
+        extracted=EXTRACTED, eligibility={"in_scope": True, "filing_status": "single",
+                                          "eligible_1040sr": False}), "computation"),
+    ("7 out of scope wins over undecided", st(
+        extracted=EXTRACTED, eligibility={"in_scope": False}), "human"),
+    ("12 never finish undecided, even if Review passed", st(
+        extracted=EXTRACTED, eligibility={"in_scope": True}, computed=LINES,
+        review={"verdict": "pass"}), "human"),
     ("8 no computed lines", st(extracted=EXTRACTED, eligibility=ELIGIBLE), "computation"),
     ("9 not reviewed", st(extracted=EXTRACTED, eligibility=ELIGIBLE, computed=LINES), "review"),
     ("9 stale verdict cleared by a send-back: review again, not computation",
@@ -123,3 +138,18 @@ def test_invalid_verdict_is_an_error_not_a_guess():
     state = st(extracted=EXTRACTED, eligibility=ELIGIBLE, computed=LINES, review={"verdict": "maybe"})
     with pytest.raises(ValueError, match="invalid review verdict"):
         route(routing_view(state))
+
+
+def test_undecided_eligibility_raises_a_clear_orchestrator_escalation():
+    out = route(routing_view(st(extracted=EXTRACTED, eligibility={
+        "in_scope": True, "eligible_1040sr": None})))
+    assert out.next == "human" and out.update["status"] == S.AWAITING_HUMAN
+    esc = out.update["escalation"]
+    assert esc["condition"] == S.ELIGIBILITY_UNDECIDED and esc["raised_by"] == "orchestrator"
+    assert "filing_status" in esc["reason"] and "eligible_1040sr" in esc["reason"]
+    assert out.update.get("done") is None
+
+
+def test_out_of_scope_is_reported_as_out_of_scope_not_undecided():
+    out = route(routing_view(st(extracted=EXTRACTED, eligibility={"in_scope": False})))
+    assert out.update["escalation"]["condition"] == S.OUT_OF_SCOPE

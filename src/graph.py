@@ -38,7 +38,9 @@ def _dispatcher(scoped: bool):
         extracted = state.get("extracted", {})
         pending = [d for d in state.get("documents", []) if d["id"] not in extracted]
         return [
-            Send("extraction", {"documents": [doc], "step": state.get("step", 0)} if scoped
+            Send("extraction", {"documents": [doc], "step": state.get("step", 0),
+                                  "human_decisions": state.get("human_decisions", []),
+                                  "escalation": state.get("escalation")} if scoped
                  else {**state, "documents": [doc]})
             for doc in pending
         ]
@@ -46,13 +48,14 @@ def _dispatcher(scoped: bool):
     return dispatch
 
 
-def build_graph(checkpointer=None, *, trace_dir=None, context_strategy: bool = True, agents=None):
+def build_graph(checkpointer=None, *, trace_dir=None, context_strategy: bool = True, agents=None, tool_registry=None,
+                audit_dir=None):
     """Compile the graph. A checkpointer is required for multi-turn intake and interrupts;
     InMemorySaver is the default (the memory owner will replace it).
     `agents` overrides stub/real agents by name (used by tests and scenarios)."""
     runner = Runner(
         trace_dir=trace_dir or os.environ.get("SILVERFILE_TRACE_DIR", "traces"),
-        scoped=context_strategy,
+        scoped=context_strategy, tool_registry=tool_registry, audit_dir=audit_dir,
     )
     builder = StateGraph(SilverState)
     builder.add_node("orchestrator", _node(runner, "orchestrator", orchestrate))

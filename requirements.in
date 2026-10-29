@@ -1,0 +1,4 @@
+-e .
+langgraph==1.2.18
+mcp==2.3.0
+pytest>=8,<10

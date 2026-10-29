@@ -7,7 +7,8 @@ reachable through the ToolBox the runner hands in.
 from dataclasses import dataclass
 from typing import Callable
 
-import tax_math
+from src.mcp_client import mcp_registry, tool_transport
+from src.tax_tools import TAX_TOOLS
 
 # Fields every agent may set so that safety signals and handoffs always work.
 COMMON_WRITES = frozenset({"escalation", "handoff_request"})
@@ -35,8 +36,9 @@ POLICY: dict[str, AgentPolicy] = {
     ),
     # The human gate is orchestrator-owned: it performs the interrupt and records the decision.
     "human": AgentPolicy(
-        reads=frozenset({"case_id"}),
-        writes=COMMON_WRITES | {"human_decisions", "status", "done", "facts"},
+        reads=frozenset({"case_id", "extracted"}),
+        writes=COMMON_WRITES | {"human_decisions", "status", "done", "facts", "extracted", "eligibility"},
+        tools=frozenset({"p3_verify_w2"}),
     ),
     "intake": AgentPolicy(
         reads=frozenset({"messages", "facts", "session_summary"}),
@@ -45,6 +47,7 @@ POLICY: dict[str, AgentPolicy] = {
     "extraction": AgentPolicy(
         reads=frozenset({"documents"}),
         writes=COMMON_WRITES | {"extracted"},
+        tools=frozenset({"p3_extract_w2"}),
     ),
     "rules": AgentPolicy(
         reads=frozenset({"facts", "extracted", "session_summary"}),
@@ -53,8 +56,11 @@ POLICY: dict[str, AgentPolicy] = {
     "computation": AgentPolicy(
         reads=frozenset({"facts", "extracted", "eligibility", "pending_revision"}),
         writes=COMMON_WRITES | {"computed"},
-        tools=frozenset({"calculate_standard_deduction", "calculate_senior_deduction",
-                         "calculate_taxable_social_security", "calculate_income_tax"}),
+        tools=frozenset({
+            "calculate_standard_deduction", "calculate_senior_deduction",
+            "calculate_taxable_social_security", "calculate_income_tax",
+            "sum_amounts", "subtract_amounts",
+        }),
     ),
     # Review reads the sources (facts, extracted) so it can check each line against them,
     # and re-runs the same deterministic tools to recompute independently.
@@ -68,12 +74,11 @@ POLICY: dict[str, AgentPolicy] = {
 
 # Tool registry. Teammates register their deterministic tools here by name, then list the
 # name in the owning agent's `tools` above.
-TOOLS: dict[str, Callable] = {
-    "calculate_standard_deduction": tax_math.calculate_standard_deduction,
-    "calculate_senior_deduction": tax_math.calculate_senior_deduction,
-    "calculate_taxable_social_security": tax_math.calculate_taxable_social_security,
-    "calculate_income_tax": tax_math.calculate_income_tax,
-}
+from src.p3.bridge import extract_text_fixture, verify_w2
+
+# The in-process functions. With SILVERFILE_TOOL_TRANSPORT=mcp (the default) a ToolBox swaps the
+# tax tools for calls to the MCP server (src/mcp_client.py).
+TOOLS: dict[str, Callable] = {**TAX_TOOLS, "p3_extract_w2": extract_text_fixture, "p3_verify_w2": verify_w2}
 
 
 class AccessViolation(Exception):
@@ -86,11 +91,21 @@ class ToolBox:
     def __init__(self, agent: str, registry: dict[str, Callable] | None = None):
         self.agent = agent
         self._allowed = POLICY[agent].tools
-        self._registry = TOOLS if registry is None else registry
+        defaults = {**TOOLS, **mcp_registry()} if tool_transport() == "mcp" else TOOLS
+        self._registry = {**defaults, **(registry or {})}  # a custom registry adds to the defaults
         self.calls: list[str] = []
+        self.transports: list[str] = []
+        self.usage: list[dict] = []
 
     def call(self, name: str, **kwargs):
         if name not in self._allowed:
             raise AccessViolation(f"{self.agent} may not call tool {name!r}")
         self.calls.append(name)
-        return self._registry[name](**kwargs)
+        function = self._registry[name]
+        self.transports.append(getattr(function, "transport", "local"))
+        result = function(**kwargs)
+        if name == 'p3_extract_w2' and isinstance(result, dict):
+            usage = result.get('usage') or {}
+            if usage.get('api_input_tokens') is not None:
+                self.usage.append(usage)
+        return result
