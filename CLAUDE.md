@@ -25,7 +25,7 @@ Each agent receives a scoped view of state, not the whole state. Rolling summary
 src/state.py, src/graph.py, src/memory.py, src/agents/, src/orchestration/, data/, evals/, tests/, traces/, docs/, demo/. Required tests include tests/test_merge_order.py and tests/test_decision_table.py.
 
 ## Working rules
-- Python 3.10+, virtualenv in .venv, secrets only in .env (never commit; keep .env.example current).
+- Python 3.11+, virtualenv in .venv, secrets only in .env (never commit; keep .env.example current).
 - Check the installed langgraph version's docs before using an API; do not guess signatures.
 - Small commits, feature branches (p1/<topic>), open PRs, never push straight to main. Commit under my git identity. Ask before pushing.
 - Stub other people's agents; do not implement tax logic, intake questions, extraction or review logic unless asked.
