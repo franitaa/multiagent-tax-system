@@ -208,6 +208,8 @@ def chat_screen(graph, case_id: str) -> None:
         bubble("assistant", latest, live=True)
     if screen == chat.WAITING_FOR_VOLUNTEER:
         st.warning(WAITING_TEXT)
+        if st.button("Check again"):  # after the volunteer decides, the taxpayer carries on
+            st.rerun()
         return
     if screen == chat.FINISHED:
         st.success(FINISHED_TEXT)
