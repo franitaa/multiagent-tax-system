@@ -171,9 +171,10 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
             name: {"value": value, "source": f"human:{condition}"}
             for name, value in resolution.items()
         }
-    if decision == "continue" and condition == ANSWER_UNCERTAIN:
+    if decision == "continue" and condition in (ANSWER_UNCERTAIN, FILING_STATUS_AMBIGUITY):
         # The volunteer's answer is a new fact. Rules ran on the old one, and the router only runs
-        # Rules when there is no eligibility, so clear it: otherwise the provisional result stands.
+        # Rules when there is no eligibility, so clear it: otherwise the provisional result stands
+        # (for a filing status, the case then stops as ELIGIBILITY_UNDECIDED).
         update["eligibility"] = {}
     if decision == "stop":
         update.update(status=HALTED_BY_HUMAN, done=True)
