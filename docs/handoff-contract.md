@@ -27,7 +27,7 @@ Every agent can also read `escalation` and `human_decisions`, and write `escalat
 ### Rules policy citations
 
 The Rules Agent writes the applied tax rules and their supporting references as paired
-records in **`eligibility["rule_citations"]`**, using numbered sections of `data/policy.md`.
+records in **`eligibility["rule_citations"]`**, using numbered sections of `docs/policy.md`.
 This is part of `eligibility`, **not** a separate top-level state field.
 
 ```python
@@ -42,7 +42,7 @@ This is part of `eligibility`, **not** a separate top-level state field.
 ```
 
 - Every recorded applied rule must have its own `rule` (rule name) and `citation`
-  (a real section of `data/policy.md`).
+  (a real section of `docs/policy.md`).
 - Do not add duplicate rule/citation pairs. An empty list is valid if no policy
   rule has been applied yet (for example, an early incomplete-input return).
 - The Review Agent consumes `eligibility["rule_citations"]` to check that each
@@ -115,7 +115,7 @@ A volunteer answers on the same `thread_id` with
   married_filing_jointly | married_filing_separately | head_of_household | qualifying_surviving_spouse>}`;
   `SOURCE_CONFLICT` takes `{fact_name: value}`;
   `ANSWER_UNCERTAIN` takes `{fact_name: corrected_value}` for the specific unresolved
-  answer (valid values are defined in `docs/answer-names.md`). The resolution is is written to `facts` as
+  answer (valid values are defined in `docs/answer-names.md`). The resolution is written to `facts` as
   `{"value": ..., "source": "human:<CONDITION>"}`, so read it from `facts` like any other fact.
   `TAX_ADVICE_REQUEST` takes none: put the question in the note for the volunteer.
   **Rules must honor it:** if `facts["filing_status"]` exists (source `human:...`), use it instead of
@@ -151,6 +151,7 @@ real escalation. An abbreviated example follows:
         "condition": "ANSWER_UNCERTAIN",
         "reason": "taxpayer_blind is not_sure; volunteer clarification required",
         "raised_by": "rules",
+        "fact": "taxpayer_blind",  # the one unresolved answer; the gate asks for exactly this fact
     },
     "handoff_request": {"to": "human", "reason": "ANSWER_UNCERTAIN"},
 }
@@ -163,9 +164,13 @@ cannot guarantee that the orchestrator pauses; the pending escalation is require
 ### Volunteer resolution and resume
 
 - `ANSWER_UNCERTAIN` allows `continue` or `stop`, as listed in the decision table.
-- `continue` requires a non-empty note **and** a valid corrected value for the
-  specified fact, for example `{"taxpayer_blind": "yes"}` or
-  `{"married_dec31": "no"}`. Allowed answers follow `docs/answer-names.md`.
+- `continue` requires a non-empty note **and** `resolution` with exactly one key, the
+  `fact` named in the escalation, for example `{"taxpayer_blind": "yes"}` or
+  `{"married_dec31": "no"}`. The gate accepts `yes`/`no` for `taxpayer_blind`, `spouse_blind`,
+  `married_dec31` and `file_jointly`, and `single`/`widowed`/`caring_for_someone` for
+  `household_situation` (`docs/answer-names.md`). `not_sure`, a bool, another fact, or extra
+  facts are rejected: the gate interrupts again with an `error` and nothing is applied. The
+  interrupt payload lists the fact in `resolution_fields`.
 - The human gate validates the resolution, updates the relevant `facts` record,
   and records provenance as `"source": "human:ANSWER_UNCERTAIN"`:
 
@@ -176,13 +181,14 @@ cannot guarantee that the orchestrator pauses; the pending escalation is require
   }
   ```
 
-- Rules must use the corrected fact on its next run and recompute eligibility,
+- On `continue` the gate also clears `eligibility` (the router only runs Rules when there
+  is none), so Rules runs again with the corrected fact and recomputes eligibility,
   filing status, and age/blindness boxes as appropriate. Confirmed age boxes stay
   counted while blindness is unknown; an additional blindness box is counted
   only for a confirmed `"yes"` answer.
-- A `continue` decision without a valid replacement value must not bypass the
-  original `"not_sure"`. An invalid resolution must remain in Human Review
-  rather than allowing the return to finish.
+- A `continue` decision without a valid replacement value cannot bypass the original
+  `"not_sure"`: the gate rejects it and the case stays with the volunteer (tested in
+  `tests/test_answer_uncertain.py`, including the 1-vs-2-box outcome for blindness).
 - Filing-status questions that need human judgment for reasons other than an
   explicit applicable `"not_sure"` still use `FILING_STATUS_AMBIGUITY`.
 
