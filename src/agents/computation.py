@@ -20,6 +20,11 @@ status makes it use the status in `eligibility`. The first pass stays strict: a 
 not used until Review has flagged it. Findings it cannot act on are ignored; the loop bound
 then hands the case to a human.
 
+Forms that were not read (issue #27): Extraction reads only the W-2, so an SSA-1099, 1099-INT or
+1099-DIV leaves no amounts behind. Computation does not turn that into a quiet zero: the lines the
+form feeds say in their source that the form was not read, and `unread_forms` lets the draft form
+warn. It never invents an amount, and it does not stop the case (that routing is Orchestration's).
+
 Defensive escalations (Rules should catch these first): a taxpayer who can be claimed as a
 dependent, or a separately filing spouse who itemizes (the Standard Deduction Chart does not
 apply), a 1099-R whose taxable amount is not determined, and out-of-scope 1099 types.
@@ -57,6 +62,14 @@ DOC_LINES = {
                  ("1099r-pension", "box_4"), ("ssa1099", "box_6")],
 }
 OUT_OF_SCOPE_KINDS = ("1099nec", "1099misc", "1099b", "1099k")
+
+# In-scope forms Extraction does not read yet: normalised kind -> (name, the Intake answer that says
+# the taxpayer has it).
+UNREAD_FORMS = {
+    "ssa1099": ("SSA-1099", "has_ssa_1099"),
+    "1099int": ("1099-INT", "has_1099_int"),
+    "1099div": ("1099-DIV", "has_1099_div"),
+}
 
 
 def _fact(facts, name, default=None):
@@ -111,6 +124,22 @@ def _doc_amounts(extracted, specs, read_text=False):
                     value = _text_amount(raw)
                 if value is not None:
                     found.append((f"{doc_id}.{field}", value, doc_id))
+    return found
+
+
+def unread_forms(facts, extracted, read_text=False):
+    """In-scope income forms the taxpayer has (one was uploaded, or Intake recorded "yes") whose
+    amounts were not read. Returns [{"form": "SSA-1099", "lines": ["line_6a", "line_25b"]}]. A form
+    from which any amount was read is not listed, so this stops flagging once Extraction (or a
+    volunteer) supplies the amounts."""
+    found = []
+    for kind, (name, answer) in UNREAD_FORMS.items():
+        specs = [(k, field) for specs in DOC_LINES.values() for k, field in specs if k == kind]
+        has = _yes(facts, answer) or any(_kind(r) == kind for r in extracted.values())
+        if has and not _doc_amounts(extracted, specs, read_text):
+            found.append({"form": name,
+                          "lines": [line for line, spec in DOC_LINES.items()
+                                    if any(k == kind for k, _ in spec)]})
     return found
 
 
@@ -211,6 +240,7 @@ def run(view, tools):
     if escalation:
         return escalation
     computed = {}
+    unread = unread_forms(facts, extracted, read_text)
 
     def call(tool, **kwargs):
         return tools.call(tool, **kwargs)
@@ -234,18 +264,24 @@ def run(view, tools):
         return add(line, record)
 
     def from_documents(line):
-        """Line total from documents. One document keeps its own source; several are summed."""
+        """Line total from documents. One document keeps its own source; several are summed. A line
+        fed by a form that was not read says so in its source, rather than passing as a plain zero."""
         amounts = _doc_amounts(extracted, DOC_LINES[line], read_text)
+        missing = [u["form"] for u in unread if line in u["lines"]]
+        note = (f"; NOT READ: {', '.join(missing)} amounts were not captured, so this line may be "
+                "understated") if missing else ""
         if len(amounts) == 1:
             label, value, doc_id = amounts[0]
             raw = _raw(extracted[doc_id], label.split(".", 1)[1])
-            note = f" (text {raw!r} read as a number after a review finding)" if isinstance(raw, str) else ""
+            text = f" (text {raw!r} read as a number after a review finding)" if isinstance(raw, str) else ""
             return add(line, make_provenance(
-                value, f"{line} = value read from document field {label}{note}", {label: value},
-                f"Document {doc_id} (Document Extraction)", "document_extraction"))
-        return total(line, {label: v for label, v, _ in amounts},
-                     "Documents: " + ", ".join(sorted({d for _, _, d in amounts}))
-                     if amounts else "No matching documents; amount is zero")
+                value, f"{line} = value read from document field {label}{text}", {label: value},
+                f"Document {doc_id} (Document Extraction){note}", "document_extraction"))
+        if amounts:
+            source = "Documents: " + ", ".join(sorted({d for _, _, d in amounts}))
+        else:
+            source = "No amount read; shown as zero" if missing else "No matching documents; amount is zero"
+        return total(line, {label: v for label, v, _ in amounts}, f"{source}{note}")
 
     # --- income lines (documents), totals (a) and taxable (b)
     wages = total("line_1z", {"line_1a": from_documents("line_1a")},

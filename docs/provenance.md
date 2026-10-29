@@ -60,6 +60,13 @@ once a human has resolved the condition.
 - MFS eligibility for the Schedule 1-A senior deduction is not special-cased (not stated in the spec).
 - Whole-dollar rounding is not applied; amounts are kept to cents.
 - QCD flag on 1099-R (spec 4a/4b) is not handled.
+- SSA-1099, 1099-INT and 1099-DIV amounts are not captured yet (Extraction reads only the W-2 and
+  Intake asks yes/no; issue #27). Computation does not invent them or stop the case. The lines the
+  form feeds (6a/25b, 2a/2b/25b, 3a/3b/25b) stay zero and their source says `NOT READ`, and the
+  draft form shows an "Income is missing from this draft" warning at the top (`unread_forms` in
+  `src/agents/computation.py`). Both stop as soon as an amount is read from the form. Still open and
+  not Computation's: capturing the amounts (Intake or Extraction) and whether a volunteer must
+  acknowledge the gap before the draft is finished (Orchestration).
 
 ## Review send-backs
 Review's findings arrive in `view["pending_revision"]` (`{"target", "round", "findings":
