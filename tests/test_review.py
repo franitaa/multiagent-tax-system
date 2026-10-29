@@ -669,23 +669,23 @@ def test_real_review_that_keeps_failing_hits_the_bound(tmp_path):
     assert len(calls) == S.DEFAULT_MAX_REVISIONS + 1
 
 
-def test_out_of_scope_document_rules_missed_is_caught_by_review(tmp_path):
-    def extraction(view, tools):
-        update = AGENTS["extraction"](view, tools)
-        for record in update["extracted"].values():
-            record["kind"] = "1099-NEC"
+def test_an_out_of_scope_line_on_the_draft_is_caught_by_review(tmp_path):
+    """Only Review reads the computed return, so only Review can notice an out-of-scope line on it
+    (line 7, capital gains, needs Schedule D). Every other agent is the real one."""
+    def computation(view, tools):
+        update = consistent_computation(view, tools)
+        update["computed"]["line_7"] = rec(
+            500.0, {"entered_by": "taxpayer", "entered_on": "2026-10-29"},
+            tool="intake", source=review.DIRECT_INPUT)
         return update
 
-    def rules_that_misses_it(view, tools):  # real Rules catches a 1099-NEC; make it miss one
-        blind = {**view, "extracted": {k: {**r, "kind": "W-2"} for k, r in view["extracted"].items()}}
-        return AGENTS["rules"](blind, tools)
-
-    graph = build_graph(trace_dir=tmp_path, agents={"extraction": extraction,
-                                                    "rules": rules_that_misses_it,
-                                                    "computation": consistent_computation})
-    result = graph.invoke(clean_case(), cfg("nec"))
+    graph = build_graph(trace_dir=tmp_path, agents={"computation": computation})
+    result = graph.invoke(clean_case(), cfg("line7"))
     payload = result["__interrupt__"][0].value
     assert payload["condition"] == S.OUT_OF_SCOPE and payload["raised_by"] == "review"
     assert payload["options"] == ["stop"]
-    final = graph.invoke(Command(resume={"decision": "stop", "note": "Schedule C client"}), cfg("nec"))
+    route = [e["to"] for e in result["handoff_log"]]
+    assert route[-3:] == ["computation", "review", "human"]  # Rules let it through
+    final = graph.invoke(Command(resume={"decision": "stop", "note": "Capital gains: Schedule D"}),
+                         cfg("line7"))
     assert final["status"] == S.HALTED_BY_HUMAN
