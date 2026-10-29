@@ -11,6 +11,7 @@ import json
 from typing import Annotated, Any, TypedDict
 
 from provenance import ProvenanceRecord
+from security import remove_real_ssns
 
 DEFAULT_MAX_REVISIONS = 3
 
@@ -39,6 +40,7 @@ ANSWER_UNCERTAIN = "ANSWER_UNCERTAIN"
 # raised by the orchestrator itself
 LOOP_GUARD = "LOOP_GUARD"
 REVIEW_BOUND_EXCEEDED = "REVIEW_BOUND_EXCEEDED"
+ELIGIBILITY_UNDECIDED = "ELIGIBILITY_UNDECIDED"  # Rules returned no filing status or no verdict
 # Most severe first. Decides which of several simultaneous escalations a human sees first.
 ESCALATION_PRIORITY = (
     EXPLOITATION_SIGNS,
@@ -49,6 +51,7 @@ ESCALATION_PRIORITY = (
     ANSWER_UNCERTAIN,
     TAX_ADVICE_REQUEST,
     EXTRACTION_REVIEW,
+    ELIGIBILITY_UNDECIDED,
     LOOP_GUARD,
     REVIEW_BOUND_EXCEEDED,
 )
@@ -109,6 +112,15 @@ class Escalation(TypedDict, total=False):
 
 def append_list(old: list | None, new: list | None) -> list:
     return [*(old or []), *(new or [])]
+
+
+def append_messages(old: list | None, new: list | None) -> list:
+    """Append chat messages, removing real-looking SSNs from any new message on the way in, so
+    a caller that skips the chat page's own cleaning cannot put one into state or a checkpoint."""
+    cleaned = [{**m, "content": remove_real_ssns(m["content"])}
+               if isinstance(m, dict) and isinstance(m.get("content"), str) else m
+               for m in new or []]
+    return [*(old or []), *cleaned]
 
 
 def merge_dict(old: dict | None, new: dict | None) -> dict:
@@ -180,7 +192,7 @@ class SilverState(TypedDict, total=False):
     case_id: str
     documents: list[DocRef]
     # --- Intake (the only agent that talks to the taxpayer)
-    messages: Annotated[list[Message], append_list]
+    messages: Annotated[list[Message], append_messages]
     facts: Annotated[dict[str, Any], merge_dict]  # name -> {"value": ..., "source": ...}
     pending_question: str | None  # Intake sets; orchestrator clears once the user replies
     intake_complete: bool

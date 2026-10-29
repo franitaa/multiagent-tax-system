@@ -94,7 +94,7 @@ Set a flag; do not stop or work around it. The orchestrator performs the interru
 
 Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_REQUEST`,
 `FILING_STATUS_AMBIGUITY`, `EXPLOITATION_SIGNS`, and `ANSWER_UNCERTAIN` (constants in `src/state.py`). The orchestrator
-adds `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` itself.
+adds `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED` and `ELIGIBILITY_UNDECIDED` itself.
 When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
 and pauses the thread. The call returns `result["__interrupt__"][0].value` =
 `{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields,
@@ -106,7 +106,7 @@ A volunteer answers on the same `thread_id` with
 | Condition | Allowed decisions |
 |---|---|
 | `OUT_OF_SCOPE`, `FORM_1099R_BOX_2B`, `EXPLOITATION_SIGNS` | `stop` only (a human cannot take responsibility for work the system must not attempt) |
-| `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED` (raised by the orchestrator) | `stop` only |
+| `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED`, `ELIGIBILITY_UNDECIDED` (raised by the orchestrator) | `stop` only |
 | `SOURCE_CONFLICT`, `FILING_STATUS_AMBIGUITY`, `TAX_ADVICE_REQUEST` | `continue` or `stop` |
 | `ANSWER_UNCERTAIN` | `continue` (with a valid corrected fact) or `stop` |
 
@@ -130,6 +130,12 @@ A volunteer answers on the same `thread_id` with
 **Do not raise a condition again once a human resolved it.** Check `human_decisions` (every agent can
 read it): if an entry with your condition exists, carry on. If Rules returns
 `eligibility.in_scope == False` without a flag, the orchestrator raises `OUT_OF_SCOPE` itself.
+
+## What Rules must return
+A non-empty `eligibility["filing_status"]` and a boolean `eligibility["in_scope"]`. If you also report
+`eligible_1040sr`, `None` means "could not decide". If either is missing the orchestrator will not go on
+to Computation: it pauses for a human with `ELIGIBILITY_UNDECIDED` (stop-only) and the case cannot end
+"complete". Details and the Intake fact names: `docs/intake-rules-contract.md`.
 
 ### Rules output
 

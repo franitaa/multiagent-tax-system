@@ -172,5 +172,31 @@ def run_long_session(graph, thread_id: str, turns: int = 30, n_docs: int = 12) -
     return result
 
 
+def decided_rules(view, tools):
+    """Scenario-owned stand-in for Rules: always returns a decided, in-scope verdict. The long
+    session is about context size, not eligibility, so it must not depend on the real Rules agent
+    (which is being reworked and cannot decide from the long scenario's made-up facts)."""
+    return {
+        "eligibility": {"in_scope": True, "eligible_1040sr": True, "filing_status": "single",
+                        "taxpayer_qualifies": True, "age_blindness_boxes": 1,
+                        "citations": ["STUB: policy citation"]},
+        "handoff_request": {"to": "computation", "reason": "in scope; status determined"},
+    }
+
+
+def text_extraction(view, tools):
+    """Scenario-owned stand-in for Document Extraction: the real one reads W-2 images only, and
+    this scenario's documents are plain-text test pages. One document per parallel worker."""
+    return {
+        "extracted": {
+            doc["id"]: {"doc_id": doc["id"], "kind": doc["kind"],
+                        "fields": {"box_1": {"value": 1000.0, "source": doc["id"]}}}
+            for doc in view.get("documents", [])
+        },
+        "handoff_request": {"to": "rules", "reason": "documents extracted"},
+    }
+
+
 def long_session_agents(turns: int = 30) -> dict:
-    return {"intake": long_intake(turns), **revising_agents()}
+    return {"intake": long_intake(turns), "extraction": text_extraction, "rules": decided_rules,
+            **revising_agents()}

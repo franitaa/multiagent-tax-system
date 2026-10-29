@@ -173,7 +173,6 @@
     {
       "id": "eval-case-2-status-reaches-draft",
       "title": "Eval case 2: the volunteer's filing status is the one on the draft",
-      "pending": "After the volunteer answers, the orchestrator routes human -> computation and does not run Rules again, so Rules never applies the volunteer's filing status (Rules itself handles it). Needs the router to re-run Rules after a FILING_STATUS_AMBIGUITY resolution (Francesca).",
       "messages": [
         "Hi, I need help with my 2025 return.",
         "My husband passed away in March, and I am not sure how to file."

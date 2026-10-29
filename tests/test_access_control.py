@@ -76,7 +76,8 @@ def test_called_tools_are_traced(tmp_path, monkeypatch):
 
     def computes(view, tools):
         tools.call("add", a=1, b=2)
-        return {"computed": {"line_1a": {"value": 3}}}
+        return {"computed": {"line_1a": {"value": 3, "formula": "1 + 2", "inputs": {"a": 1, "b": 2},
+                                         "source": "test", "tool": "add"}}}
 
     build_graph(trace_dir=tmp_path, agents={"computation": computes}).invoke(clean_case(), cfg("t"))
     records = [json.loads(x) for x in (tmp_path / "t.jsonl").read_text().splitlines()]

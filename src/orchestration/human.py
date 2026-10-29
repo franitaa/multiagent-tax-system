@@ -4,14 +4,15 @@ Agents only set an `escalation` flag; the router sends control here. The interru
 FIRST statement because LangGraph re-executes the node from the top on resume, so nothing
 before it may have side effects.
 
-Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...} | absent}.
+Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...} | absent,
+"reviewer": str | absent}. `reviewer` names the volunteer for the audit log (src/audit.py).
 
   stop      always allowed. The case ends with status "halted_by_human". Note optional.
   continue  allowed only for SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST,
             ANSWER_UNCERTAIN, and only with a non-empty note (it is part of the audit record). A human cannot
             take responsibility for out-of-scope work, so OUT_OF_SCOPE, FORM_1099R_BOX_2B,
-            EXPLOITATION_SIGNS (and the orchestrator's own LOOP_GUARD and
-            REVIEW_BOUND_EXCEEDED) accept "stop" only.
+            EXPLOITATION_SIGNS (and the orchestrator's own LOOP_GUARD,
+            REVIEW_BOUND_EXCEEDED and ELIGIBILITY_UNDECIDED) accept "stop" only.
   resolution  optional resolving values, stored as facts with source "human:<CONDITION>":
             SOURCE_CONFLICT: {fact_name: value}; FILING_STATUS_AMBIGUITY: {"filing_status": ...};
             ANSWER_UNCERTAIN: {<the fact Rules named>: a valid answer}, required, and "not_sure"
@@ -89,6 +90,11 @@ def _validate(answer, condition: str, escalation: dict | None = None) -> tuple[s
     return decision, note, dict(resolution)
 
 
+def _reviewer(answer) -> str:
+    name = answer.get("reviewer") if isinstance(answer, dict) else None
+    return " ".join(str(name).split())[:80] if name else ""
+
+
 def _validate_uncertain(resolution, escalation: dict) -> None:
     """A "continue" must replace the one answer that was not_sure; it cannot go round it."""
     fact = escalation.get("fact")
@@ -150,7 +156,7 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
     update = {
         "human_decisions": [
             {"condition": condition, "decision": decision, "note": note,
-             "resolution": resolution or None}
+             "resolution": resolution or None, **({"reviewer": _reviewer(answer)} if _reviewer(answer) else {})}
         ],
         "escalation": None,
         "status": RUNNING,
@@ -165,9 +171,10 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
             name: {"value": value, "source": f"human:{condition}"}
             for name, value in resolution.items()
         }
-    if decision == "continue" and condition == ANSWER_UNCERTAIN:
+    if decision == "continue" and condition in (ANSWER_UNCERTAIN, FILING_STATUS_AMBIGUITY):
         # The volunteer's answer is a new fact. Rules ran on the old one, and the router only runs
-        # Rules when there is no eligibility, so clear it: otherwise the provisional result stands.
+        # Rules when there is no eligibility, so clear it: otherwise the provisional result stands
+        # (for a filing status, the case then stops as ELIGIBILITY_UNDECIDED).
         update["eligibility"] = {}
     if decision == "stop":
         update.update(status=HALTED_BY_HUMAN, done=True)

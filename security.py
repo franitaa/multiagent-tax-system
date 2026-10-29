@@ -5,12 +5,12 @@ def is_fake_ssn(ssn: str) -> bool:
     """Return True only for a 9-digit test SSN starting with 900–999.
 
     Accepts either 9 consecutive digits or the format XXX-XX-XXXX.
-    Rejects real SSNs and incorrectly formatted values.
+    Rejects real-looking SSNs and incorrectly formatted values.
     """
     if not isinstance(ssn, str):
         return False
 
-    # Remove hyphens only when they are in the expected positions.
+    # Accept only the two supported formats.
     if re.fullmatch(r"\d{3}-\d{2}-\d{4}", ssn):
         digits = ssn.replace("-", "")
     elif re.fullmatch(r"\d{9}", ssn):
@@ -22,22 +22,40 @@ def is_fake_ssn(ssn: str) -> bool:
     return 900 <= prefix <= 999
 
 
+SSN_REMOVED = "[number removed]"
+_SSN_IN_TEXT = re.compile(r"\b(\d{3})[- ]?(\d{2})[- ]?(\d{4})\b")
+
+
+def remove_real_ssns(text: str) -> str:
+    """Replace every SSN-like number that is not a 900-999 practice number. Handles spaces and
+    dashes as well as plain digits, and uses the placeholder Intake already recognises."""
+    if not isinstance(text, str):
+        return text
+    return _SSN_IN_TEXT.sub(
+        lambda m: m.group(0) if is_fake_ssn("".join(m.groups())) else SSN_REMOVED, text)
+
 
 def redact_pii(text: str) -> str:
-    """Redact common sensitive identifiers before text is written to logs.
+    """Redact sensitive identifiers while preserving approved test SSNs.
 
-    Masks SSNs, EINs, email addresses, and US-style phone numbers.
     This is a defensive filter, not a guarantee that all PII is removed.
     """
-    import re
-
     if not isinstance(text, str):
         raise TypeError("text must be a string")
 
-    # Redact SSNs such as 900-12-3456 or 900123456.
+    def redact_ssn(match):
+        candidate = match.group(0)
+
+        # Reuse the shared validator rather than creating another SSN rule.
+        if is_fake_ssn(candidate):
+            return candidate
+
+        return "[REDACTED SSN]"
+
+    # Redact SSN-shaped values unless the shared validator approves them.
     text = re.sub(
         r"(?<!\d)(?:\d{3}-\d{2}-\d{4}|\d{9})(?!\d)",
-        "[REDACTED SSN]",
+        redact_ssn,
         text,
     )
 
@@ -55,7 +73,7 @@ def redact_pii(text: str) -> str:
         text,
     )
 
-    # Redact common US phone-number formats.
+    # Redact common US-style phone numbers.
     text = re.sub(
         r"(?<!\d)(?:\+1[-.\s]?)?(?:\(\d{3}\)|\d{3})[-.\s]\d{3}[-.\s]\d{4}(?!\d)",
         "[REDACTED PHONE]",
@@ -63,3 +81,12 @@ def redact_pii(text: str) -> str:
     )
 
     return text
+
+
+def ssn_redaction_message() -> str:
+    """Explain SSN redaction without revealing the original number."""
+    return (
+        "I removed a number that looked like an SSN. "
+        "For this practice system, please only use test numbers "
+        "starting with 9."
+    )

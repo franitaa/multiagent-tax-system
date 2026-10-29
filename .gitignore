@@ -2,12 +2,14 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+.env.*
+!.env.example
 .pytest_cache/
 *.sqlite
 *.db
 traces/*.jsonl
-
+traces/**/*.jsonl
+# Case data written by the app and scripts (src/retention.py, src/draft_form.py): never commit
 runtime/
-.env.*
-!.env.example
+output/
 *.egg-info/

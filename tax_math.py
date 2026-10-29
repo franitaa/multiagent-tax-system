@@ -249,7 +249,7 @@ def calculate_income_tax(
     brackets = {
         "single": [
             (11925, 0.10),
-            (48350, 0.12),
+            (48475, 0.12),
             (103350, 0.22),
             (197300, 0.24),
             (250525, 0.32),
@@ -258,7 +258,7 @@ def calculate_income_tax(
         ],
         "married_filing_jointly": [
             (23850, 0.10),
-            (96700, 0.12),
+            (96950, 0.12),
             (206700, 0.22),
             (394600, 0.24),
             (501050, 0.32),
@@ -267,7 +267,7 @@ def calculate_income_tax(
         ],
         "married_filing_separately": [
             (11925, 0.10),
-            (48350, 0.12),
+            (48475, 0.12),
             (103350, 0.22),
             (197300, 0.24),
             (250525, 0.32),
@@ -285,7 +285,7 @@ def calculate_income_tax(
         ],
         "qualifying_surviving_spouse": [
             (23850, 0.10),
-            (96700, 0.12),
+            (96950, 0.12),
             (206700, 0.22),
             (394600, 0.24),
             (501050, 0.32),
@@ -325,4 +325,41 @@ def calculate_income_tax(
         },
         "source": "2025 IRS tax rate schedules",
         "tool": "calculate_income_tax",
+    }
+
+def sum_amounts(
+    amounts: dict[str, float],
+    label: str,
+) -> ProvenanceRecord:
+    """Add named amounts. `label` names the form line being produced."""
+    total = round(sum(amounts.values()), 2)
+    return {
+        "value": total,
+        "formula": f"{label} = " + (" + ".join(amounts) or "0"),
+        "inputs": dict(amounts),
+        "source": "Addition of the listed form lines",
+        "tool": "sum_amounts",
+    }
+
+
+def subtract_amounts(
+    start: float,
+    subtract: dict[str, float],
+    label: str,
+    start_name: str = "start",
+    floor_at_zero: bool = True,
+) -> ProvenanceRecord:
+    """Compute start minus the named amounts, optionally floored at zero."""
+    result = round(start - sum(subtract.values()), 2)
+    if floor_at_zero:
+        result = max(0, result)
+    return {
+        "value": result,
+        "formula": (
+            f"{label} = {start_name} - " + (" - ".join(subtract) or "0")
+            + (", not below zero" if floor_at_zero else "")
+        ),
+        "inputs": {start_name: start, **subtract},
+        "source": "Subtraction of the listed form lines",
+        "tool": "subtract_amounts",
     }
