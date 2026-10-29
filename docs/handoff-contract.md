@@ -20,9 +20,36 @@ Every agent can also read `escalation` and `human_decisions`, and write `escalat
 | Orchestrator | compact routing view (flags, counts; no documents or chat) | control fields only (`next_agent`, `status`, `step`, `handoff_log`, ...) |
 | Intake | `messages` (**last 6 only**), `facts` (all), `session_summary` | `messages`, `facts`, `pending_question`, `intake_complete` |
 | Extraction | `documents` | `extracted` (keyed by `doc_id`) |
-| Rules | `facts`, `extracted`, `session_summary` | `eligibility` |
+| Rules | `facts`, `extracted`, `session_summary` | `eligibility`(including `rule_citations`) |
 | Computation | `facts` (**numeric values only**), `extracted`, `eligibility` (**`filing_status` only**), `pending_revision` | `computed` (line -> ProvenanceRecord) |
-| Review | `computed`, `eligibility`, `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything |
+| Review | `computed`, `eligibility`(including `rule_citations`), `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything |
+
+### Rules policy citations
+
+The Rules Agent writes the applied tax rules and their supporting references as paired
+records in **`eligibility["rule_citations"]`**, using numbered sections of `docs/policy.md`.
+This is part of `eligibility`, **not** a separate top-level state field.
+
+```python
+{
+    "eligibility": {
+        "rule_citations": [
+            {"rule": "1040-SR eligibility", "citation": "policy.md §2.1"},
+            {"rule": "Standard deduction age/blindness rule", "citation": "policy.md §2.3"},
+        ]
+    }
+}
+```
+
+- Every recorded applied rule must have its own `rule` (rule name) and `citation`
+  (a real section of `docs/policy.md`).
+- Do not add duplicate rule/citation pairs. An empty list is valid if no policy
+  rule has been applied yet (for example, an early incomplete-input return).
+- The Review Agent consumes `eligibility["rule_citations"]` to check that each
+  applied rule is grounded in the supplied policy. Missing, invalid, or
+  nonexistent references should be reported as review findings.
+- Dollar-amount provenance (`ProvenanceRecord`) is a separate requirement and
+  is **not** replaced by policy citations.
 
 **Your view is narrower than the table suggests, on purpose** (`docs/decisions/001-context-strategy.md`):
 - **Intake's chat window is not memory.** You see only the last 6 messages. Anything you must remember
@@ -66,7 +93,7 @@ Set a flag; do not stop or work around it. The orchestrator performs the interru
 ```
 
 Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_REQUEST`,
-`FILING_STATUS_AMBIGUITY`, `EXPLOITATION_SIGNS` (constants in `src/state.py`). The orchestrator
+`FILING_STATUS_AMBIGUITY`, `EXPLOITATION_SIGNS`, and `ANSWER_UNCERTAIN` (constants in `src/state.py`). The orchestrator
 adds `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED` and `ELIGIBILITY_UNDECIDED` itself.
 When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
 and pauses the thread. The call returns `result["__interrupt__"][0].value` =
@@ -81,11 +108,14 @@ A volunteer answers on the same `thread_id` with
 | `OUT_OF_SCOPE`, `FORM_1099R_BOX_2B`, `EXPLOITATION_SIGNS` | `stop` only (a human cannot take responsibility for work the system must not attempt) |
 | `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED`, `ELIGIBILITY_UNDECIDED` (raised by the orchestrator) | `stop` only |
 | `SOURCE_CONFLICT`, `FILING_STATUS_AMBIGUITY`, `TAX_ADVICE_REQUEST` | `continue` or `stop` |
+| `ANSWER_UNCERTAIN` | `continue` (with a valid corrected fact) or `stop` |
 
 - `continue` **requires a non-empty `note`**; it is stored in `human_decisions` (the audit record).
 - `continue` may carry a `resolution`: `FILING_STATUS_AMBIGUITY` takes `{"filing_status": <single |
   married_filing_jointly | married_filing_separately | head_of_household | qualifying_surviving_spouse>}`;
-  `SOURCE_CONFLICT` takes `{fact_name: value}`. It is written to `facts` as
+  `SOURCE_CONFLICT` takes `{fact_name: value}`;
+  `ANSWER_UNCERTAIN` takes `{fact_name: corrected_value}` for the specific unresolved
+  answer (valid values are defined in `docs/answer-names.md`). The resolution is written to `facts` as
   `{"value": ..., "source": "human:<CONDITION>"}`, so read it from `facts` like any other fact.
   `TAX_ADVICE_REQUEST` takes none: put the question in the note for the volunteer.
   **Rules must honor it:** if `facts["filing_status"]` exists (source `human:...`), use it instead of
@@ -106,6 +136,67 @@ A non-empty `eligibility["filing_status"]` and a boolean `eligibility["in_scope"
 `eligible_1040sr`, `None` means "could not decide". If either is missing the orchestrator will not go on
 to Computation: it pauses for a human with `ELIGIBILITY_UNDECIDED` (stop-only) and the case cannot end
 "complete". Details and the Intake fact names: `docs/intake-rules-contract.md`.
+
+### Rules output
+
+For a taxpayer aged 75 with `taxpayer_blind="not_sure"`, the result must retain
+the confirmed age box, leave the unconfirmed blindness box uncounted, and raise a
+real escalation. An abbreviated example follows:
+
+```python
+{
+    "eligibility": {
+        "age_blindness_boxes": 1,
+        "rule_citations": [
+            {"rule": "Standard deduction age/blindness rule", "citation": "policy.md §2.3"},
+            {"rule": "Uncertain blindness: human review", "citation": "policy.md §3.3"},
+        ],
+    },
+    "escalation": {
+        "pending": True,
+        "condition": "ANSWER_UNCERTAIN",
+        "reason": "taxpayer_blind is not_sure; volunteer clarification required",
+        "raised_by": "rules",
+        "fact": "taxpayer_blind",  # the one unresolved answer; the gate asks for exactly this fact
+    },
+    "handoff_request": {"to": "human", "reason": "ANSWER_UNCERTAIN"},
+}
+```
+
+The real agent must return its full agreed `eligibility` structure, not just the
+abbreviated fields above. As described in **Handoff request**, a handoff alone
+cannot guarantee that the orchestrator pauses; the pending escalation is required.
+
+### Volunteer resolution and resume
+
+- `ANSWER_UNCERTAIN` allows `continue` or `stop`, as listed in the decision table.
+- `continue` requires a non-empty note **and** `resolution` with exactly one key, the
+  `fact` named in the escalation, for example `{"taxpayer_blind": "yes"}` or
+  `{"married_dec31": "no"}`. The gate accepts `yes`/`no` for `taxpayer_blind`, `spouse_blind`,
+  `married_dec31` and `file_jointly`, and `single`/`widowed`/`caring_for_someone` for
+  `household_situation` (`docs/answer-names.md`). `not_sure`, a bool, another fact, or extra
+  facts are rejected: the gate interrupts again with an `error` and nothing is applied. The
+  interrupt payload lists the fact in `resolution_fields`.
+- The human gate validates the resolution, updates the relevant `facts` record,
+  and records provenance as `"source": "human:ANSWER_UNCERTAIN"`:
+
+  ```python
+  facts["taxpayer_blind"] = {
+      "value": "yes",
+      "source": "human:ANSWER_UNCERTAIN",
+  }
+  ```
+
+- On `continue` the gate also clears `eligibility` (the router only runs Rules when there
+  is none), so Rules runs again with the corrected fact and recomputes eligibility,
+  filing status, and age/blindness boxes as appropriate. Confirmed age boxes stay
+  counted while blindness is unknown; an additional blindness box is counted
+  only for a confirmed `"yes"` answer.
+- A `continue` decision without a valid replacement value cannot bypass the original
+  `"not_sure"`: the gate rejects it and the case stays with the volunteer (tested in
+  `tests/test_answer_uncertain.py`, including the 1-vs-2-box outcome for blindness).
+- Filing-status questions that need human judgment for reasons other than an
+  explicit applicable `"not_sure"` still use `FILING_STATUS_AMBIGUITY`.
 
 ## Parallelism, the review loop, and the loop guard
 - **Extraction runs in parallel**, one worker per document, each receiving exactly one document

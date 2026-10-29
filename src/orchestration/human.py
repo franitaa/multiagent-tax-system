@@ -9,12 +9,14 @@ Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...}
 
   stop      always allowed. The case ends with status "halted_by_human". Note optional.
   continue  allowed only for SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST,
-            and only with a non-empty note (it is part of the audit record). A human cannot
+            ANSWER_UNCERTAIN, and only with a non-empty note (it is part of the audit record). A human cannot
             take responsibility for out-of-scope work, so OUT_OF_SCOPE, FORM_1099R_BOX_2B,
             EXPLOITATION_SIGNS (and the orchestrator's own LOOP_GUARD,
             REVIEW_BOUND_EXCEEDED and ELIGIBILITY_UNDECIDED) accept "stop" only.
   resolution  optional resolving values, stored as facts with source "human:<CONDITION>":
-            SOURCE_CONFLICT: {fact_name: value}; FILING_STATUS_AMBIGUITY: {"filing_status": ...}.
+            SOURCE_CONFLICT: {fact_name: value}; FILING_STATUS_AMBIGUITY: {"filing_status": ...};
+            ANSWER_UNCERTAIN: {<the fact Rules named>: a valid answer}, required, and "not_sure"
+            is not one. Rules decides again afterwards (the gate clears `eligibility`).
 
 An invalid answer does not raise: the gate interrupts again with the same payload plus an
 "error" message, so the UI shows the message and the volunteer answers again. (Raising would
@@ -25,10 +27,19 @@ from langgraph.types import interrupt
 
 from src.orchestration.access import ToolBox
 from src.state import (
-    AWAITING_HUMAN, FILING_STATUS_AMBIGUITY, HALTED_BY_HUMAN, RUNNING, SOURCE_CONFLICT, TAX_ADVICE_REQUEST,
+    ANSWER_UNCERTAIN, AWAITING_HUMAN, FILING_STATUS_AMBIGUITY, HALTED_BY_HUMAN, RUNNING, SOURCE_CONFLICT,
+    TAX_ADVICE_REQUEST,
 )
 
-CONTINUABLE = frozenset({SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST})
+CONTINUABLE = frozenset({SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST, ANSWER_UNCERTAIN})
+# The answers a volunteer may give for an ANSWER_UNCERTAIN fact (docs/answer-names.md). "not_sure"
+# is never one of them: it is the problem.
+_YES_NO = ("yes", "no")
+UNCERTAIN_ANSWERS = {
+    "taxpayer_blind": _YES_NO, "spouse_blind": _YES_NO,
+    "married_dec31": _YES_NO, "file_jointly": _YES_NO,
+    "household_situation": ("single", "widowed", "caring_for_someone"),
+}
 FILING_STATUSES = (
     "single",
     "married_filing_jointly",
@@ -43,7 +54,7 @@ def allowed_decisions(condition: str) -> tuple[str, ...]:
     return ("continue", "stop") if condition in CONTINUABLE else ("stop",)
 
 
-def _validate(answer, condition: str) -> tuple[str, str, dict]:
+def _validate(answer, condition: str, escalation: dict | None = None) -> tuple[str, str, dict]:
     if not isinstance(answer, dict) or not isinstance(answer.get("decision"), str):
         raise ValueError("resume value must be a dict like {'decision': 'stop', 'note': '...'}")
     decision, note = answer["decision"], str(answer.get("note") or "").strip()
@@ -68,12 +79,28 @@ def _validate(answer, condition: str) -> tuple[str, str, dict]:
         if condition == FILING_STATUS_AMBIGUITY:
             if set(resolution) != {"filing_status"} or resolution["filing_status"] not in FILING_STATUSES:
                 raise ValueError(f"resolution must be {{'filing_status': one of {FILING_STATUSES}}}")
+    if condition == ANSWER_UNCERTAIN:
+        _validate_uncertain(resolution, escalation or {})
     return decision, note, dict(resolution)
 
 
 def _reviewer(answer) -> str:
     name = answer.get("reviewer") if isinstance(answer, dict) else None
     return " ".join(str(name).split())[:80] if name else ""
+
+
+def _validate_uncertain(resolution, escalation: dict) -> None:
+    """A "continue" must replace the one answer that was not_sure; it cannot go round it."""
+    fact = escalation.get("fact")
+    if not fact:
+        raise ValueError("this escalation does not name the unresolved fact; stop it instead")
+    if not isinstance(resolution, dict) or set(resolution) != {fact}:
+        raise ValueError(f"resolution must be exactly {{{fact!r}: <the taxpayer's answer>}}")
+    valid = UNCERTAIN_ANSWERS.get(fact)
+    if valid is None:
+        raise ValueError(f"{fact} cannot be resolved here; stop it instead")
+    if resolution[fact] not in valid or isinstance(resolution[fact], bool):
+        raise ValueError(f"{fact} must be one of {valid}")
 
 
 def human_gate(view: dict, tools: ToolBox) -> dict:
@@ -89,13 +116,14 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
         "note_required_for_continue": True,
         "resolution_fields": (
             ["filing_status"] if condition == FILING_STATUS_AMBIGUITY
-            else ["<fact name>"] if condition == SOURCE_CONFLICT else []
+            else ["<fact name>"] if condition == SOURCE_CONFLICT
+            else [escalation["fact"]] if condition == ANSWER_UNCERTAIN and escalation.get("fact") else []
         ),
     }
     while True:
         answer = interrupt(payload)  # re-asked with an "error" until the answer is valid
         try:
-            decision, note, resolution = _validate(answer, condition)
+            decision, note, resolution = _validate(answer, condition, escalation)
             break
         except ValueError as exc:
             payload = {**payload, "error": str(exc)}
@@ -116,6 +144,10 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
             name: {"value": value, "source": f"human:{condition}"}
             for name, value in resolution.items()
         }
+    if decision == "continue" and condition == ANSWER_UNCERTAIN:
+        # The volunteer's answer is a new fact. Rules ran on the old one, and the router only runs
+        # Rules when there is no eligibility, so clear it: otherwise the provisional result stands.
+        update["eligibility"] = {}
     if decision == "stop":
         update.update(status=HALTED_BY_HUMAN, done=True)
     elif queued:

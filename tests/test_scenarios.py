@@ -37,11 +37,6 @@ def test_spouse_died_pauses_then_finishes_with_the_human_supplied_filing_status(
     assert [e["to"] for e in final["handoff_log"]][:3] == ["intake", "human", "extraction"]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Two vocabularies for eligibility.filing_status. The human gate and tax_math use long names "
-    "(married_filing_jointly); Rules uses short codes (mfj), and tax_math raises 'Unsupported "
-    "filing status: mfj'. Even with the gate-name mapping (PR #21), Rules returns 'mfj' and this "
-    "test expects the long name. Team decision needed: one vocabulary (see docs/handoff-contract.md)."))
 def test_the_human_supplied_filing_status_reaches_the_draft(tmp_path):
     case, agents = spouse_died_case()
     graph = build_graph(trace_dir=tmp_path, agents=agents)
