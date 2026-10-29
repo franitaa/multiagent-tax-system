@@ -17,3 +17,11 @@ docker run --rm -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
 ```
 
 Secrets are never built into the image; pass them at run time with `--env-file .env`.
+
+## Eval cases
+End-to-end cases (a clean return, the spouse-died case, each escalation) are in [evals/cases.json](evals/cases.json); how to read and add them: [evals/README.md](evals/README.md).
+
+```
+python -m evals.runner                       # PASS / FAIL / PENDING for every case
+docker run --rm silverfile python -m evals.runner
+```

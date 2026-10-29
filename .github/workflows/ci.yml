@@ -20,6 +20,8 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: pytest -q
+      - name: Eval cases
+        run: python -m evals.runner
 
   # Builds the container and checks each documented way of running it.
   docker:
@@ -32,6 +34,8 @@ jobs:
         run: docker run --rm silverfile | tee run.log && grep -q "DRAFT READY" run.log
       - name: Tests inside the container
         run: docker run --rm silverfile pytest -q
+      - name: Eval cases inside the container
+        run: docker run --rm silverfile python -m evals.runner
       - name: Chat page starts and answers
         run: |
           docker run -d --name chat -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
