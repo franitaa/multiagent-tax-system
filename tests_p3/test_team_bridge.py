@@ -95,10 +95,19 @@ class BridgeTests(unittest.TestCase):
             extract_text_fixture({'id': 'x', 'kind': 'W-2', 'text': 'TEST DATA'})
 
     def test_non_w2_does_not_call_model(self):
+        # A 1099-R is skipped, but never quietly: its box 2b cannot be read, so a volunteer is asked.
         update = run({'documents': [{'id': 'x', 'kind': '1099-R'}]}, ToolBox('extraction', self.runtime.registry()))
-        self.assertNotIn('escalation', update)
+        self.assertEqual(update['escalation']['condition'], 'FORM_1099R_BOX_2B')
         self.assertEqual(update['extracted']['x']['status'], 'skipped')
         self.assertEqual(update['extracted']['x']['fields'], {})
+        self.assertEqual(update['handoff_request']['to'], 'human')
+        self.assertEqual(len(self.runtime.reader.calls), 0)
+
+    def test_other_in_scope_forms_are_skipped_without_calling_the_model(self):
+        # Known gap (tests/test_extraction_scope.py): their amounts are not captured yet.
+        update = run({'documents': [{'id': 'x', 'kind': 'SSA-1099'}]}, ToolBox('extraction', self.runtime.registry()))
+        self.assertNotIn('escalation', update)
+        self.assertEqual(update['extracted']['x']['status'], 'skipped')
         self.assertEqual(update['handoff_request']['to'], 'rules')
         self.assertEqual(len(self.runtime.reader.calls), 0)
 
