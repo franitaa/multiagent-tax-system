@@ -676,7 +676,12 @@ def test_out_of_scope_document_rules_missed_is_caught_by_review(tmp_path):
             record["kind"] = "1099-NEC"
         return update
 
+    def rules_that_misses_it(view, tools):  # real Rules catches a 1099-NEC; make it miss one
+        blind = {**view, "extracted": {k: {**r, "kind": "W-2"} for k, r in view["extracted"].items()}}
+        return AGENTS["rules"](blind, tools)
+
     graph = build_graph(trace_dir=tmp_path, agents={"extraction": extraction,
+                                                    "rules": rules_that_misses_it,
                                                     "computation": consistent_computation})
     result = graph.invoke(clean_case(), cfg("nec"))
     payload = result["__interrupt__"][0].value
