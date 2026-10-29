@@ -28,6 +28,7 @@ COMPLETE = "complete"
 HALTED_BY_HUMAN = "halted_by_human"
 
 # Escalation conditions (a human decides via interrupt).
+EXTRACTION_REVIEW = "EXTRACTION_REVIEW"
 OUT_OF_SCOPE = "OUT_OF_SCOPE"
 SOURCE_CONFLICT = "SOURCE_CONFLICT"
 FORM_1099R_BOX_2B = "FORM_1099R_BOX_2B"
@@ -49,11 +50,13 @@ ESCALATION_PRIORITY = (
     SOURCE_CONFLICT,
     ANSWER_UNCERTAIN,
     TAX_ADVICE_REQUEST,
+    EXTRACTION_REVIEW,
     ELIGIBILITY_UNDECIDED,
     LOOP_GUARD,
     REVIEW_BOUND_EXCEEDED,
 )
 AGENT_CONDITIONS = (
+    EXTRACTION_REVIEW,
     OUT_OF_SCOPE,
     SOURCE_CONFLICT,
     FORM_1099R_BOX_2B,
@@ -79,10 +82,13 @@ class Message(TypedDict):
     content: str
 
 
-class DocRef(TypedDict):
+class DocRef(TypedDict, total=False):
     id: str
     kind: str  # e.g. "W-2", "1099-R"
     text: str
+    image_ref: str  # hash handle; no raw bytes, credentials, or arbitrary filesystem path
+    synthetic_confirmed: bool
+    fixture_format: str  # explicit deterministic test fixture only
 
 
 class Handoff(TypedDict):
@@ -97,6 +103,7 @@ class Escalation(TypedDict, total=False):
     condition: str  # one of the conditions above
     reason: str
     raised_by: str
+    document_id: str  # scopes extraction review to one document
     queued: list  # other escalations raised at the same moment; shown to the human in turn
 
 
@@ -135,7 +142,14 @@ def merge_extracted(old: dict | None, new: dict | None) -> dict:
     merged: dict = {}
     for key in sorted(old.keys() | new.keys()):
         candidates = [side[key] for side in (old, new) if key in side]
-        merged[key] = max(candidates, key=_canonical)
+        if any('revision' in c for c in candidates):
+            top_revision = max(c.get('revision', 0) for c in candidates)
+            newest = [c for c in candidates if c.get('revision', 0) == top_revision]
+            if any(c != newest[0] for c in newest[1:]):
+                raise ValueError('Conflicting extraction records at the same revision')
+            merged[key] = newest[0]
+        else:
+            merged[key] = max(candidates, key=_canonical)  # compatibility with legacy test records
     return merged
 
 

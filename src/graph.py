@@ -38,7 +38,9 @@ def _dispatcher(scoped: bool):
         extracted = state.get("extracted", {})
         pending = [d for d in state.get("documents", []) if d["id"] not in extracted]
         return [
-            Send("extraction", {"documents": [doc], "step": state.get("step", 0)} if scoped
+            Send("extraction", {"documents": [doc], "step": state.get("step", 0),
+                                  "human_decisions": state.get("human_decisions", []),
+                                  "escalation": state.get("escalation")} if scoped
                  else {**state, "documents": [doc]})
             for doc in pending
         ]

@@ -29,10 +29,10 @@ from src.state import COMPLETE, HALTED_BY_HUMAN
 class Runner:
     def __init__(self, trace_dir: str | Path = "traces", scoped: bool = True, tool_registry=None,
                  audit_dir: str | Path | None = None):
-        self.tool_registry = tool_registry
         self.trace_dir = Path(trace_dir)
         self.audit = AuditLog(audit_dir or self.trace_dir / "audit")
         self.scoped = scoped
+        self.tool_registry = tool_registry
         self._lock = threading.Lock()  # parallel workers write the same trace file
 
     def run(self, name: str, fn: Callable, state: dict, thread_id: str) -> dict:
@@ -147,9 +147,9 @@ class Runner:
             "tools_called": tools.calls,
             "tool_transports": sorted(set(tools.transports)),
             "duration_ms": round((time.perf_counter() - started) * 1000, 3),
-            "input_tokens": estimate_tokens(view),
-            "output_tokens": estimate_tokens(update),
-            "token_source": TOKEN_SOURCE,
+            "input_tokens": sum(u["api_input_tokens"] for u in tools.usage) if tools.usage else estimate_tokens(view),
+            "output_tokens": sum(u.get("api_output_tokens") or 0 for u in tools.usage) if tools.usage else estimate_tokens(update),
+            "token_source": ("anthropic_api_usage" if all(u.get("provider") == "anthropic" for u in tools.usage) else "openai_api_usage") if tools.usage else TOKEN_SOURCE,
             "context_mode": "scoped" if self.scoped else "full",
             "violations": violations,
         }

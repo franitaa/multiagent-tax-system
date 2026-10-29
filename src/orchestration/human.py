@@ -27,8 +27,8 @@ from langgraph.types import interrupt
 
 from src.orchestration.access import ToolBox
 from src.state import (
-    ANSWER_UNCERTAIN, AWAITING_HUMAN, FILING_STATUS_AMBIGUITY, HALTED_BY_HUMAN, RUNNING, SOURCE_CONFLICT,
-    TAX_ADVICE_REQUEST,
+    ANSWER_UNCERTAIN, AWAITING_HUMAN, EXTRACTION_REVIEW, FILING_STATUS_AMBIGUITY, HALTED_BY_HUMAN, RUNNING,
+    SOURCE_CONFLICT, TAX_ADVICE_REQUEST,
 )
 
 CONTINUABLE = frozenset({SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST, ANSWER_UNCERTAIN})
@@ -51,7 +51,7 @@ _SCALARS = (str, int, float, bool)
 
 
 def allowed_decisions(condition: str) -> tuple[str, ...]:
-    return ("continue", "stop") if condition in CONTINUABLE else ("stop",)
+    return ("continue", "stop") if condition in CONTINUABLE or condition == EXTRACTION_REVIEW else ("stop",)
 
 
 def _validate(answer, condition: str, escalation: dict | None = None) -> tuple[str, str, dict]:
@@ -65,6 +65,12 @@ def _validate(answer, condition: str, escalation: dict | None = None) -> tuple[s
         if resolution:
             raise ValueError("a resolution only applies to 'continue'")
         return decision, note, {}
+    if condition == EXTRACTION_REVIEW:
+        if not note:
+            raise ValueError('Review requires a note.')
+        if not isinstance(resolution, dict) or set(resolution) != {'document_id', 'review'}:
+            raise ValueError('Review resolution requires document_id and review.')
+        return decision, note, dict(resolution)
     if condition not in CONTINUABLE:
         raise ValueError(f"{condition} can only be stopped: a human cannot take responsibility for it")
     if not note:
@@ -106,6 +112,7 @@ def _validate_uncertain(resolution, escalation: dict) -> None:
 def human_gate(view: dict, tools: ToolBox) -> dict:
     escalation = view["escalation"]
     condition = escalation["condition"]
+    extraction_update = None
     payload = {
         "case_id": view.get("case_id"),
         "condition": condition,
@@ -120,12 +127,30 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
             else [escalation["fact"]] if condition == ANSWER_UNCERTAIN and escalation.get("fact") else []
         ),
     }
+    if condition == EXTRACTION_REVIEW:
+        doc_id = escalation.get('document_id')
+        envelope = view.get('extracted', {}).get(doc_id)
+        if not envelope or envelope.get('status') != 'needs_review':
+            raise ValueError('Missing pending extraction evidence')
+        payload.update(document_id=doc_id, resolution_fields=['document_id', 'review'])
     while True:
         answer = interrupt(payload)  # re-asked with an "error" until the answer is valid
         try:
             decision, note, resolution = _validate(answer, condition, escalation)
+            if condition == EXTRACTION_REVIEW:
+                if decision == 'continue':
+                    if resolution['document_id'] != doc_id:
+                        raise ValueError('Review targets a different document.')
+                    review = dict(resolution['review'])
+                    if review.get('action') != 'accept':
+                        raise ValueError('Continue requires an accept review.')
+                    review['reason'] = note
+                else:
+                    review = {'action': 'reject', 'reviewer': 'human-gate',
+                              'reason': note or 'Stopped by human reviewer'}
+                extraction_update = tools.call('p3_verify_w2', envelope=envelope, decision=review)
             break
-        except ValueError as exc:
+        except (ValueError, TypeError, KeyError) as exc:
             payload = {**payload, "error": str(exc)}
 
     update = {
@@ -139,7 +164,9 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
     queued = escalation.get("queued") or []
     if queued:
         update["human_decisions"][0]["also_raised"] = [q["condition"] for q in queued]
-    if resolution:
+    if extraction_update is not None:
+        update["extracted"] = {doc_id: extraction_update}
+    if resolution and condition != EXTRACTION_REVIEW:
         update["facts"] = {
             name: {"value": value, "source": f"human:{condition}"}
             for name, value in resolution.items()
