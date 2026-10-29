@@ -1,5 +1,10 @@
 # Eval cases
 
+The two cases the assignment asks for (§5.2) are `eval-case-1-clean` (a clean minimal run)
+and `eval-case-2-spouse-died` (a HITL event that is resolved); how to run and resolve them:
+[demo/eval_case_1.md](../demo/eval_case_1.md) and [demo/eval_case_2.md](../demo/eval_case_2.md).
+The other cases cover each escalation condition.
+
 `cases.json` holds end-to-end cases. `python -m evals.runner` runs each one through the real
 graph (orchestrator, human gate, every agent on `main`) and checks the outcome. CI runs them
 on every push, and `tests/test_evals.py` runs them under pytest too.
@@ -30,6 +35,7 @@ on every push, and `tests/test_evals.py` runs them under pytest too.
   [docs/answer-names.md](../docs/answer-names.md). When given, they stand in for Intake.
 - `documents`: each document's `kind` and, optionally, the box `fields` Extraction would read.
   When given, they stand in for Extraction. Box names follow docs/handoff-contract.md.
+  `fixture` (optional) names the fixture file the values come from.
 - `resume`: the volunteer's answer to each interrupt, in order (same format as the human gate).
 - `pending` (optional): why the case cannot pass yet, and whose work it waits for.
 

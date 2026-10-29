@@ -2,9 +2,12 @@
   "_about": "End-to-end eval cases for SilverFile. Fake data only (no real names or SSNs). Format: evals/README.md.",
   "cases": [
     {
-      "id": "clean-single-w2",
-      "title": "Single filer born 1955 with one W-2: a draft is produced",
-      "messages": ["Hi, I need help with my 2025 return.", "I was born in March 1955, I am single and I have one W-2."],
+      "id": "eval-case-1-clean",
+      "title": "Eval case 1 (clean minimal run): single filer born 1955 with one W-2, a draft is produced",
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I was born in March 1955, I am single and I have one W-2."
+      ],
       "facts": {
         "taxpayer_birth_date": "1955-03-14",
         "taxpayer_blind": "no",
@@ -14,21 +17,43 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 20000.0, "box_2": 1500.0}}
+        {
+          "id": "w2_01",
+          "kind": "W-2",
+          "fixture": "data/fixtures/w2_01.jpg",
+          "fields": {
+            "box_1": 30000.0,
+            "box_2": 2000.0
+          }
+        }
       ],
       "expect": {
         "interrupts": [],
         "status": "complete",
-        "route_starts_with": ["intake", "extraction", "rules", "computation", "review"],
-        "eligibility": {"filing_status": "single", "eligible_1040sr": true, "in_scope": true, "age_blindness_boxes": 1},
+        "route_starts_with": [
+          "intake",
+          "extraction",
+          "rules",
+          "computation",
+          "review"
+        ],
+        "eligibility": {
+          "filing_status": "single",
+          "eligible_1040sr": true,
+          "in_scope": true,
+          "age_blindness_boxes": 1
+        },
         "review_verdict": "pass"
       }
     },
     {
-      "id": "clean-single-w2-amounts",
-      "title": "The same return: line 1a and line 25a come from the W-2 boxes",
+      "id": "eval-case-1-line-amounts",
+      "title": "Eval case 1: line 1a and line 25a come from the W-2 boxes",
       "pending": "Needs the real Computation agent (#24); the placeholder always writes line_1a = 1000.",
-      "messages": ["Hi, I need help with my 2025 return.", "I was born in March 1955, I am single and I have one W-2."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I was born in March 1955, I am single and I have one W-2."
+      ],
       "facts": {
         "taxpayer_birth_date": "1955-03-14",
         "taxpayer_blind": "no",
@@ -38,18 +63,32 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 20000.0, "box_2": 1500.0}}
+        {
+          "id": "w2_01",
+          "kind": "W-2",
+          "fixture": "data/fixtures/w2_01.jpg",
+          "fields": {
+            "box_1": 30000.0,
+            "box_2": 2000.0
+          }
+        }
       ],
       "expect": {
         "status": "complete",
-        "lines": {"line_1a": 20000.0, "line_25a": 1500.0},
+        "lines": {
+          "line_1a": 30000.0,
+          "line_25a": 2000.0
+        },
         "review_verdict": "pass"
       }
     },
     {
       "id": "mfj-both-over-65-spouse-blind",
       "title": "Married filing jointly, both over 65, spouse blind: three age/blindness boxes",
-      "messages": ["Hi, we need help with our 2025 return.", "We are married and want to file together. My wife is legally blind."],
+      "messages": [
+        "Hi, we need help with our 2025 return.",
+        "We are married and want to file together. My wife is legally blind."
+      ],
       "facts": {
         "taxpayer_birth_date": "1952-07-01",
         "taxpayer_blind": "no",
@@ -62,19 +101,35 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "ssa-1", "kind": "SSA-1099", "fields": {"box_5": 24000.0}}
+        {
+          "id": "ssa-1",
+          "kind": "SSA-1099",
+          "fields": {
+            "box_5": 24000.0
+          }
+        }
       ],
       "expect": {
         "interrupts": [],
         "status": "complete",
-        "eligibility": {"filing_status": "mfj", "eligible_1040sr": true, "age_blindness_boxes": 3},
-        "rules_include": ["Schedule 1-A enhanced senior deduction", "Taxable Social Security worksheet"]
+        "eligibility": {
+          "filing_status": "mfj",
+          "eligible_1040sr": true,
+          "age_blindness_boxes": 3
+        },
+        "rules_include": [
+          "Schedule 1-A enhanced senior deduction",
+          "Taxable Social Security worksheet"
+        ]
       }
     },
     {
-      "id": "spouse-died-in-2025",
-      "title": "Spouse died during the tax year: a volunteer decides the filing status (eval case 2)",
-      "messages": ["Hi, I need help with my 2025 return.", "My husband passed away in March, and I am not sure how to file."],
+      "id": "eval-case-2-spouse-died",
+      "title": "Eval case 2 (HITL, resolved): spouse died during 2025, a volunteer decides the filing status",
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "My husband passed away in March, and I am not sure how to file."
+      ],
       "facts": {
         "taxpayer_birth_date": "1950-02-02",
         "taxpayer_blind": "no",
@@ -86,23 +141,43 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 8000.0, "box_2": 400.0}}
+        {
+          "id": "w2_02",
+          "kind": "W-2",
+          "fixture": "data/fixtures/w2_02.jpg",
+          "fields": {
+            "box_1": 31234.0,
+            "box_2": 2087.0
+          }
+        }
       ],
       "resume": [
-        {"decision": "continue", "note": "Volunteer confirmed the spouse died in 2025; a joint return is allowed for that year.",
-         "resolution": {"filing_status": "married_filing_jointly"}}
+        {
+          "decision": "continue",
+          "note": "Volunteer confirmed the spouse died in 2025; a joint return is allowed for that year.",
+          "resolution": {
+            "filing_status": "married_filing_jointly"
+          }
+        }
       ],
       "expect": {
-        "interrupts": ["FILING_STATUS_AMBIGUITY"],
+        "interrupts": [
+          "FILING_STATUS_AMBIGUITY"
+        ],
         "status": "complete",
-        "human_decisions": ["FILING_STATUS_AMBIGUITY:continue"]
+        "human_decisions": [
+          "FILING_STATUS_AMBIGUITY:continue"
+        ]
       }
     },
     {
-      "id": "spouse-died-status-reaches-draft",
-      "title": "Spouse died during the tax year: the volunteer's filing status is the one on the draft",
+      "id": "eval-case-2-status-reaches-draft",
+      "title": "Eval case 2: the volunteer's filing status is the one on the draft",
       "pending": "Name mismatch: the human gate only accepts long names ('married_filing_jointly') and Rules only accepts short ones ('mfj'), so the volunteer's choice is ignored. Francesca (human.py) and Matthew (rules.py) need to agree on one set.",
-      "messages": ["Hi, I need help with my 2025 return.", "My husband passed away in March, and I am not sure how to file."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "My husband passed away in March, and I am not sure how to file."
+      ],
       "facts": {
         "taxpayer_birth_date": "1950-02-02",
         "taxpayer_blind": "no",
@@ -114,22 +189,42 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 8000.0, "box_2": 400.0}}
+        {
+          "id": "w2_02",
+          "kind": "W-2",
+          "fixture": "data/fixtures/w2_02.jpg",
+          "fields": {
+            "box_1": 31234.0,
+            "box_2": 2087.0
+          }
+        }
       ],
       "resume": [
-        {"decision": "continue", "note": "Volunteer confirmed the spouse died in 2025; a joint return is allowed for that year.",
-         "resolution": {"filing_status": "married_filing_jointly"}}
+        {
+          "decision": "continue",
+          "note": "Volunteer confirmed the spouse died in 2025; a joint return is allowed for that year.",
+          "resolution": {
+            "filing_status": "married_filing_jointly"
+          }
+        }
       ],
       "expect": {
-        "interrupts": ["FILING_STATUS_AMBIGUITY"],
+        "interrupts": [
+          "FILING_STATUS_AMBIGUITY"
+        ],
         "status": "complete",
-        "eligibility": {"filing_status": "mfj"}
+        "eligibility": {
+          "filing_status": "mfj"
+        }
       }
     },
     {
       "id": "under-65-not-eligible",
       "title": "Taxpayer born 1970 is not eligible for Form 1040-SR: stopped by a human",
-      "messages": ["Hi, I need help with my 2025 return.", "I was born in 1970 and I am single."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I was born in 1970 and I am single."
+      ],
       "facts": {
         "taxpayer_birth_date": "1970-06-01",
         "taxpayer_blind": "no",
@@ -138,11 +233,25 @@
         "has_w2": "yes"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 52000.0, "box_2": 6000.0}}
+        {
+          "id": "w2-1",
+          "kind": "W-2",
+          "fields": {
+            "box_1": 52000.0,
+            "box_2": 6000.0
+          }
+        }
       ],
-      "resume": [{"decision": "stop", "note": "Not a 1040-SR return; referred elsewhere."}],
+      "resume": [
+        {
+          "decision": "stop",
+          "note": "Not a 1040-SR return; referred elsewhere."
+        }
+      ],
       "expect": {
-        "interrupts": ["OUT_OF_SCOPE"],
+        "interrupts": [
+          "OUT_OF_SCOPE"
+        ],
         "status": "halted_by_human",
         "no_computed_lines": true
       }
@@ -150,7 +259,10 @@
     {
       "id": "1099r-box-2b-checked",
       "title": "1099-R with box 2b checked (taxable amount not determined): stopped by a human",
-      "messages": ["Hi, I need help with my 2025 return.", "I get a pension and I have the 1099-R here."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I get a pension and I have the 1099-R here."
+      ],
       "facts": {
         "taxpayer_birth_date": "1948-09-09",
         "taxpayer_blind": "no",
@@ -160,11 +272,26 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "r-1", "kind": "1099-R", "fields": {"box_1": 15000.0, "box_2a": 0.0, "box_2b": true}}
+        {
+          "id": "r-1",
+          "kind": "1099-R",
+          "fields": {
+            "box_1": 15000.0,
+            "box_2a": 0.0,
+            "box_2b": true
+          }
+        }
       ],
-      "resume": [{"decision": "stop", "note": "Taxable amount must be worked out by a volunteer."}],
+      "resume": [
+        {
+          "decision": "stop",
+          "note": "Taxable amount must be worked out by a volunteer."
+        }
+      ],
       "expect": {
-        "interrupts": ["FORM_1099R_BOX_2B"],
+        "interrupts": [
+          "FORM_1099R_BOX_2B"
+        ],
         "status": "halted_by_human",
         "no_computed_lines": true
       }
@@ -172,7 +299,10 @@
     {
       "id": "digital-assets",
       "title": "Taxpayer sold digital assets: out of scope",
-      "messages": ["Hi, I need help with my 2025 return.", "I also sold some bitcoin last year."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I also sold some bitcoin last year."
+      ],
       "facts": {
         "taxpayer_birth_date": "1953-04-04",
         "taxpayer_blind": "no",
@@ -181,11 +311,25 @@
         "digital_assets": "yes"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 9000.0, "box_2": 500.0}}
+        {
+          "id": "w2-1",
+          "kind": "W-2",
+          "fields": {
+            "box_1": 9000.0,
+            "box_2": 500.0
+          }
+        }
       ],
-      "resume": [{"decision": "stop", "note": "Digital assets are out of scope."}],
+      "resume": [
+        {
+          "decision": "stop",
+          "note": "Digital assets are out of scope."
+        }
+      ],
       "expect": {
-        "interrupts": ["OUT_OF_SCOPE"],
+        "interrupts": [
+          "OUT_OF_SCOPE"
+        ],
         "status": "halted_by_human",
         "no_computed_lines": true
       }
@@ -193,7 +337,10 @@
     {
       "id": "sold-property-not-sure",
       "title": "Taxpayer is not sure whether they sold property: uncertainty does not continue",
-      "messages": ["Hi, I need help with my 2025 return.", "I might have sold some shares, I don't remember."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I might have sold some shares, I don't remember."
+      ],
       "facts": {
         "taxpayer_birth_date": "1951-12-12",
         "taxpayer_blind": "no",
@@ -202,11 +349,25 @@
         "sold_stocks_or_property": "not_sure"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 9000.0, "box_2": 500.0}}
+        {
+          "id": "w2-1",
+          "kind": "W-2",
+          "fields": {
+            "box_1": 9000.0,
+            "box_2": 500.0
+          }
+        }
       ],
-      "resume": [{"decision": "stop", "note": "Volunteer will check the brokerage statements first."}],
+      "resume": [
+        {
+          "decision": "stop",
+          "note": "Volunteer will check the brokerage statements first."
+        }
+      ],
       "expect": {
-        "interrupts": ["OUT_OF_SCOPE"],
+        "interrupts": [
+          "OUT_OF_SCOPE"
+        ],
         "status": "halted_by_human"
       }
     },
@@ -214,7 +375,10 @@
       "id": "1099-nec-document-slips-past-answers",
       "title": "Taxpayer says 'no other forms' but uploads a 1099-NEC: Review still catches it",
       "pending": "Needs the real Review agent (p6/review-agent); Rules checks only the has_other_tax_forms answer, not document kinds.",
-      "messages": ["Hi, I need help with my 2025 return.", "Just a W-2, nothing else."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "Just a W-2, nothing else."
+      ],
       "facts": {
         "taxpayer_birth_date": "1954-05-05",
         "taxpayer_blind": "no",
@@ -224,12 +388,32 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 9000.0, "box_2": 500.0}},
-        {"id": "nec-1", "kind": "1099-NEC", "fields": {"box_1": 3000.0}}
+        {
+          "id": "w2-1",
+          "kind": "W-2",
+          "fields": {
+            "box_1": 9000.0,
+            "box_2": 500.0
+          }
+        },
+        {
+          "id": "nec-1",
+          "kind": "1099-NEC",
+          "fields": {
+            "box_1": 3000.0
+          }
+        }
       ],
-      "resume": [{"decision": "stop", "note": "Self-employment income is out of scope."}],
+      "resume": [
+        {
+          "decision": "stop",
+          "note": "Self-employment income is out of scope."
+        }
+      ],
       "expect": {
-        "interrupts": ["OUT_OF_SCOPE"],
+        "interrupts": [
+          "OUT_OF_SCOPE"
+        ],
         "status": "halted_by_human"
       }
     },
@@ -237,26 +421,60 @@
       "id": "tax-advice-request",
       "title": "Taxpayer asks for advice: noted for a volunteer, no advice given",
       "pending": "Needs the real Intake agent connected (src/agents/intake.py is still the placeholder).",
-      "messages": ["Hi, I need help with my 2025 return.", "Should I itemize or take the standard deduction?"],
-      "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 9000.0, "box_2": 500.0}}
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "Should I itemize or take the standard deduction?"
       ],
-      "resume": [{"decision": "continue", "note": "Question noted for the volunteer: itemize vs standard deduction."}],
+      "documents": [
+        {
+          "id": "w2-1",
+          "kind": "W-2",
+          "fields": {
+            "box_1": 9000.0,
+            "box_2": 500.0
+          }
+        }
+      ],
+      "resume": [
+        {
+          "decision": "continue",
+          "note": "Question noted for the volunteer: itemize vs standard deduction."
+        }
+      ],
       "expect": {
-        "interrupts": ["TAX_ADVICE_REQUEST"]
+        "interrupts": [
+          "TAX_ADVICE_REQUEST"
+        ]
       }
     },
     {
       "id": "exploitation-signs",
       "title": "A relative pressures the taxpayer and wants the refund in their account: stopped",
       "pending": "Needs the real Intake agent connected (src/agents/intake.py is still the placeholder).",
-      "messages": ["Hi, I need help with my 2025 return.", "My nephew is answering for me. He says I must sign today and the refund goes into his account."],
-      "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 9000.0, "box_2": 500.0}}
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "My nephew is answering for me. He says I must sign today and the refund goes into his account."
       ],
-      "resume": [{"decision": "stop", "note": "Possible exploitation; case passed to the site coordinator."}],
+      "documents": [
+        {
+          "id": "w2-1",
+          "kind": "W-2",
+          "fields": {
+            "box_1": 9000.0,
+            "box_2": 500.0
+          }
+        }
+      ],
+      "resume": [
+        {
+          "decision": "stop",
+          "note": "Possible exploitation; case passed to the site coordinator."
+        }
+      ],
       "expect": {
-        "interrupts": ["EXPLOITATION_SIGNS"],
+        "interrupts": [
+          "EXPLOITATION_SIGNS"
+        ],
         "status": "halted_by_human"
       }
     },
@@ -264,7 +482,10 @@
       "id": "interest-conflict",
       "title": "Taxpayer says no interest but a 1099-INT shows interest: a human resolves the conflict",
       "pending": "No agent compares the taxpayer's answers with document amounts yet.",
-      "messages": ["Hi, I need help with my 2025 return.", "I did not get any interest this year."],
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I did not get any interest this year."
+      ],
       "facts": {
         "taxpayer_birth_date": "1949-01-30",
         "taxpayer_blind": "no",
@@ -274,13 +495,35 @@
         "has_other_tax_forms": "no"
       },
       "documents": [
-        {"id": "w2-1", "kind": "W-2", "fields": {"box_1": 9000.0, "box_2": 500.0}},
-        {"id": "int-1", "kind": "1099-INT", "fields": {"box_1": 250.0}}
+        {
+          "id": "w2-1",
+          "kind": "W-2",
+          "fields": {
+            "box_1": 9000.0,
+            "box_2": 500.0
+          }
+        },
+        {
+          "id": "int-1",
+          "kind": "1099-INT",
+          "fields": {
+            "box_1": 250.0
+          }
+        }
       ],
-      "resume": [{"decision": "continue", "note": "Taxpayer found the bank letter; the 1099-INT is correct.",
-                  "resolution": {"has_1099_int": "yes"}}],
+      "resume": [
+        {
+          "decision": "continue",
+          "note": "Taxpayer found the bank letter; the 1099-INT is correct.",
+          "resolution": {
+            "has_1099_int": "yes"
+          }
+        }
+      ],
       "expect": {
-        "interrupts": ["SOURCE_CONFLICT"],
+        "interrupts": [
+          "SOURCE_CONFLICT"
+        ],
         "status": "complete"
       }
     }

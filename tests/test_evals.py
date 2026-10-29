@@ -41,7 +41,7 @@ def test_case_outcome(case, tmp_path):
 
 
 def test_a_pending_case_that_passes_is_reported_as_fixed(tmp_path):
-    case = {**next(c for c in CASES if c["id"] == "clean-single-w2"), "pending": "test"}
+    case = {**next(c for c in CASES if c["id"] == "eval-case-1-clean"), "pending": "test"}
     assert runner.evaluate(case, trace_dir=tmp_path)["result"] == runner.FIXED
 
 
