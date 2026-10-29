@@ -34,7 +34,7 @@ POLICY: dict[str, AgentPolicy] = {
     # The human gate is orchestrator-owned: it performs the interrupt and records the decision.
     "human": AgentPolicy(
         reads=frozenset({"case_id"}),
-        writes=COMMON_WRITES | {"human_decisions", "status", "done", "facts"},
+        writes=COMMON_WRITES | {"human_decisions", "status", "done", "facts", "eligibility"},
     ),
     "intake": AgentPolicy(
         reads=frozenset({"messages", "facts", "session_summary"}),
