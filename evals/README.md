@@ -50,7 +50,7 @@ ignores them.
 | `status` | Final status: `complete` or `halted_by_human`. |
 | `route_starts_with` | The first hops of the route, e.g. `["intake", "extraction", "rules"]`. |
 | `eligibility` | Exact values in Rules' `eligibility` (filing status, boxes, ...). |
-| `rules_include` | Names in `eligibility.applicable_rules`. |
+| `rules_include` | Rule names Rules applied (`eligibility.rule_citations[].rule`). |
 | `lines` | Form line values, within $0.50. |
 | `no_computed_lines` | Nothing was computed (the case stopped first). |
 | `review_verdict` | Review's verdict, `pass` or `fail`. |

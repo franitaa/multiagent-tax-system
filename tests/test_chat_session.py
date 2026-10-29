@@ -3,7 +3,7 @@ import re
 
 import pytest
 from langgraph.types import Command
-
+from pathlib import Path
 from src.agents import intake_agent as ia
 from src.ui import chat_session as chat
 from tests.test_intake_agent import FULL_ANSWERS, NAME
@@ -173,7 +173,7 @@ def test_overview_shows_each_part_in_words(graph):
 def test_page_shows_answers_and_change_buttons():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "src" / "ui" / "taxpayer_chat.py"), default_timeout=30).run()
     page.button[0].click().run()
     for answer in [NAME, "no"]:
         page.text_input[0].input(answer)
@@ -189,7 +189,7 @@ def test_page_shows_answers_and_change_buttons():
 def test_page_date_boxes_send_a_date():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "src" / "ui" / "taxpayer_chat.py"), default_timeout=30).run()
     page.button[0].click().run()
     for answer in [NAME, "no", "single"]:
         page.text_input[0].input(answer)
@@ -206,7 +206,7 @@ def test_page_date_boxes_send_a_date():
 def test_page_loads_and_starts_a_session():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "src" / "ui" / "taxpayer_chat.py"), default_timeout=30).run()
     assert not page.exception
     assert page.button[0].label == "Start a new session"
     page.button[0].click().run()
@@ -224,7 +224,7 @@ def test_date_boxes_catch_a_day_that_does_not_exist():
 def test_page_does_not_send_april_31():
     from streamlit.testing.v1 import AppTest
 
-    page = AppTest.from_file("src/ui/taxpayer_chat.py", default_timeout=30).run()
+    page = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "src" / "ui" / "taxpayer_chat.py"), default_timeout=30).run()
     page.button[0].click().run()
     for answer in [NAME, "no", "single"]:
         page.text_input[0].input(answer)
@@ -235,3 +235,13 @@ def test_page_does_not_send_april_31():
     next(b for b in page.button if b.label == "Send this date").click().run()
     assert any(e.value == "April has only 30 days. Please check the day." for e in page.error)
     assert not any("April 31" in m.value for m in page.markdown)  # never sent into the chat
+
+
+def test_page_always_uses_the_light_theme():
+    """Dark mode on a Mac made the buttons dark with dark text; the theme is pinned to light."""
+    from pathlib import Path
+
+    config = Path(".streamlit/config.toml").read_text(encoding="utf-8")
+    assert 'base = "light"' in config
+    page = Path("src/ui/taxpayer_chat.py").read_text(encoding="utf-8")
+    assert "background: #ffffff !important; color: #111111 !important;" in page  # the safety net

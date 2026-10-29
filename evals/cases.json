@@ -113,7 +113,7 @@
         "interrupts": [],
         "status": "complete",
         "eligibility": {
-          "filing_status": "mfj",
+          "filing_status": "married_filing_jointly",
           "eligible_1040sr": true,
           "age_blindness_boxes": 3
         },
@@ -173,7 +173,7 @@
     {
       "id": "eval-case-2-status-reaches-draft",
       "title": "Eval case 2: the volunteer's filing status is the one on the draft",
-      "pending": "Name mismatch: the human gate only accepts long names ('married_filing_jointly') and Rules only accepts short ones ('mfj'), so the volunteer's choice is ignored. Francesca (human.py) and Matthew (rules.py) need to agree on one set.",
+      "pending": "After the volunteer answers, the orchestrator routes human -> computation and does not run Rules again, so Rules never applies the volunteer's filing status (Rules itself handles it). Needs the router to re-run Rules after a FILING_STATUS_AMBIGUITY resolution (Francesca).",
       "messages": [
         "Hi, I need help with my 2025 return.",
         "My husband passed away in March, and I am not sure how to file."
@@ -214,7 +214,7 @@
         ],
         "status": "complete",
         "eligibility": {
-          "filing_status": "mfj"
+          "filing_status": "married_filing_jointly"
         }
       }
     },
@@ -373,8 +373,7 @@
     },
     {
       "id": "1099-nec-document-slips-past-answers",
-      "title": "Taxpayer says 'no other forms' but uploads a 1099-NEC: Review still catches it",
-      "pending": "Needs the real Review agent (p6/review-agent); Rules checks only the has_other_tax_forms answer, not document kinds.",
+      "title": "Taxpayer says 'no other forms' but uploads a 1099-NEC: it is still caught",
       "messages": [
         "Hi, I need help with my 2025 return.",
         "Just a W-2, nothing else."

@@ -117,8 +117,10 @@ def check(case: dict, outcome: dict) -> list[str]:
     for name, value in expect.get("eligibility", {}).items():
         if eligibility.get(name) != value:
             problems.append(f"eligibility.{name} is {eligibility.get(name)!r}, expected {value!r}")
+    applied = set(eligibility.get("applicable_rules") or []) | {
+        c.get("rule") for c in eligibility.get("rule_citations") or [] if isinstance(c, dict)}
     for rule in expect.get("rules_include", []):
-        if rule not in eligibility.get("applicable_rules", []):
+        if rule not in applied:
             problems.append(f"rule {rule!r} not applied")
     computed = state.get("computed") or {}
     for line, value in expect.get("lines", {}).items():

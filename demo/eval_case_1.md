@@ -36,9 +36,8 @@ PASS     eval-case-1-clean  Eval case 1 (clean minimal run): single filer born 1
 - A trace of every agent call is written to `traces/<thread_id>.jsonl`.
 
 ## Status
-- Passes now with the agents on `main`. Intake's answers and Extraction's box values come
-  from the case file (stand-ins) until the real Intake and Extraction are connected; then run
-  `python -m evals.runner --real-agents`.
+- Passes now with the agents on `main`. Intake's answers and the W-2 box values come from the
+  case file (stand-ins), so the case runs offline. The real Extraction reads `w2_01.jpg` with an
+  image model, which needs an API key; with every agent real, run `python -m evals.runner --real-agents`.
 - `eval-case-1-line-amounts` is pending until the real Computation agent is merged (the
   placeholder writes line 1a = 1000).
-- The fixture image is in Extraction's PR (#15) until it is merged.

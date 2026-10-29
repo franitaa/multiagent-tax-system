@@ -11,7 +11,9 @@ from src.orchestration.human import CONTINUABLE
 from src.scenarios import CONDITION_SOURCES, clean_case, escalation_case, raising, user
 
 STOP_ONLY = sorted(set(CONDITION_SOURCES) - CONTINUABLE)
-CONTINUE_OK = sorted(CONTINUABLE)
+# ANSWER_UNCERTAIN is continuable too, but only with a corrected value for the fact Rules named, so
+# the bare-note tests below do not apply; tests/test_answer_uncertain.py covers its whole path.
+CONTINUE_OK = sorted(CONTINUABLE - {S.ANSWER_UNCERTAIN})
 
 
 def cfg(tid):
@@ -32,8 +34,9 @@ def paused(tmp_path, condition, tid=None):
     return graph, result
 
 
-def test_rules_partition_the_six_conditions():
+def test_rules_partition_the_conditions():
     assert set(CONTINUE_OK) == {S.SOURCE_CONFLICT, S.FILING_STATUS_AMBIGUITY, S.TAX_ADVICE_REQUEST}
+    assert CONTINUABLE == set(CONTINUE_OK) | {S.ANSWER_UNCERTAIN}
     assert set(STOP_ONLY) == {S.OUT_OF_SCOPE, S.FORM_1099R_BOX_2B, S.EXPLOITATION_SIGNS}
 
 

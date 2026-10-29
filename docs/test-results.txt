@@ -1,0 +1,62 @@
+test_case_id_is_thread_id (test_case_memory.CaseMemoryTests.test_case_id_is_thread_id) ... ok
+test_cases_are_isolated (test_case_memory.CaseMemoryTests.test_cases_are_isolated) ... ok
+test_concurrent_tabs_do_not_overwrite (test_case_memory.CaseMemoryTests.test_concurrent_tabs_do_not_overwrite) ... ok
+test_duplicate_event_id_with_changed_value_rejected (test_case_memory.CaseMemoryTests.test_duplicate_event_id_with_changed_value_rejected) ... ok
+test_human_pause_flag_survives_restart (test_case_memory.CaseMemoryTests.test_human_pause_flag_survives_restart) ... ok
+test_money_gets_p5_provenance (test_case_memory.CaseMemoryTests.test_money_gets_p5_provenance) ... ok
+test_new_python_process_reads_saved_answer (test_case_memory.CaseMemoryTests.test_new_python_process_reads_saved_answer) ... ok
+test_only_requested_fake_ssn_is_allowed (test_case_memory.CaseMemoryTests.test_only_requested_fake_ssn_is_allowed) ... ok
+test_payment_without_provenance_is_rejected (test_case_memory.CaseMemoryTests.test_payment_without_provenance_is_rejected) ... ok
+test_real_looking_and_unsolicited_ssn_never_saved (test_case_memory.CaseMemoryTests.test_real_looking_and_unsolicited_ssn_never_saved) ... ok
+test_reanswer_keeps_original_and_go_back_keeps_answers (test_case_memory.CaseMemoryTests.test_reanswer_keeps_original_and_go_back_keeps_answers) ... ok
+test_reopen_preserves_answer_and_cursor (test_case_memory.CaseMemoryTests.test_reopen_preserves_answer_and_cursor) ... ok
+test_repeated_dependents_have_distinct_keys (test_case_memory.CaseMemoryTests.test_repeated_dependents_have_distinct_keys) ... ok
+test_resume_summary_is_plain_language_without_sensitive_values (test_case_memory.CaseMemoryTests.test_resume_summary_is_plain_language_without_sensitive_values) ... ok
+test_retry_is_idempotent (test_case_memory.CaseMemoryTests.test_retry_is_idempotent) ... ok
+test_stale_writer_is_rejected (test_case_memory.CaseMemoryTests.test_stale_writer_is_rejected) ... ok
+test_absent_ssn_can_be_reviewed (test_direct_vision.DirectVisionTests.test_absent_ssn_can_be_reviewed) ... ok
+test_bad_money_not_in_fields (test_direct_vision.DirectVisionTests.test_bad_money_not_in_fields) ... ok
+test_bad_or_inconsistent_prefix_blocked (test_direct_vision.DirectVisionTests.test_bad_or_inconsistent_prefix_blocked) ... ok
+test_conflict_requires_explicit_resolution_and_preserves_both (test_direct_vision.DirectVisionTests.test_conflict_requires_explicit_resolution_and_preserves_both) ... ok
+test_duplicate_box_not_silently_selected (test_direct_vision.DirectVisionTests.test_duplicate_box_not_silently_selected) ... ok
+test_every_read_requires_human_verification (test_direct_vision.DirectVisionTests.test_every_read_requires_human_verification) ... ok
+test_human_approval_keeps_source_and_history (test_direct_vision.DirectVisionTests.test_human_approval_keeps_source_and_history) ... ok
+test_image_limit_before_provider (test_direct_vision.DirectVisionTests.test_image_limit_before_provider) ... ok
+test_invalid_image_never_reaches_provider (test_direct_vision.DirectVisionTests.test_invalid_image_never_reaches_provider) ... ok
+test_invalid_optional_amount_requires_explicit_correction (test_direct_vision.DirectVisionTests.test_invalid_optional_amount_requires_explicit_correction) ... ok
+test_low_confidence_and_other_entries_are_not_lost (test_direct_vision.DirectVisionTests.test_low_confidence_and_other_entries_are_not_lost) ... ok
+test_missing_box_cannot_be_approved_as_zero (test_direct_vision.DirectVisionTests.test_missing_box_cannot_be_approved_as_zero) ... ok
+test_money_remains_exact (test_direct_vision.DirectVisionTests.test_money_remains_exact) ... ok
+test_no_upload_without_explicit_confirmation (test_direct_vision.DirectVisionTests.test_no_upload_without_explicit_confirmation) ... ok
+test_no_zero_from_missing_box (test_direct_vision.DirectVisionTests.test_no_zero_from_missing_box) ... ok
+test_non_test_ssn_and_unreadable_identifier_are_blocked (test_direct_vision.DirectVisionTests.test_non_test_ssn_and_unreadable_identifier_are_blocked) ... ok
+test_provider_input_contains_original_normalized_image (test_direct_vision.DirectVisionTests.test_provider_input_contains_original_normalized_image) ... ok
+test_real_image_encoded_without_subprocess (test_direct_vision.DirectVisionTests.test_real_image_encoded_without_subprocess) ... ok
+test_selective_recall_omits_prior_values (test_direct_vision.DirectVisionTests.test_selective_recall_omits_prior_values) ... ok
+test_source_is_honest_about_model_reading (test_direct_vision.DirectVisionTests.test_source_is_honest_about_model_reading) ... ok
+test_source_saved_exactly_and_stably (test_direct_vision.DirectVisionTests.test_source_saved_exactly_and_stably) ... ok
+test_unexpected_identifier_in_amount_blocked (test_direct_vision.DirectVisionTests.test_unexpected_identifier_in_amount_blocked) ... ok
+test_parallel_worker_results_all_survive (test_merge_order.MergeOrderTests.test_parallel_worker_results_all_survive) ... ok
+test_permutations_and_replay (test_merge_order.MergeOrderTests.test_permutations_and_replay) ... ok
+test_consent_precedes_persistence (test_team_bridge.BridgeTests.test_consent_precedes_persistence) ... ok
+test_evidence_hash_matches_saved_png (test_team_bridge.BridgeTests.test_evidence_hash_matches_saved_png) ... ok
+test_image_extraction_uses_team_contract_and_gate (test_team_bridge.BridgeTests.test_image_extraction_uses_team_contract_and_gate) ... ok
+test_no_approval_without_visual_confirmation (test_team_bridge.BridgeTests.test_no_approval_without_visual_confirmation) ... ok
+test_non_w2_does_not_call_model (test_team_bridge.BridgeTests.test_non_w2_does_not_call_model) ... ok
+test_path_traversal_and_modified_upload_rejected (test_team_bridge.BridgeTests.test_path_traversal_and_modified_upload_rejected) ... ok
+test_previous_review_does_not_approve_new_document (test_team_bridge.BridgeTests.test_previous_review_does_not_approve_new_document) ... ok
+test_revision_merge_preserves_approval_and_history (test_team_bridge.BridgeTests.test_revision_merge_preserves_approval_and_history) ... ok
+test_same_revision_conflict_is_rejected (test_team_bridge.BridgeTests.test_same_revision_conflict_is_rejected) ... ok
+test_text_requires_explicit_amounts_and_fixture_marker (test_team_bridge.BridgeTests.test_text_requires_explicit_amounts_and_fixture_marker) ... ok
+test_tool_usage_recorded_without_credentials (test_team_bridge.BridgeTests.test_tool_usage_recorded_without_credentials) ... ok
+test_unscoped_baseline_replays_history (test_team_bridge.BridgeTests.test_unscoped_baseline_replays_history) ... ok
+test_read_only_summary_omits_sensitive_fact_values (test_team_bridge.ResumeTests.test_read_only_summary_omits_sensitive_fact_values) ... ok
+test_waiting_summary_does_not_expose_escalation_reason (test_team_bridge.ResumeTests.test_waiting_summary_does_not_expose_escalation_reason) ... ok
+test_parallel_documents_need_separate_approvals (test_team_bridge.TeamGraphTests.test_parallel_documents_need_separate_approvals) ... skipped 'LangGraph dependencies required'
+test_restart_resume_updates_team_state (test_team_bridge.TeamGraphTests.test_restart_resume_updates_team_state) ... skipped 'LangGraph dependencies required'
+test_page_loads_without_key_or_network_call (test_team_bridge.UIStartupTests.test_page_loads_without_key_or_network_call) ... skipped 'Streamlit dependency required'
+
+----------------------------------------------------------------------
+Ran 57 tests in 6.010s
+
+OK (skipped=3)

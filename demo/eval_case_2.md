@@ -77,9 +77,10 @@ The same case with the scenario script: `python -m scripts.run_scenarios spouse-
 ## Status
 - Passes now: the interrupt fires, the volunteer's answer is validated and recorded, and the
   run completes.
-- **Known gap**, tracked by the pending case `eval-case-2-status-reaches-draft`: the human gate
-  stores `married_filing_jointly`, but Rules only recognises short names (`mfj`), so
-  `eligibility.filing_status` stays `undetermined` on the draft. Fix in either
-  `src/orchestration/human.py` or `src/agents/rules.py` (one set of names for both).
-- Intake's answers and Extraction's box values come from the case file until the real agents
-  are connected; the fixture image is in Extraction's PR (#15) until it is merged.
+- **Known gap**, tracked by the pending case `eval-case-2-status-reaches-draft`: after the
+  volunteer answers, the orchestrator goes `human -> computation` without running Rules again,
+  so `eligibility.filing_status` stays `undetermined` on the draft even though the volunteer's
+  `married_filing_jointly` is saved in `facts`. Rules applies it correctly when it runs; the
+  fix is for the router to send the case back to Rules after a filing-status decision.
+- Intake's answers and the W-2 box values come from the case file (stand-ins), so the case runs
+  offline. The real Extraction reads `w2_02.jpg` with an image model, which needs an API key.
