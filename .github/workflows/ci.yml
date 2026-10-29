@@ -13,10 +13,27 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: pip install -r requirements.txt
       - run: pytest -q
+
+  # Builds the container and checks each documented way of running it.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build image
+        run: docker build -t silverfile .
+      - name: Default command (clean demo case)
+        run: docker run --rm silverfile | tee run.log && grep -q "DRAFT READY" run.log
+      - name: Tests inside the container
+        run: docker run --rm silverfile pytest -q
+      - name: Chat page starts and answers
+        run: |
+          docker run -d --name chat -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
+          for i in $(seq 1 30); do curl -sf http://localhost:8501/_stcore/health && exit 0; sleep 1; done
+          docker logs chat; exit 1
