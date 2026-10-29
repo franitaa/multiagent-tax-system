@@ -29,10 +29,13 @@ What it does:
     person can jump from question 10 straight back to question 3 and check their answers.
   - While a volunteer is needed, shows a calm waiting message and accepts no new messages.
   - Never files anything: the last screen says the draft goes to a volunteer to review.
+  - When finished, shows "Your draft tax form" (Sahana's PRV-3 page): click any amount to see
+    where it came from, plus a "Download the draft form" button. It says plainly that nothing
+    has been filed. If nothing is computed yet, it says the form is not ready.
 
 What is still missing:
-  - Sessions last only while the app is running, until Shruti's checkpointer is plugged
-    into chat_session.make_graph().
+  - Sessions last only while the app is running, until JiWon's SQLite checkpointer is
+    plugged into chat_session.make_graph().
   - The volunteer side (resolving a pause) lives in the Kushim dashboard, not here.
 
 All logic is in src/ui/chat_session.py; this file only draws the page.
@@ -42,6 +45,7 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # so "src." imports work
 
@@ -135,6 +139,20 @@ def start_screen(graph) -> None:
             st.error("Sorry, I couldn't find that case ID. Please check it and try again.")
 
 
+def draft_form(graph, case_id: str) -> None:
+    """The draft 1040-SR with click-to-see sources, and a copy to keep."""
+    page = chat.draft_form_html(graph, case_id)
+    if page is None:
+        st.info("Your draft form is not ready yet. A volunteer will let you know.")
+        return
+    st.header("Your draft tax form")
+    st.write("This is a draft for a volunteer to check with you. Nothing has been filed. "
+             "Click any amount to see where it came from.")
+    st.download_button("Download the draft form", page, file_name=f"{case_id}_1040sr.html",
+                       mime="text/html")
+    components.html(page, height=900, scrolling=True)
+
+
 def date_form(graph, case_id: str) -> None:
     """Three boxes with labels that stay visible: no placeholder text, no day/month mix-ups."""
     with st.form("date", clear_on_submit=True):
@@ -183,6 +201,7 @@ def chat_screen(graph, case_id: str) -> None:
         return
     if screen == chat.FINISHED:
         st.success(FINISHED_TEXT)
+        draft_form(graph, case_id)
         return
     if screen == chat.STOPPED:
         st.info(STOPPED_TEXT)
