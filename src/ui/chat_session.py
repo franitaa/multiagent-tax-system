@@ -10,7 +10,7 @@ What it does:
   - Sends the taxpayer's message into the graph, one graph call per message, as the
     handoff contract describes. Any real-looking SSN is removed BEFORE the message enters
     the graph, so it is never stored or logged. Practice numbers (900-999) are kept
-    because Intake needs them for dependents (agreed with Sahana's 900-999 rule).
+    because Intake needs them for dependents (per the 900-999 test-SSN rule).
   - Tells the page what to show: waiting for an answer, waiting for a volunteer (no new
     messages accepted, as the contract asks), finished, or stopped by a volunteer.
   - Gives a "welcome back, so far we've covered..." summary when a session is continued.
@@ -19,18 +19,21 @@ What it does:
     part's status in words, and `question_label()` gives "Part 2 of 6, Question 2.3".
   - For date questions, the page shows Month / Day / Year boxes (`MONTH_OPTIONS`,
     `date_answer`), so day-first vs month-first can never be mixed up.
+  - When the case is finished, `draft_form_html()` gives the draft 1040-SR page (Sahana's
+    PRV-3), where every amount opens to its formula, inputs and source. None until something
+    is computed, and a line without a source is never shown.
 
 What is still missing:
   - Permanent storage. `make_graph()` uses LangGraph's in-memory store by default, so
-    sessions last only while the app is running. Shruti's checkpointer (MEM-1) plugs in
+    sessions last only while the app is running. JiWon's SQLite checkpointer plugs in
     through `make_graph(checkpointer=...)`; nothing else needs to change.
-  - Uses the real Intake directly (`intake_agent.run`); the other agents are still stubs.
 """
 import calendar
 import re
 import secrets
 
 from src.agents import intake_agent
+from src.draft_form import render_draft_html
 from src.graph import build_graph
 
 # What the page should show
@@ -99,6 +102,21 @@ def screen(graph, case_id: str) -> str:
     if values.get("done") or values.get("intake_complete"):
         return FINISHED
     return ASKING
+
+
+def draft_form_html(graph, case_id: str) -> str | None:
+    """The draft 1040-SR page for a case (PRV-3), or None when nothing has been computed yet.
+    Every amount expands to its formula, inputs, source and tool; nothing has been filed."""
+    values = graph.get_state(_config(case_id)).values
+    if not values.get("computed"):
+        return None
+    try:
+        return render_draft_html(
+            values["computed"], values.get("facts"), values.get("eligibility"),
+            review=values.get("review"), review_history=values.get("review_history"),
+            decisions=values.get("human_decisions"), case_id=case_id)
+    except ValueError:  # a line without provenance is never shown
+        return None
 
 
 def transcript(graph, case_id: str) -> list[dict]:
