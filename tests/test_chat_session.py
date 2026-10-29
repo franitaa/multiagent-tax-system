@@ -235,3 +235,13 @@ def test_page_does_not_send_april_31():
     next(b for b in page.button if b.label == "Send this date").click().run()
     assert any(e.value == "April has only 30 days. Please check the day." for e in page.error)
     assert not any("April 31" in m.value for m in page.markdown)  # never sent into the chat
+
+
+def test_page_always_uses_the_light_theme():
+    """Dark mode on a Mac made the buttons dark with dark text; the theme is pinned to light."""
+    from pathlib import Path
+
+    config = Path(".streamlit/config.toml").read_text(encoding="utf-8")
+    assert 'base = "light"' in config
+    page = Path("src/ui/taxpayer_chat.py").read_text(encoding="utf-8")
+    assert "background: #ffffff !important; color: #111111 !important;" in page  # the safety net
