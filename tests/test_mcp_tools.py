@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("mcp.server.mcpserver")
 
 from src import mcp_client  # noqa: E402
+from src.audit import AuditLog  # noqa: E402
 from src.graph import build_graph  # noqa: E402
 from src.mcp_client import McpToolClient, McpUnavailable, shared_client, tool_transport  # noqa: E402
 from src.orchestration.access import ToolBox  # noqa: E402
@@ -100,6 +101,10 @@ def test_no_silent_fallback_when_the_shared_client_is_broken(monkeypatch, tmp_pa
     monkeypatch.setattr(mcp_client, "_shared", Down())
     final = build_graph(trace_dir=tmp_path).invoke(clean_case(), cfg("down"))
     assert final["status"] == "halted_by_error" and not final.get("computed")
+    # and for the right reason: a different failure must not pass as "the tool server is down"
+    halted = [e["details"].get("error") for e in AuditLog(tmp_path / "audit").read("down")
+              if e["event"] == "halted_by_error"]
+    assert halted == ["McpUnavailable"]
 
 
 # ---- the whole graph over MCP ---------------------------------------------------------------

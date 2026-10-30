@@ -128,7 +128,8 @@ def draft_form_html(graph, case_id: str) -> str | None:
         return render_draft_html(
             values["computed"], values.get("facts"), values.get("eligibility"),
             review=values.get("review"), review_history=values.get("review_history"),
-            decisions=values.get("human_decisions"), case_id=case_id)
+            decisions=values.get("human_decisions"), case_id=case_id,
+            extracted=values.get("extracted"))  # so a form that was not read shows "Income is missing"
     except ValueError:  # a line without provenance is never shown
         return None
 

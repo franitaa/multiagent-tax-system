@@ -8,3 +8,8 @@ primaryColor = "#1f4e9a"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#eef3fb"
 textColor = "#111111"
+
+# Hide Streamlit's developer toolbar (the "Deploy" button), so taxpayers, volunteers and
+# graders only see the app itself.
+[client]
+toolbarMode = "viewer"
