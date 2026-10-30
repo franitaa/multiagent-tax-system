@@ -50,7 +50,7 @@ turn 30  on  ##                                        1,047
 
 ## Orchestrator (deterministic code, not a model call)
 
-View size per visit: **117 to 186** estimated tokens with the strategy on, 12,898 to 20,843 with it off. With it on, the size does not depend on the number of turns or documents (bounded routing view; guard history and review findings travel on a separate control channel). Shown for completeness; it is excluded from the totals above.
+View size per visit: **122 to 191** estimated tokens with the strategy on, 12,903 to 20,847 with it off. With it on, the size does not depend on the number of turns or documents (bounded routing view; guard history and review findings travel on a separate control channel). Shown for completeness; it is excluded from the totals above.
 
 ## Every step
 
