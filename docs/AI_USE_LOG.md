@@ -626,3 +626,52 @@ and the branches it fed into.
 
 **What I decided or checked myself**
 - After Oct 25 I switched to Claude Code, which made the changes described in the entries above.
+
+## Person 6 (Shruti Goel) — Oct 26 to Oct 30, 2026 (Review/Audit, CI, Docker, evals)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/review-agent`, `p6/ci`,
+`p6/docker`, `p6/evals`, `p6/evals-real-intake`, `p6/docker-volumes`, `p6/review-into-46`,
+`p6/compose-drop-w2-page`, `p6/report` and `p6/ai-log`.
+
+**What the AI helped with**
+- Mon Oct 26: explained the repository and the brief's Review requirement; wrote the Review/Audit
+  agent (`src/agents/review.py`) and its tests, the tax-math tool registration and Review's access
+  policy, and the line/box labels in `docs/handoff-contract.md`. Wrote the first CI workflow (#12).
+- Tue Oct 27: Review checked against Sahana's real Computation (blank lines, text amounts, numeric
+  facts only); the Docker image, `.dockerignore` and README section (#13); CI actions on Node 24.
+- Wed Oct 28: read teammates' PRs (#11, #15, #24, #25) for what they changed in other people's files
+  and drafted my comments and team messages.
+- Thu Oct 29: the eval cases and runner, and the instructions for eval cases 1 and 2 (#26); prepared the
+  Review PR on a test copy of `main` + #24 (#30) and found which failing tests were whose.
+- Fri Oct 30: the #41 Docker run-through and its fixes (#47); the real-Intake eval cases (#48); found
+  that typed-in amounts failed Review while checking #46, and wrote the Review fix, merged into #46
+  through #54; tested #52, #55 and #56 with the evals in scratch merges; found that #55's red check was
+  GitHub testing against an old `main`; removed the old W-2 workbench from Docker Compose and added CI
+  checks for the chat W-2 flow and for purging a case's photo (#60); drafted my report section.
+
+**What I decided or checked myself**
+- Not to change Sahana's Computation stub while Review was being built: Review's own tests got their
+  own consistent Computation instead, and the stub was left failing until her code landed.
+- Which data Review sees: only numeric facts plus Rules' decisions (agreed with Francesca), with no
+  extra slice of yes/no answers.
+- To build and run Docker locally before pushing (I installed Docker Desktop), and to keep each PR to
+  my own files; changes in teammates' files were asked for, or made only with their permission (the
+  eligibility-invariant test, with Francesca's OK).
+- Questioned the AI's first Review graph test for the 1099-NEC case, which made Rules miss the document
+  on purpose; it was replaced by a test of an out-of-scope line that only Review can see.
+- Checked the eval cases against the assignment's §5.2 and asked for the demo instructions.
+- Merged `main` into #55's branch myself so its CI tested it with #52; closed my duplicate #58 once
+  Matthew's #57 covered Sahana's review.
+- Approved every push and PR; nothing was pushed to `main` directly.
+
+**How the AI's work was verified**
+- The full test suite before every commit; the evals on every branch and against teammates' PRs in
+  scratch merges.
+- Docker run locally for each change (build, every page, a case shared between pages, a restart), then
+  the same steps in CI's `compose` job.
+- New Review tests were run against the earlier Review to confirm they fail there.
+- On `main` at #56 (Oct 30): 1353 passed; evals 15 pass, 0 fail, 0 pending.
+
+**Limits I am aware of**
+- Review does not check `rule_citations` yet.
+- The evals use stand-ins for Intake's answers and Extraction's boxes in most cases; the full chat
+  flow with a real W-2 upload is not covered until the upload step exists.
