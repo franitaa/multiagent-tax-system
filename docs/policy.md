@@ -20,9 +20,9 @@ For tax year 2025, Form 1040-SR is available when the taxpayer was born **before
 
 ## 2.2 Filing status and volunteer override
 
-The supported filing statuses are `single`, `mfj`, `mfs`, `hoh`, and `qss`. Intake captures marital and household answers; Rules determines or validates the filing status. In particular, `caring_for_someone` alone does not prove eligibility for head-of-household status, and `widowed` alone does not prove qualifying-surviving-spouse status. Escalate ambiguous cases for human review rather than guessing.
+The supported filing statuses are single, married filing jointly, married filing separately, head of household, and qualifying surviving spouse. Intake captures marital and household answers; Rules determines or validates the filing status. In particular, `caring_for_someone` alone does not prove eligibility for head-of-household status, and `widowed` alone does not prove qualifying-surviving-spouse status. Escalate ambiguous cases for human review rather than guessing.
 
-A filing status explicitly supplied by the human gate under `facts["filing_status"]`, with an appropriate `human:` source, takes precedence over a new deduction from older Intake answers. Convert human-gate full names (`married_filing_jointly`, `married_filing_separately`, `head_of_household`, `qualifying_surviving_spouse`) to the canonical short codes (`mfj`, `mfs`, `hoh`, `qss`) before writing `eligibility["filing_status"]`.
+A filing status explicitly supplied by the human gate under `facts["filing_status"]`, with the source `human:FILING_STATUS_AMBIGUITY`, takes precedence over a new deduction from older Intake answers. Rules may use the short codes (`mfj`, `mfs`, `hoh`, `qss`) internally, but always writes the full names that Computation expects (`single`, `married_filing_jointly`, `married_filing_separately`, `head_of_household`, `qualifying_surviving_spouse`) to `eligibility["filing_status"]`.
 
 **References:** Assignment 7 §§3.1 and 4; team `docs/answer-names.md` and Intake–Rules contract.
 
@@ -73,6 +73,33 @@ If Box 2b indicates that the taxable amount was not determined, the assignment r
 When a relevant taxpayer or spouse blindness answer is `"not_sure"`, retain any **confirmed age boxes** from §2.3 but do not count an unconfirmed blindness box. Record why the answer is uncertain, request the human-review pathway recognized by the orchestrator, and do not finalize the deduction until the human decision is integrated. The existence of a `handoff_request` alone does not prove that the orchestrator paused; integration tests must verify the gate.
 
 **References:** §2.3 above; project team's Intake/Rules/Human routing agreement.
+
+## 3.4 Form 1099-NEC screening
+
+Form 1099-NEC reports nonemployee compensation and is outside
+this assignment's supported income/document scope.
+
+If Extraction identifies an uploaded Form 1099-NEC,
+Rules must mark the case out of scope and raise OUT_OF_SCOPE,
+even when Intake did not report other tax forms.
+
+**References:** Assignment 7 §3.3 Scope;
+§3.1 above.
+
+## 3.5 Uploaded in-scope documents versus Intake answers
+
+Rules compares the presence of each uploaded **supported** document (W-2, SSA-1099,
+1099-R, 1099-INT, 1099-DIV) with the corresponding Intake answer (`has_w2`,
+`has_ssa_1099`, `has_1099_r`, `has_1099_int`, `has_1099_div`). If Intake explicitly
+recorded `"no"` but an uploaded document of that type is present, Rules must flag
+`SOURCE_CONFLICT` and identify the disputed fact for human resolution before
+computation. A missing answer or `"not_sure"` is not, by itself, a contradiction.
+A volunteer can supply `{fact_name: corrected_value}`; the orchestrator records it
+in `facts` with source `human:SOURCE_CONFLICT`, and Rules must reevaluate the
+corrected answer before allowing the draft to finish.
+
+**References:** Assignment 7 §4 (eligibility rules and human escalation);
+project `docs/answer-names.md` and the team handoff contract.
 
 ## 4.1 Human decisions and Review send-back
 
