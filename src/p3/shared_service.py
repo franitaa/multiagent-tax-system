@@ -7,13 +7,16 @@ from silverfile_extraction.privacy import SafeInputError
 from src.p3.bridge import P3Tools
 
 
-def make_shared_service(checkpointer, runtime="runtime", reader=None):
+def make_shared_service(checkpointer, runtime="runtime", reader=None, trace_dir="traces"):
     """Use the chat-owned saver; the caller owns its lifetime.
 
     Use service.graph for chat.start/send and dashboard access as well.
     The P3 registry must be installed when compiling, not after compilation.
+    `trace_dir` is where the runner writes traces and the audit log. Keep the chat's own default
+    ("traces"): the volunteer dashboard and the telemetry page read `traces/audit`, so a different
+    folder would leave a case's history empty there.
     """
-    from src.agents import intake_agent
+    from src.agents import live_agents
     from src.graph import build_graph
 
     if checkpointer is None:
@@ -22,9 +25,9 @@ def make_shared_service(checkpointer, runtime="runtime", reader=None):
     tools = P3Tools(Path(runtime), reader)
     graph = build_graph(
         checkpointer=checkpointer,
-        agents={"intake": intake_agent.run},
+        agents=live_agents(),
         tool_registry=tools.registry(),
-        trace_dir=Path(runtime) / "traces",
+        trace_dir=trace_dir,
     )
     return SharedExtractionService(graph, tools)
 

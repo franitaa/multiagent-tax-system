@@ -250,5 +250,45 @@ class PersistenceTests(unittest.TestCase):
                 self.assertFalse(values["intake_complete"])
 
 
+class FactoryTests(unittest.TestCase):
+    """make_shared_service wires the real chat graph to the chat's own trace folder."""
+
+    def test_traces_go_where_the_chat_and_the_dashboards_read(self):
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        from src.p3.shared_service import make_shared_service
+        from src.ui import chat_session as chat
+
+        with tempfile.TemporaryDirectory() as directory:
+            runtime, traces = Path(directory) / "runtime", Path(directory) / "traces"
+            service = make_shared_service(InMemorySaver(), runtime=runtime, trace_dir=traces)
+            chat.start(service.graph, CASE)
+
+            self.assertTrue((traces / f"{CASE}.jsonl").exists())
+            self.assertFalse((runtime / "traces").exists())
+
+    def test_the_default_trace_folder_is_the_chats(self):
+        import inspect
+
+        from src.p3.shared_service import make_shared_service
+
+        self.assertEqual(inspect.signature(make_shared_service).parameters["trace_dir"].default, "traces")
+
+    def test_the_graph_runs_the_real_intake(self):
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        from src.p3.shared_service import make_shared_service
+        from src.ui import chat_session as chat
+
+        with tempfile.TemporaryDirectory() as directory:
+            service = make_shared_service(InMemorySaver(), runtime=directory, trace_dir=Path(directory) / "t")
+            chat.start(service.graph, CASE)
+            # the placeholder Intake asks "STUB QUESTION: ..." and records no progress; the real one
+            # opens the interview and keeps its progress in the case facts
+            values = service.graph.get_state({"configurable": {"thread_id": CASE}}).values
+            self.assertNotIn("STUB", values.get("pending_question") or "STUB")
+            self.assertIn("intake_progress", values.get("facts", {}))
+
+
 if __name__ == "__main__":
     unittest.main()
