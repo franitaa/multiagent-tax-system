@@ -47,8 +47,10 @@ joins on equality and shows the case without audit data otherwise.
 4. **Escalations.** Count by condition; how each ended (`continue`, `stop`); how long cases waited for a
    volunteer; which agent raised them. Includes `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED` and
    `ELIGIBILITY_UNDECIDED`, so the orchestrator's own stops are visible.
-5. **Review loop.** Runs where Review sent work back: rounds per run, which check failed (the check name
-   only, from the handoff reason), how many ended at the bound.
+5. **Review loop.** Runs where Review sent work back to Computation: rounds per run, and how many runs
+   ended at the bound (`REVIEW_BOUND_EXCEEDED`). Which check failed is not in the trace (the handoff
+   reason only counts the errors), so the page does not show it; adding it would be a separate change to
+   the runner.
 6. **Safety checks.** Red when non-zero:
    - calls whose `violations` list is not empty (an agent wrote outside its allow-list, or sent a
      malformed update);
