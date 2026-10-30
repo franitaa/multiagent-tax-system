@@ -159,7 +159,7 @@ and `p5/redact-messages-at-boundary`.
   number that is not an SSN would also be removed from a chat message.
 
 ## Person 5 (Sahana) — Wed Oct 28, 2026 (security and Computation integration)
-**Tool:** Claude Code (model not recorded) in the terminal, on branch `p5/oct27-followups`
+**Tool:** Claude Code (Claude Sonnet 5.5) in the terminal, on branch `p5/oct27-followups`
 and the branches it fed into.
 
 **What the AI helped with**
@@ -184,7 +184,7 @@ and the branches it fed into.
   caller supplies (there is no login yet).
 
 ## Person 5 (Sahana) — Thu Oct 29, 2026 (review fixes, unread income forms, merge)
-**Tool:** Claude Code (model not recorded) in the terminal, on branches `p5/clean`,
+**Tool:** Claude Code (Claude Sonnet 5.5) in the terminal, on branches `p5/clean`,
 `p5/in-scope-income-warning` and a test-fix branch for PR #31.
 
 **What the AI helped with**
@@ -210,7 +210,7 @@ and the branches it fed into.
 - Issue #27 is only partly fixed: the draft warns, but the amounts still need Intake and Extraction work.
 
 ## Person 5 (Sahana) — Fri Oct 30, 2026 (typed income amounts, PR #40 review, retention)
-**Tool:** Claude Code (Claude Haiku 5.5) in the terminal, on branches `p5/typed-income-amounts`,
+**Tool:** Claude Code (Claude Sonnet 5.5; part of the session ran on Claude Haiku 5.5 before the model was switched) in VS Code, on branches `p5/typed-income-amounts`,
 `p5/retention-uploads` and `p5/issue-41-typed-amounts`.
 
 **What the AI helped with**
@@ -234,3 +234,12 @@ and the branches it fed into.
 **Limits I am aware of**
 - One typed amount marks its whole form as read, so a missing withholding on that form is not flagged.
 - The scheduled purge only runs if someone sets up the schedule.
+
+## Person 5 (Sahana) — ChatGPT, used alongside Claude Code (dates not recorded)
+**Tool:** OpenAI ChatGPT.
+
+**What the AI helped with**
+- Helped me understand the project and the work I needed to do as Person 5.
+
+**What I decided or checked myself**
+- All code, commits and pull requests for my part were made in Claude Code (see the entries above).
