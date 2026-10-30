@@ -31,6 +31,20 @@ UNREAD_FORMS = {
 }
 
 
+# Amounts the taxpayer types in for the forms Extraction does not read (issue #27, step 2): fact name ->
+# (normalised kind, line). Proposed names, to agree in docs/answer-names.md; Intake does not ask them yet.
+TYPED_AMOUNTS = {
+    "ssa1099_benefits": ("ssa1099", "line_6a"),
+    "ssa1099_withheld": ("ssa1099", "line_25b"),
+    "int1099_tax_exempt": ("1099int", "line_2a"),
+    "int1099_taxable": ("1099int", "line_2b"),
+    "int1099_withheld": ("1099int", "line_25b"),
+    "div1099_qualified": ("1099div", "line_3a"),
+    "div1099_ordinary": ("1099div", "line_3b"),
+    "div1099_withheld": ("1099div", "line_25b"),
+}
+
+
 def fact_value(facts, name, default=None):
     item = facts.get(name)
     return item.get("value", default) if isinstance(item, dict) else default
@@ -81,16 +95,27 @@ def document_amounts(extracted, specs, read_text=False):
     return found
 
 
+def typed_amounts(facts, line):
+    """[(fact name, value)] of the amounts the taxpayer typed in for `line`, in TYPED_AMOUNTS order."""
+    return [(name, as_number(facts.get(name))) for name, (_, target) in TYPED_AMOUNTS.items()
+            if target == line and as_number(facts.get(name)) is not None]
+
+
+def typed_for_kind(facts, kind):
+    return any(as_number(facts.get(name)) is not None
+               for name, (form, _) in TYPED_AMOUNTS.items() if form == kind)
+
+
 def unread_forms(facts, extracted, read_text=False):
     """In-scope income forms the taxpayer has (one was uploaded, or Intake recorded "yes") whose
     amounts were not read. Returns [{"form": "SSA-1099", "lines": ["line_6a", "line_25b"]}]. A form
-    from which any amount was read is not listed, so this stops flagging once Extraction (or a
-    volunteer) supplies the amounts."""
+    from which any amount was read, from a document or typed in by the taxpayer, is not listed, so
+    this stops flagging once Extraction or the taxpayer supplies the amounts."""
     found = []
     for kind, (name, answer) in UNREAD_FORMS.items():
         specs = [(k, field) for specs in DOC_LINES.values() for k, field in specs if k == kind]
         has = answered_yes(facts, answer) or any(document_kind(r) == kind for r in extracted.values())
-        if has and not document_amounts(extracted, specs, read_text):
+        if has and not document_amounts(extracted, specs, read_text) and not typed_for_kind(facts, kind):
             found.append({"form": name,
                           "lines": [line for line, spec in DOC_LINES.items()
                                     if any(k == kind for k, _ in spec)]})
@@ -99,3 +124,16 @@ def unread_forms(facts, extracted, read_text=False):
 
 def answered_yes(facts, *names):
     return any(fact_value(facts, n) in (True, "yes") for n in names)
+
+
+def forms_without_amounts(facts, extracted):
+    """Names of the income forms the taxpayer says they have, or uploaded, for which no amount is held.
+    The three forms Extraction does not read (see `unread_forms`), plus a W-2 or 1099-R the taxpayer
+    declared but never uploaded. A typed-in amount or a text amount counts as held. Fixed names only
+    (never document text), so the list is safe to show the orchestrator."""
+    names = [form["form"] for form in unread_forms(facts, extracted, read_text=True)]
+    if answered_yes(facts, "has_w2") and not document_amounts(extracted, [("w2", "box_1")], read_text=True):
+        names.insert(0, "W-2")
+    if answered_yes(facts, "has_1099_r") and not any(document_kind(r).startswith("1099r") for r in extracted.values()):
+        names.append("1099-R")
+    return names

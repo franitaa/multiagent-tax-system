@@ -2,12 +2,16 @@
 
   python -m evals.runner                 # every case, a table of results
   python -m evals.runner --case clean-single-w2
-  python -m evals.runner --real-agents   # ignore the stand-ins (once every agent is real)
+  python -m evals.runner --real-agents   # every case with the real agents, no stand-ins
 
 A case may give the `facts` Intake would record and the box `fields` Extraction would read.
 By default those replace the Intake and Extraction agents for that case (stand-ins), so the
-cases test Rules, Computation, Review and the orchestrator on known inputs. --real-agents
-runs the agents on main instead.
+cases test Rules, Computation, Review and the orchestrator on known inputs.
+
+A case with `"real_intake": true` uses the real Intake (the interview the chat page runs) instead,
+and its messages are sent one turn at a time, as a person types them in the chat. Use it for what
+only Intake can notice: a request for tax advice, signs of pressure or exploitation.
+--real-agents runs every case that way, with the real agents and no stand-ins.
 
 A case marked `pending` describes behaviour that is not built yet. It is reported as PENDING
 while it fails and as FIXED once it passes (then remove the marker). Only FAIL, a case that
@@ -22,6 +26,7 @@ from pathlib import Path
 
 from langgraph.types import Command
 
+from src.agents import live_agents
 from src.graph import build_graph
 
 CASES_FILE = Path(__file__).with_name("cases.json")
@@ -81,23 +86,45 @@ def stand_ins(case: dict) -> dict:
 def run_case(case: dict, *, real_agents: bool = False, trace_dir=None) -> dict:
     """Run one case. Returns the final state, the interrupts seen, and any error."""
     trace_dir = trace_dir or tempfile.mkdtemp(prefix="evals-")
-    graph = build_graph(trace_dir=trace_dir, agents=None if real_agents else stand_ins(case))
+    by_turn = real_agents or case.get("real_intake", False)
+    if real_agents:
+        agents = live_agents()
+    elif by_turn:  # the real Intake; Extraction's stand-in still supplies the boxes, if given
+        agents = {**live_agents(), **{k: v for k, v in stand_ins(case).items() if k != "intake"}}
+    else:
+        agents = stand_ins(case)
+    graph = build_graph(trace_dir=trace_dir, agents=agents)
     config = {"configurable": {"thread_id": f"eval-{case['id']}-{uuid.uuid4().hex[:6]}"}}
-    answers = list(case.get("resume", []))
-    interrupts: list[str] = []
+    run = {"answers": list(case.get("resume", [])), "interrupts": [], "raised_by": []}
 
-    result = graph.invoke(graph_input(case), config)
+    if not by_turn:
+        return _answer_interrupts(graph, graph.invoke(graph_input(case), config), config, run)
+    # As the chat page does: open the case (Intake asks its first question), then one message
+    # per turn, until the case pauses for a human, stops or finishes.
+    start = {k: v for k, v in graph_input(case).items() if k != "messages"}
+    outcome = _answer_interrupts(graph, graph.invoke(start, config), config, run)
+    for text in case["messages"]:
+        if outcome["error"] or outcome["state"].get("status") != "awaiting_user":
+            break
+        result = graph.invoke({"messages": [{"role": "user", "content": text}]}, config)
+        outcome = _answer_interrupts(graph, result, config, run)
+    return outcome
+
+
+def _answer_interrupts(graph, result, config, run) -> dict:
+    """Answer each interrupt with the case's next `resume` value, as a volunteer would."""
     while "__interrupt__" in result:
         payload = result["__interrupt__"][0].value
         if payload.get("error"):
-            return {"state": result, "interrupts": interrupts,
+            return {"state": result, "interrupts": run["interrupts"],
                     "error": f"the human gate rejected the answer: {payload['error']}"}
-        interrupts.append(payload["condition"])
-        if not answers or len(interrupts) > MAX_INTERRUPTS:
-            return {"state": result, "interrupts": interrupts,
+        run["interrupts"].append(payload["condition"])
+        run["raised_by"].append(payload.get("raised_by"))
+        if not run["answers"] or len(run["interrupts"]) > MAX_INTERRUPTS:
+            return {"state": result, "interrupts": run["interrupts"],
                     "error": f"paused for {payload['condition']} with no answer left in the case"}
-        result = graph.invoke(Command(resume=answers.pop(0)), config)
-    return {"state": result, "interrupts": interrupts, "error": None}
+        result = graph.invoke(Command(resume=run["answers"].pop(0)), config)
+    return {"state": result, "interrupts": run["interrupts"], "raised_by": run["raised_by"], "error": None}
 
 
 def check(case: dict, outcome: dict) -> list[str]:
@@ -107,6 +134,8 @@ def check(case: dict, outcome: dict) -> list[str]:
 
     if "interrupts" in expect and outcome["interrupts"] != expect["interrupts"]:
         problems.append(f"interrupts {outcome['interrupts']}, expected {expect['interrupts']}")
+    if "raised_by" in expect and outcome.get("raised_by") != expect["raised_by"]:
+        problems.append(f"raised by {outcome.get('raised_by')}, expected {expect['raised_by']}")
     if "status" in expect and state.get("status") != expect["status"]:
         problems.append(f"status {state.get('status')!r}, expected {expect['status']!r}")
     if "route_starts_with" in expect:

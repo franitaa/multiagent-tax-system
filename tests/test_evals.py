@@ -5,9 +5,9 @@ from src import state as S
 from evals import runner
 
 CASES = runner.load_cases()
-EXPECT_KEYS = {"interrupts", "status", "route_starts_with", "eligibility", "rules_include",
+EXPECT_KEYS = {"interrupts", "raised_by", "status", "route_starts_with", "eligibility", "rules_include",
                "lines", "no_computed_lines", "review_verdict", "human_decisions"}
-CASE_KEYS = {"id", "title", "messages", "facts", "documents", "resume", "expect", "pending"}
+CASE_KEYS = {"id", "title", "messages", "facts", "documents", "resume", "expect", "pending", "real_intake"}
 
 
 def test_case_ids_are_unique():
@@ -54,3 +54,21 @@ def test_a_failing_case_makes_the_runner_exit_non_zero(monkeypatch, tmp_path):
 def test_the_runner_exits_zero_when_only_pending_cases_fail(tmp_path, capsys):
     assert runner.main(["--trace-dir", str(tmp_path)]) == 0
     assert "0 fail" in capsys.readouterr().out
+
+
+def test_real_intake_cases_need_the_real_intake(tmp_path, monkeypatch):
+    """With the placeholder Intake in their place, the real-Intake cases must fail: they test what
+    only the real interview notices (advice requests, pressure from someone else)."""
+    from src.agents import AGENTS
+    monkeypatch.setattr(runner, "live_agents", lambda: dict(AGENTS))  # placeholder Intake
+    cases = [c for c in CASES if c.get("real_intake")]
+    assert cases
+    for case in cases:
+        assert runner.check(case, runner.run_case(case, trace_dir=tmp_path)), case["id"]
+
+
+def test_a_real_intake_case_is_sent_one_message_per_turn(tmp_path):
+    case = next(c for c in CASES if c["id"] == "tax-advice-request")
+    state = runner.run_case(case, trace_dir=tmp_path)["state"]
+    typed = [m["content"] for m in state["messages"] if m["role"] == "user"]
+    assert typed == case["messages"]  # each message reached Intake as its own chat turn

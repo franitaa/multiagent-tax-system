@@ -233,6 +233,66 @@ def test_typed_in_amount_not_matching_the_answer_fails():
     assert any("taxpayer gave" in f["issue"] for f in hits)
 
 
+# ---- typed amounts as Computation really builds them (provenance.make_direct_input_provenance) ----
+
+
+def helper_line(amount, name="estimated_payments_amount"):
+    from provenance import make_direct_input_provenance
+    return make_direct_input_provenance(amount, name, "taxpayer (via Intake)", "2026-10-30")
+
+
+def test_a_typed_amount_from_the_provenance_helper_is_recognised():
+    view = correct_view()
+    view["facts"]["estimated_payments_amount"] = {"value": 0.0, "source": "direct user input"}
+    view["computed"]["line_26"] = helper_line(0.0)
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def test_a_typed_amount_from_the_helper_must_match_the_answer():
+    view = correct_view()
+    view["facts"]["estimated_payments_amount"] = {"value": 400.0, "source": "direct user input"}
+    view["computed"]["line_26"] = helper_line(0.0)
+    hits = failed_on(view, "provenance", "line_26")
+    assert any("taxpayer gave" in f["issue"] for f in hits)
+
+
+def test_a_typed_amount_with_a_note_after_its_source_is_still_recognised():
+    view = correct_view()
+    view["facts"]["estimated_payments_amount"] = {"value": 0.0, "source": "direct user input"}
+    view["computed"]["line_26"] = typed_line_26(0.0)
+    view["computed"]["line_26"]["source"] += "; NOT READ: 1099-INT amounts were not captured"
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def with_typed_withholding(view, cited, given=300.0):
+    """Line 25b = the 1099-R withholding plus a typed SSA-1099 withholding, totals kept consistent."""
+    if given is not None:
+        view["facts"]["ssa1099_withheld"] = {"value": given, "source": "direct user input"}
+    c = view["computed"]
+    line_25b = 1000.0 + cited
+    c["line_25b"] = rec(line_25b, {"r-1.box_4": 1000.0, "facts.ssa1099_withheld": cited})
+    c["line_25d"] = rec(1500.0 + line_25b, {"line_25a": 1500.0, "line_25b": line_25b})
+    paid, tax = c["line_25d"]["value"], c["line_24"]["value"]
+    c["line_33"] = rec(paid, {"line_25d": paid})
+    c["line_34"] = rec(max(0.0, paid - tax), {"line_33": paid, "line_24": tax})
+    c["line_37"] = rec(max(0.0, tax - paid), {"line_24": tax, "line_33": paid})
+    return view
+
+
+def test_a_line_summing_a_document_and_a_typed_answer_passes():
+    assert run_review(with_typed_withholding(correct_view(), 300.0))["review"]["verdict"] == "pass"
+
+
+def test_a_typed_answer_in_a_sum_must_match_what_the_taxpayer_gave():
+    hits = failed_on(with_typed_withholding(correct_view(), 300.0, given=50.0), "sources", "line_25b")
+    assert any("taxpayer gave 50.0" in f["issue"] for f in hits)
+
+
+def test_a_sum_citing_an_answer_the_taxpayer_did_not_give_fails():
+    hits = failed_on(with_typed_withholding(correct_view(), 300.0, given=None), "sources", "line_25b")
+    assert any("did not give" in f["issue"] for f in hits)
+
+
 def test_a_line_nobody_can_verify_fails():
     view = correct_view()
     view["computed"]["line_8"] = rec(50.0, {}, tool="mystery")

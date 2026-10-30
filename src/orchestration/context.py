@@ -15,7 +15,8 @@ same scenario can be measured both ways.
 from typing import Any, Mapping
 
 from src.orchestration.access import ALWAYS_READ, POLICY
-from src.state import DEFAULT_MAX_REVISIONS
+from src.income_forms import forms_without_amounts
+from src.state import DEFAULT_MAX_REVISIONS, INCOME_NOT_READ
 
 
 MAX_HANDOFFS_IN_VIEW = 3
@@ -98,6 +99,21 @@ def eligibility_gaps(eligibility: Mapping[str, Any]) -> list[str]:
     return gaps
 
 
+def unacknowledged_income_gaps(state: Mapping[str, Any]) -> list[str]:
+    """Income forms with no amount that no volunteer has acknowledged yet. A volunteer's "continue" on
+    INCOME_NOT_READ records the form names it covered (`forms`), so it covers those forms only: a form
+    that becomes a gap later (for example after a corrected answer) pauses the case again. A decision
+    without `forms` covers every form."""
+    gaps = forms_without_amounts(state.get("facts", {}), state.get("extracted", {}))
+    covered: set[str] = set()
+    for decision in state.get("human_decisions", []):
+        if decision.get("condition") == INCOME_NOT_READ and decision.get("decision") == "continue":
+            if decision.get("forms") is None:
+                return []
+            covered |= set(decision["forms"])
+    return [form for form in gaps if form not in covered]
+
+
 def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
     """Compact, bounded view for the orchestrator: flags and counts only. No documents,
     no chat, no id lists, so its size does not grow with the length of the session."""
@@ -125,6 +141,9 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
         "has_eligibility": bool(eligibility),
         "in_scope": eligibility.get("in_scope"),
         "eligibility_gaps": eligibility_gaps(eligibility) if eligibility else [],
+        # names of income forms the taxpayer has but no amount is held for (fixed vocabulary, at most five)
+        # ...minus the forms a volunteer already acknowledged, so a form that turns up later still pauses
+        "income_gaps": unacknowledged_income_gaps(state),
         "has_computed": bool(state.get("computed")),
         "review_verdict": review.get("verdict"),
         "revision_count": state.get("revision_count", 0),
