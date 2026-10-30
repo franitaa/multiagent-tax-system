@@ -48,6 +48,8 @@ RULES_FACTS = frozenset({
     "spouse_itemizing", "spouse_can_be_claimed", "can_be_claimed_as_dependent", "us_resident_all_year",
     "has_other_tax_forms", "sold_stocks_or_property", "business_or_rental_income",
     "foreign_income_or_accounts", "digital_assets",
+    # compared with the uploaded documents to raise SOURCE_CONFLICT
+    "has_w2", "has_ssa_1099", "has_1099_r", "has_1099_int", "has_1099_div",
 })
 
 

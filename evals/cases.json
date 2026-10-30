@@ -484,7 +484,6 @@
     {
       "id": "interest-conflict",
       "title": "Taxpayer says no interest but a 1099-INT shows interest: a human resolves the conflict",
-      "pending": "No agent compares the taxpayer's answers with document amounts yet.",
       "messages": [
         "Hi, I need help with my 2025 return.",
         "I did not get any interest this year."

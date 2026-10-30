@@ -11,7 +11,7 @@ from src.graph import build_graph
 from src.scenarios import clean_case
 from tests.helpers import cfg
 
-BASE = {"taxpayer_birth_date": "1950-03-04", "married_dec31": "no", "household_situation": "single", "has_w2": "no"}
+BASE = {"taxpayer_birth_date": "1950-03-04", "married_dec31": "no", "household_situation": "single", "has_w2": "yes"}
 
 
 def run(tmp_path, **typed):
