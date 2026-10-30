@@ -523,6 +523,87 @@
         ],
         "status": "complete"
       }
+    },
+    {
+      "id": "typed-estimated-payments",
+      "title": "Taxpayer typed estimated payments of $500: line 26 is a direct user input and Review passes it",
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I was born in March 1955, I am single and I have one W-2."
+      ],
+      "facts": {
+        "taxpayer_birth_date": "1955-03-14",
+        "taxpayer_blind": "no",
+        "married_dec31": "no",
+        "household_situation": "single",
+        "has_w2": "yes",
+        "has_other_tax_forms": "no",
+        "made_estimated_payments": "yes",
+        "estimated_payments_amount": 500.0
+      },
+      "documents": [
+        {
+          "id": "w2_01",
+          "kind": "W-2",
+          "fixture": "data/fixtures/w2_01.jpg",
+          "fields": {
+            "box_1": 30000.0,
+            "box_2": 2000.0
+          }
+        }
+      ],
+      "expect": {
+        "interrupts": [],
+        "status": "complete",
+        "lines": {
+          "line_26": 500.0
+        },
+        "review_verdict": "pass"
+      }
+    },
+    {
+      "id": "typed-ssa-and-interest-amounts",
+      "title": "Taxpayer typed SSA-1099 and 1099-INT amounts: they reach lines 6a, 2b and 25b and Review passes them",
+      "messages": [
+        "Hi, I need help with my 2025 return.",
+        "I was born in March 1955, I am single and I have one W-2."
+      ],
+      "facts": {
+        "taxpayer_birth_date": "1955-03-14",
+        "taxpayer_blind": "no",
+        "married_dec31": "no",
+        "household_situation": "single",
+        "has_w2": "yes",
+        "has_other_tax_forms": "no",
+        "has_ssa_1099": "yes",
+        "ssa1099_benefits": 24000.0,
+        "ssa1099_withheld": 300.0,
+        "has_1099_int": "yes",
+        "int1099_taxable": 250.0,
+        "int1099_withheld": 25.0
+      },
+      "documents": [
+        {
+          "id": "w2_01",
+          "kind": "W-2",
+          "fixture": "data/fixtures/w2_01.jpg",
+          "fields": {
+            "box_1": 30000.0,
+            "box_2": 2000.0
+          }
+        }
+      ],
+      "expect": {
+        "interrupts": [],
+        "status": "complete",
+        "lines": {
+          "line_6a": 24000.0,
+          "line_2b": 250.0,
+          "line_25b": 325.0
+        },
+        "review_verdict": "pass"
+      },
+      "pending": "Needs Computation to read typed amounts (#46); until then the case pauses as INCOME_NOT_READ."
     }
   ]
 }
