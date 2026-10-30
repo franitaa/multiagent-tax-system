@@ -4,6 +4,7 @@ A case lives in several places, all keyed by the case ID (= the LangGraph thread
   runtime/team_checkpoints.sqlite   graph state: answers, dependents' test SSNs, extracted amounts
   runtime/intake_memory.sqlite      Intake's saved answers and their history
   runtime/documents/doc_<sha>.png   the document images the case used (content-addressed)
+  runtime/uploads/<sha>.png         the upload a P3 document was read from (content-addressed)
   <trace dir>/<case>.jsonl          traces (field names only, no values)
   output/<case>_*.html              draft forms
 `purge_case` removes all of them. A document image is kept if another case still uses it.
@@ -37,18 +38,21 @@ def _safe(case_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "_", case_id)
 
 
-def _image_files(value) -> set[str]:
-    """Every `image_file` name found anywhere inside a saved state."""
+UPLOAD_HANDLE = re.compile(r"[0-9a-f]{64}")
+
+
+def _state_refs(value, key: str) -> set[str]:
+    """Every string stored under `key` anywhere inside a saved state."""
     found = set()
     if isinstance(value, dict):
-        for key, item in value.items():
-            if key == "image_file" and isinstance(item, str):
+        for name, item in value.items():
+            if name == key and isinstance(item, str):
                 found.add(item)
             else:
-                found |= _image_files(item)
+                found |= _state_refs(item, key)
     elif isinstance(value, (list, tuple)):
         for item in value:
-            found |= _image_files(item)
+            found |= _state_refs(item, key)
     return found
 
 
@@ -94,6 +98,18 @@ def _thread_ids(layout: Layout) -> set[str]:
         return set()
     finally:
         connection.close()
+
+
+def _stored_refs(layout: Layout, key: str) -> dict[str, set[str]]:
+    """case ID -> every value of `key` in that case's saved states (all checkpoints, so nothing an
+    older state still points at is treated as unused)."""
+    refs: dict[str, set[str]] = {}
+    if layout.checkpoints.exists():
+        with _saver(layout) as saver:
+            for item in saver.list(None):
+                thread = item.config["configurable"]["thread_id"]
+                refs.setdefault(thread, set()).update(_state_refs(item.checkpoint.get("channel_values", {}), key))
+    return refs
 
 
 def _intake_ids(layout: Layout) -> set[str]:
@@ -154,20 +170,26 @@ def purge_case(case_id: str, layout: Layout | None = None, *, actor: str = "syst
                reason: str = "requested", dry_run: bool = False) -> dict:
     """Delete everything stored for one case. Returns what was (or, with dry_run, would be) removed."""
     case_id, layout = _case_id(case_id), layout or Layout()
-    removed = {"checkpoints": 0, "intake_answers": 0, "document_images": 0, "traces": 0, "draft_forms": 0}
+    removed = {"checkpoints": 0, "intake_answers": 0, "document_images": 0, "uploads": 0, "traces": 0,
+               "draft_forms": 0}
     own_images: set[str] = set()
+    own_uploads: set[str] = set()
 
     if layout.checkpoints.exists():
         with _saver(layout) as saver:
             others: set[str] = set()
+            other_uploads: set[str] = set()
             for item in saver.list(None):
-                images = _image_files(item.checkpoint.get("channel_values", {}))
+                state = item.checkpoint.get("channel_values", {})
                 if item.config["configurable"]["thread_id"] == case_id:
-                    own_images |= images
+                    own_images |= _state_refs(state, "image_file")
+                    own_uploads |= _state_refs(state, "image_ref")
                     removed["checkpoints"] += 1
                 else:
-                    others |= images
+                    others |= _state_refs(state, "image_file")
+                    other_uploads |= _state_refs(state, "image_ref")
             own_images -= others  # another case still uses it
+            own_uploads -= other_uploads
             if removed["checkpoints"] and not dry_run:
                 saver.delete_thread(case_id)
 
@@ -191,6 +213,13 @@ def purge_case(case_id: str, layout: Layout | None = None, *, actor: str = "syst
             removed["document_images"] += 1
             if not dry_run:
                 image.unlink()
+
+    for handle in sorted(own_uploads):
+        upload = layout.uploads / f"{handle}.png"
+        if UPLOAD_HANDLE.fullmatch(handle) and upload.is_file():
+            removed["uploads"] += 1
+            if not dry_run:
+                upload.unlink()
 
     for directory in layout.trace_dirs:
         trace = directory / f"{_safe(case_id)}.jsonl"
@@ -228,12 +257,14 @@ def purge_expired(layout: Layout | None = None, *, max_age_days: float = DEFAULT
 
 def purge_stale_uploads(layout: Layout | None = None, *, max_age_hours: float = STALE_UPLOAD_HOURS,
                         now: datetime | None = None, dry_run: bool = False) -> int:
-    """Delete uploads older than `max_age_hours` (an image that was uploaded but never saved)."""
+    """Delete uploads older than `max_age_hours` that no case's saved state points at (an image that
+    was uploaded but never saved to a case)."""
     layout, now = layout or Layout(), now or datetime.now(timezone.utc)
     cutoff, count = (now - timedelta(hours=max_age_hours)).timestamp(), 0
+    in_use = set().union(*_stored_refs(layout, "image_ref").values()) if layout.checkpoints.exists() else set()
     if layout.uploads.exists():
         for upload in layout.uploads.iterdir():
-            if upload.is_file() and upload.stat().st_mtime < cutoff:
+            if upload.is_file() and upload.stem not in in_use and upload.stat().st_mtime < cutoff:
                 count += 1
                 if not dry_run:
                     upload.unlink()

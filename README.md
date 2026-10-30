@@ -17,17 +17,43 @@ No local Python needed. The image is built and checked in CI on every push.
 docker build -t silverfile .
 docker run --rm silverfile                                    # a clean case to "DRAFT READY"
 docker run --rm silverfile pytest -q                          # all tests, inside the container
-docker run --rm -p 8501:8501 silverfile streamlit run src/ui/silverfile_home.py
+docker run --rm -p 127.0.0.1:8501:8501 silverfile streamlit run src/ui/silverfile_home.py
                                                               # start page: http://localhost:8501
                                                               # telemetry (staff, not linked): http://localhost:8501/telemetry
 ```
 
 The start page offers **"I'm a taxpayer"** (the chat) and **"I'm a Kushim volunteer"** (the dashboard:
 every case, and resolving alarms). Both run in this one container so they share the saved sessions;
-do not start them in two separate containers. Add `-v "$PWD/runtime:/app/runtime"` to keep sessions
-after the container stops.
+do not start them in two separate containers.
 
-Secrets are never built into the image. Docker's `--env-file .env` sets environment variables, but the P3 W-2 page reads the `.env` file directly. To use that page in Docker, also mount your local `.env` file read-only at the project root inside the container, alongside `app.py`. Never copy secrets into the image.
+**Keeping cases between runs (recommended): Docker Compose.** It runs the start app and the W-2 photo
+page, with saved cases, uploads, traces and the audit log in Docker volumes, so they survive restarts
+and new containers:
+
+```
+cp .env.example .env                     # once; add an API key only to read W-2 photos
+docker compose up --build                # start page http://localhost:8501 (telemetry: /telemetry)
+                                         # W-2 photo page http://localhost:8502
+docker compose down                      # stop; saved cases are kept
+docker compose down -v                   # stop and delete all saved cases, uploads and traces
+docker compose exec app python -m scripts.purge_cases --expired   # retention: delete expired cases
+```
+
+The same with `docker run`: mount both folders and the `.env` file.
+
+```
+docker run --rm -p 127.0.0.1:8501:8501 \
+  -v silverfile-runtime:/app/runtime -v silverfile-traces:/app/traces \
+  -v "$PWD/.env:/app/.env:ro" \
+  silverfile streamlit run src/ui/silverfile_home.py
+```
+
+- Ports are published on this computer only (`127.0.0.1`): the volunteer dashboard and `/telemetry`
+  have no login, and Docker's default would publish them on every network interface.
+- `runtime` holds the saved cases and uploads, `traces` the traces and the audit log (case history on
+  the dashboard, and telemetry). Mount both, or the history is lost when the container is replaced.
+- Secrets are never built into the image. The W-2 page reads the `.env` file itself, not environment
+  variables, so `--env-file` is not enough: mount the file read-only as above.
 
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to
@@ -129,6 +155,14 @@ In Docker use the start page instead (one container, so it sees the traces the c
 http://localhost:8501/telemetry. There is no login: anyone who has the address can open it. The trace folder is
 fixed to `SILVERFILE_TRACE_DIR` (set `SILVERFILE_TELEMETRY_ANY_FOLDER=1` to edit it in the sidebar when debugging).
 Spec: [docs/telemetry-dashboard-spec.md](docs/telemetry-dashboard-spec.md).
+
+**Check a real W-2 reading through the chat** (one paid call; fictional fixtures only; key from `.env`):
+
+```
+.venv/bin/python -m scripts.verify_chat_extraction --provider anthropic     # or --provider openai
+```
+It runs the interview on the real graph, uploads `data/fixtures/w2_01.jpg`, and checks the boxes and the draft lines
+against `data/fixtures/expected.json`, in a temporary folder. Its steps are the ones the chat's upload box must follow.
 
 ## Layout
 | Path | What |

@@ -39,6 +39,7 @@ Labels it checks against (docs/handoff-contract.md; taxpayer answers: docs/answe
   document refs   provenance input "<doc_id>.<field>", e.g. "w2-1.box_1"
   extracted       {doc_id: {"kind": "W-2", "fields": {"box_1": {"value": ...} | value}}}
   typed amounts   source "direct user input" with entered_by and entered_on, as answer-names.md
+  typed answers   provenance input "facts.<answer name>", checked against the numeric answer
 """
 from src.state import ESCALATION_PRIORITY, FORM_1099R_BOX_2B, OUT_OF_SCOPE
 
@@ -46,6 +47,8 @@ TOLERANCE = 0.5  # dollars; covers whole-dollar rounding of a tool's cents resul
 MAX_FINDINGS = 20  # keeps the send-back (and the orchestrator's view) bounded
 SEND_BACK_TARGET = "computation"
 DIRECT_INPUT = "direct user input"  # a `source`, as in docs/answer-names.md
+DIRECT_INPUT_TOOL = "make_direct_input_provenance"  # provenance.py helper for typed-in amounts
+FACT_REF = "facts."  # an input taken from the taxpayer's typed answer: "facts.<answer name>"
 REQUIRED_RECORD_KEYS = ("value", "formula", "inputs", "source", "tool")
 
 FILING_STATUS_ALIASES = {
@@ -162,7 +165,10 @@ def _fact(facts, name, default=None):
 
 
 def _is_direct_input(record):
-    return str(record.get("source", "")).strip().lower() == DIRECT_INPUT
+    """An amount the taxpayer typed in. Recognised by the agreed source (Computation may add a note
+    after it, e.g. "; NOT READ: ...") or by the provenance helper that makes these records."""
+    source = str(record.get("source", "")).strip().lower()
+    return source.startswith(DIRECT_INPUT) or record.get("tool") == DIRECT_INPUT_TOOL
 
 
 def _status(value):
@@ -238,14 +244,28 @@ def check_provenance(computed):
     return findings
 
 
-def check_sources(ret, extracted):
-    """Every cited document field or line matches; nothing from a document is dropped."""
+def check_sources(ret, extracted, facts=None):
+    """Every cited document field, typed answer or line matches; nothing from a document is dropped."""
+    facts = facts or {}
     findings, verified = [], set()
     for line in sorted(ret.computed):
         record, inputs = ret.record(line), ret.inputs(line)
         doc_values = []
         for key, cited in inputs.items():
-            if key.startswith("line_"):
+            if key.startswith(FACT_REF):
+                # an amount the taxpayer typed in, checked against their (numeric) answer
+                name = key[len(FACT_REF):]
+                given = _amount(_fact(facts, name))
+                if name not in facts:
+                    findings.append(_finding("sources", line, f"cites {key}, which the taxpayer did not give"))
+                elif given is None:
+                    findings.append(_finding("sources", line, f"cites {key}, which is not an amount"))
+                elif _amount(cited) is not None and not _close(_amount(cited), given):
+                    findings.append(_finding(
+                        "sources", line, f"uses {key} = {cited}, but the taxpayer gave {given}"))
+                else:
+                    doc_values.append(given)
+            elif key.startswith("line_"):
                 if not ret.has(key):
                     # a blank line is zero; citing it as zero is fine
                     if _is_number(cited) and not _close(cited, 0.0):
@@ -274,7 +294,7 @@ def check_sources(ret, extracted):
         # still catches an amount that should have reached it
         if not inputs and _is_number(record.get("value")) and record["value"] == 0:
             verified.add(line)
-        # a line built only from document fields must equal their sum
+        # a line built only from document fields and typed answers must equal their sum
         if inputs and len(doc_values) == len(inputs):
             verified.add(line)
             if _is_number(record.get("value")) and not _close(record["value"], sum(doc_values)):
@@ -527,7 +547,7 @@ def review_return(view, tools):
     facts = view.get("facts") or {}
     ret = _Return(computed)
 
-    source_findings, doc_verified = check_sources(ret, extracted)
+    source_findings, doc_verified = check_sources(ret, extracted, facts)
     recompute_findings, tool_verified = check_recompute(ret, eligibility, tools)
     total_findings, total_verified = check_totals(ret)
     verified = doc_verified | tool_verified | total_verified

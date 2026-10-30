@@ -45,9 +45,13 @@ python -m scripts.purge_cases --case SF-482-735 --reason "taxpayer asked" --acto
 python -m scripts.purge_cases --expired --dry-run      # list what would go
 python -m scripts.purge_cases --expired                # apply the policy (schedule this)
 ```
-A purge removes the case's graph state, Intake answers, traces, draft forms and its document
-images (an image another case still uses is kept), then writes a `case_purged` audit entry with
-counts only. Nothing runs by itself: schedule `--expired` (cron, Task Scheduler, a container job).
+A purge removes the case's graph state, Intake answers, traces, draft forms, its document images
+(`runtime/documents/`) and the uploads it was read from (`runtime/uploads/<sha>.png`). Anything another
+case still uses is kept. It then writes a `case_purged` audit entry with counts only. Stale-upload
+cleanup skips any upload a saved case still points at, so an active case is never broken by it.
+Nothing runs by itself: schedule `--expired` (cron, Task Scheduler, a container job). It must run from
+the repository folder, because the runtime paths are relative. For example, a daily Windows Task
+Scheduler action: `cmd /c cd /d "<repo folder>" && "<repo folder>\.venv\Scripts\python.exe" -m scripts.purge_cases --expired`.
 Limits: this deletes rows and files; it does not securely wipe disk blocks or backups.
 
 ## Not done
