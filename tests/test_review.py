@@ -749,3 +749,65 @@ def test_an_out_of_scope_line_on_the_draft_is_caught_by_review(tmp_path):
     final = graph.invoke(Command(resume={"decision": "stop", "note": "Capital gains: Schedule D"}),
                          cfg("line7"))
     assert final["status"] == S.HALTED_BY_HUMAN
+
+
+# ---- rule citations (eligibility["rule_citations"] against docs/policy.md) ---------------------
+
+
+def with_citations(*entries):
+    view = correct_view()
+    view["eligibility"]["rule_citations"] = list(entries)
+    return view
+
+
+GOOD = {"rule": "1040-SR eligibility", "citation": "policy.md §2.1"}
+
+
+def test_citations_of_existing_policy_sections_pass():
+    view = with_citations(GOOD, {"rule": "Standard deduction age/blindness rule", "citation": "policy.md §2.3"})
+    assert run_review(view)["review"]["verdict"] == "pass"
+
+
+def test_a_citation_of_a_section_that_does_not_exist_fails():
+    hits = failed_on(with_citations(GOOD, {"rule": "Made-up rule", "citation": "policy.md §9.9"}), "citations")
+    assert any("§9.9, which does not exist" in f["issue"] for f in hits)
+
+
+def test_a_citation_that_is_not_a_policy_section_fails():
+    hits = failed_on(with_citations({"rule": "1040-SR eligibility", "citation": "Assignment 7 §3.2"}), "citations")
+    assert any("not a section like" in f["issue"] for f in hits)
+
+
+def test_a_citation_without_its_rule_fails():
+    failed_on(with_citations(GOOD, {"citation": "policy.md §2.3"}), "citations")
+
+
+def test_a_decided_eligibility_with_no_citation_fails():
+    hits = failed_on(with_citations(), "citations")
+    assert any("cited no rule" in f["issue"] for f in hits)
+
+
+def test_a_repeated_citation_is_only_a_warning():
+    update = run_review(with_citations(GOOD, dict(GOOD)))
+    assert update["review"]["verdict"] == "pass"
+    assert any(f["check"] == "citations" and f["severity"] == "warning" for f in update["review"]["findings"])
+
+
+def test_older_rules_output_without_rule_citations_is_not_checked():
+    assert "rule_citations" not in correct_view()["eligibility"]
+    assert review.check_citations(correct_view()["eligibility"]) == []
+
+
+def test_an_unreadable_policy_file_is_a_warning_not_a_failure():
+    found = review.check_citations({"eligible_1040sr": True, "rule_citations": [GOOD]}, sections=frozenset())
+    assert [f["severity"] for f in found] == ["warning"]
+
+
+def test_every_section_rules_can_cite_exists_in_policy_md():
+    """A guard: if Rules cites a new section, docs/policy.md must have it (else Review fails every return)."""
+    import re as _re
+    from pathlib import Path as _Path
+    rules_code = (_Path(review.__file__).parent / "rules.py").read_text(encoding="utf-8")
+    cited = set(_re.findall(r'_record_rule\([^)]*?"(\d+\.\d+)"', rules_code, flags=_re.S))
+    assert cited, "no citations found in rules.py"
+    assert cited <= review.policy_sections(), cited - review.policy_sections()
