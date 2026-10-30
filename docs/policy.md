@@ -88,15 +88,22 @@ even when Intake did not report other tax forms.
 
 ## 3.5 Uploaded in-scope documents versus Intake answers
 
-Rules compares the presence of each uploaded **supported** document (W-2, SSA-1099,
-1099-R, 1099-INT, 1099-DIV) with the corresponding Intake answer (`has_w2`,
-`has_ssa_1099`, `has_1099_r`, `has_1099_int`, `has_1099_div`). If Intake explicitly
-recorded `"no"` but an uploaded document of that type is present, Rules must flag
-`SOURCE_CONFLICT` and identify the disputed fact for human resolution before
+Rules compares each uploaded **supported** document (W-2, SSA-1099, 1099-R, 1099-INT,
+1099-DIV) with the corresponding Intake answer (`has_w2`, `has_ssa_1099`, `has_1099_r`,
+`has_1099_int`, `has_1099_div`). What counts is that a document of that type was
+uploaded, not whether its amounts were read: Extraction does not read SSA-1099,
+1099-INT or 1099-DIV yet, and such an upload still counts.
+
+If Intake explicitly recorded `"no"` but a document of that type was uploaded, Rules
+must flag `SOURCE_CONFLICT` and identify the disputed fact for human resolution before
 computation. A missing answer or `"not_sure"` is not, by itself, a contradiction.
-A volunteer can supply `{fact_name: corrected_value}`; the orchestrator records it
-in `facts` with source `human:SOURCE_CONFLICT`, and Rules must reevaluate the
-corrected answer before allowing the draft to finish.
+
+A volunteer can supply `{fact_name: corrected_value}`; the orchestrator records it in
+`facts` with source `human:SOURCE_CONFLICT`, and Rules runs again with the corrected
+answer: eligibility, scope and this comparison are checked anew before the draft can
+finish. If the corrected answer is `"yes"` but no amount for that form exists (it was
+not read and the taxpayer did not type it; see `docs/answer-names.md`), the case then
+pauses for `INCOME_NOT_READ` (PR #40) until a volunteer decides.
 
 **References:** Assignment 7 §4 (eligibility rules and human escalation);
 project `docs/answer-names.md` and the team handoff contract.
