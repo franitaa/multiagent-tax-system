@@ -145,12 +145,14 @@ def page_case(tmp_path, monkeypatch):
     monkeypatch.setattr("src.ui.dashboard_data.TRACE_DIR", str(tmp_path))
     st.cache_resource.clear()
 
-    def make(env_text):
+    def make(env_text, with_photo=False):
         env_file = tmp_path / ".env"
         env_file.write_text(env_text, encoding="utf-8")
         monkeypatch.setattr(chat, "ENV_FILE", str(env_file))
-        graph = chat.make_app_service(trace_dir=tmp_path, reader=FakeReader()).graph
-        answer_until_the_w2_question_is_answered(graph)
+        service = chat.make_app_service(trace_dir=tmp_path, reader=FakeReader())
+        answer_until_the_w2_question_is_answered(service.graph)
+        if with_photo:
+            assert chat.add_w2(service, CASE, W2_PHOTO, confirmed=True) is None
         from streamlit.testing.v1 import AppTest
         page = AppTest.from_file(str(ROOT / "src" / "ui" / "taxpayer_chat.py"), default_timeout=30)
         page.session_state.case_id = CASE
@@ -158,12 +160,34 @@ def page_case(tmp_path, monkeypatch):
     return make
 
 
-def test_page_shows_the_w2_box_with_the_confirmation(page_case):
+def answer_box(page):
+    return [t for t in page.text_input if t.label == "Type your answer here"]
+
+
+def test_page_after_yes_asks_only_for_the_w2_photo(page_case):
     page = page_case("OPENAI_API_KEY=sk-test-openai\n")
     assert not page.exception
     assert any("Your W-2 form" in m.value for m in page.markdown)
     assert [c.label for c in page.checkbox] == ["I confirm this is not a real tax form."]
     assert any("Please never upload a real tax form" in m.value for m in page.markdown)
+    assert not answer_box(page)  # the next question waits for the photo or "I don't have it now"
+    assert {"Add my W-2", "I don't have it now"} <= {b.label for b in page.button}
+
+
+def test_page_i_dont_have_it_now_carries_on_with_the_questions(page_case):
+    page = page_case("OPENAI_API_KEY=sk-test-openai\n")
+    next(b for b in page.button if b.label == "I don't have it now").click().run()
+    assert not page.exception
+    assert answer_box(page)  # the questions continue
+    assert not page.checkbox  # and the photo step is not asked again
+
+
+def test_page_after_a_photo_says_thank_you_and_carries_on(page_case):
+    page = page_case("OPENAI_API_KEY=sk-test-openai\n", with_photo=True)
+    assert not page.exception
+    assert any("Your W-2 photo is added" in s.value for s in page.success)
+    assert [e.label for e in page.expander] == ["Add another W-2"]
+    assert answer_box(page)
 
 
 def test_page_without_a_key_says_a_volunteer_will_help(page_case):
@@ -171,3 +195,14 @@ def test_page_without_a_key_says_a_volunteer_will_help(page_case):
     assert not page.exception
     assert any("Reading photos is not set up" in m.value for m in page.markdown)
     assert not page.checkbox
+    assert answer_box(page)  # nothing to wait for: the questions carry on
+
+
+def test_the_questions_wait_for_the_photo_only_until_one_is_chosen(service):
+    graph = service.graph
+    answer_until_the_w2_question_is_answered(graph)
+    assert chat.waiting_for_w2(graph, CASE)
+    assert not chat.waiting_for_w2(graph, CASE, later=True)  # "I don't have it now"
+    assert chat.add_w2(service, CASE, W2_PHOTO, confirmed=True) is None
+    assert not chat.waiting_for_w2(graph, CASE)  # a photo is in
+    assert chat.show_w2_upload(graph, CASE)  # another W-2 can still be added

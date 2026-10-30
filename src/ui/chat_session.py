@@ -29,9 +29,11 @@ What it does:
   - W-2 photo (P1 of the team's to-do list): `make_app_service()` builds JiWon's shared W-2
     service (src/p3/shared_service.py) on the saved sessions; the chat page and the volunteer
     dashboard use its graph, so a W-2 reading can be read and approved on the same case.
-    After "yes" to the W-2 question, `show_w2_upload()` tells the page to offer the upload,
-    any time before the last answer (JiWon's rule: no upload after the questions end).
-    `add_w2()` adds a W-2 photo confirmed as not a real tax form; the photo is read when the questions end.
+    After "yes" to the W-2 question, `waiting_for_w2()` makes the next screen ask only for the
+    photo, until it is added or the taxpayer presses "I don't have it now" (agreed with
+    Francesca and JiWon); `show_w2_upload()` lets another W-2 be added until the questions end
+    (JiWon's rule: no upload after that). `add_w2()` adds a W-2 photo confirmed as not a real
+    tax form; the photo is read when the questions end.
     Which AI reads it: the key in .env (OpenAI first, then Anthropic), read from the file only,
     never put in state or traces (`photo_reader()`). No key: the page says a volunteer will help.
   - If reading the photo fails (no internet, a rejected key), the case is not lost: `screen()`
@@ -270,6 +272,14 @@ def show_w2_upload(graph, case_id: str) -> bool:
     not over (JiWon's service refuses a photo after that)."""
     has_w2 = _facts(graph, case_id).get("has_w2") or {}
     return screen(graph, case_id) == ASKING and has_w2.get("value") == "yes"
+
+
+def waiting_for_w2(graph, case_id: str, later: bool = False) -> bool:
+    """Right after "yes" to the W-2 question, the next screen asks only for the photo: the other
+    questions wait until a photo is added or the taxpayer presses "I don't have it now" (`later`).
+    Agreed with Francesca and JiWon: holding here, not at the last answer, because which question
+    is last is not known in advance (skipped questions come back at the end)."""
+    return show_w2_upload(graph, case_id) and not later and w2_photos(graph, case_id) == 0
 
 
 def w2_photos(graph, case_id: str) -> int:

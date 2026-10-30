@@ -39,9 +39,11 @@ What it does:
 
   - Sessions are saved on disk (JiWon's SQLite checkpointer), so the case ID still works
     after the app restarts.
-  - "Your W-2 form": after "yes" to the W-2 question, a box to add a photo of a sample W-2
-    (tick "I confirm this is not a real tax form" first), any time before the last answer;
-    more than one W-2 can be added. The photo is read when the questions end ("We are reading
+  - "Your W-2 form": right after "yes" to the W-2 question, the next screen asks only for a photo
+    of a sample W-2 (tick "I confirm this is not a real tax form" first), with "Add my W-2" and
+    "I don't have it now"; then the other questions continue (agreed with Francesca and JiWon).
+    More than one W-2 can be added ("Add another W-2"). "I don't have it now" leads to a
+    volunteer later (INCOME_NOT_READ). The photo is read when the questions end ("We are reading
     your W-2 now"), then a volunteer checks the amounts. No AI key in .env: the box says a
     volunteer will help instead. If reading fails, a "Try again" screen; answers are kept.
   - Uses the app's one shared service and graph (src/ui/app_service.py), like the dashboard.
@@ -284,38 +286,61 @@ def progress_list(graph, case_id: str) -> None:
                     unsafe_allow_html=True)
 
 
+def later_key(case_id: str) -> str:
+    """Remembers "I don't have it now" for this case in this browser."""
+    return f"w2_later_{case_id}"
+
+
+def w2_form(service, case_id: str, first: bool) -> None:
+    """The photo form. A second click while a photo is being added cannot add it twice: the same
+    photo counts once, and an empty click right after a photo was added is ignored."""
+    st.markdown("**This is a class project. Please never upload a real tax form.**")
+    with st.form("w2", clear_on_submit=True):
+        confirmed = st.checkbox("I confirm this is not a real tax form.")
+        photo = st.file_uploader("Choose the photo of your W-2 (JPG or PNG)", type=["jpg", "jpeg", "png"])
+        if st.form_submit_button("Add my W-2", type="primary" if first else "secondary", icon=":material/upload:"):
+            if photo is None and st.session_state.pop("w2_just_added", False):
+                st.rerun()  # a double click: the photo is already in
+            problem = chat.add_w2(service, case_id, photo.getvalue() if photo else None, confirmed)
+            if problem:
+                st.error(problem)
+            else:
+                st.session_state.w2_just_added = True
+                st.rerun()
+
+
+def w2_step(service, case_id: str) -> None:
+    """Right after "yes" to the W-2 question: a screen that asks only for the photo. The other
+    questions continue after "Add my W-2" or "I don't have it now"."""
+    with st.container(key="tp-question"):
+        card_top("upload_file", "Your W-2 form")
+        st.write("You said you got a W-2. Please add a photo or scan of it here, so we can read the "
+                 "amounts for you.")
+        w2_form(service, case_id, first=True)
+        st.write("If you don't have it with you, that's fine. A volunteer will help you with it later.")
+        if st.button("I don't have it now", icon=":material/schedule:"):
+            st.session_state[later_key(case_id)] = True
+            st.rerun()
+
+
 def w2_box(service, case_id: str) -> None:
-    """After "yes" to the W-2 question: add a photo of a sample W-2, any time before the last
-    answer. It is read when the questions end."""
-    graph = service.graph
+    """Once a photo is added: say so, and offer to add another W-2 (more than one job)."""
+    added = chat.w2_photos(service.graph, case_id)
     with st.container(key="tp-w2"):
         card_top("upload_file", "Your W-2 form")
-        if service.reader is None:
-            st.write("Reading photos is not set up on this computer. That's all right: carry on with the "
-                     "questions, and a volunteer will look at your W-2 with you.")
-            return
-        added = chat.w2_photos(graph, case_id)
-        if added:
-            st.success("Thank you. Your W-2 photo is added. We will read it when you finish the questions."
-                       if added == 1 else f"Thank you. Your {added} W-2 photos are added. We will read them "
-                       "when you finish the questions.")
-        else:
-            st.write("You said you got a W-2. Please add a photo or scan of it here, so we can read the "
-                     "amounts for you. You can do this now, or any time before the last question.")
-        with st.expander("Add another W-2", expanded=False) if added else st.container():
-            st.markdown("**This is a class project. Please never upload a real tax form.**")
-            with st.form("w2", clear_on_submit=True):
-                confirmed = st.checkbox("I confirm this is not a real tax form.")
-                photo = st.file_uploader("Choose the photo of your W-2 (JPG or PNG)", type=["jpg", "jpeg", "png"])
-                if st.form_submit_button("Add my W-2", icon=":material/upload:"):
-                    problem = chat.add_w2(service, case_id, photo.getvalue() if photo else None, confirmed)
-                    if problem:
-                        st.error(problem)
-                    else:
-                        st.rerun()
-        if not added:
-            st.caption("Don't have it with you? That's fine. Carry on with the questions. "
-                       "A volunteer will help you with the W-2 later.")
+        st.success("Thank you. Your W-2 photo is added. We will read it when you finish the questions."
+                   if added == 1 else f"Thank you. Your {added} W-2 photos are added. We will read them "
+                   "when you finish the questions.")
+        with st.expander("Add another W-2", expanded=False):
+            w2_form(service, case_id, first=False)
+
+
+def w2_not_set_up() -> None:
+    """No AI key in .env: the photo cannot be read here, so the questions simply carry on."""
+    with st.container(key="tp-w2"):
+        card_top("upload_file", "Your W-2 form")
+        st.write("Reading photos is not set up on this computer. That's all right: carry on with the "
+                 "questions, and a volunteer will look at your W-2 with you.")
 
 
 QUICK = [("Go back", "go back", ":material/undo:"),
@@ -379,7 +404,15 @@ def chat_screen(service, case_id: str) -> None:
         return
 
     if chat.show_w2_upload(graph, case_id):
-        w2_box(service, case_id)
+        if service.reader is None:
+            w2_not_set_up()
+        elif chat.waiting_for_w2(graph, case_id, later=st.session_state.get(later_key(case_id), False)):
+            w2_step(service, case_id)  # the other questions wait for "Add my W-2" or "I don't have it now"
+            st.write("")
+            leave_button()
+            return
+        elif chat.w2_photos(graph, case_id):
+            w2_box(service, case_id)
         st.write("")
 
     with st.container(key="tp-question"):
@@ -437,6 +470,10 @@ def chat_screen(service, case_id: str) -> None:
                         st.rerun()
 
     st.write("")
+    leave_button()
+
+
+def leave_button() -> None:
     if st.button("Leave and continue later", icon=":material/logout:"):
         st.session_state.clear()
         st.rerun()
