@@ -7,7 +7,9 @@ Run it with:  streamlit run src/ui/taxpayer_chat.py
 What it does:
   - Start screen: "Start a new session" (shows a case ID to write down) or "Continue a
     session" (type the case ID; shows "Welcome back, so far we've covered...").
-  - Shows the conversation and the current question, one question at a time.
+  - Shows one question at a time, once, in large text, with SilverFile's latest message
+    above it (e.g. "Thank you" or a note about a removed number). No scrolling chat history,
+    so nothing appears or is read out twice; earlier answers are under "Your answers so far".
   - Always the light theme (.streamlit/config.toml), whatever the computer's dark/light
     setting, with button and box colours also set here as a safety net, so it looks the
     same and stays readable everywhere, including Docker and a Mac in dark mode.
@@ -15,9 +17,11 @@ What it does:
     speaker names ("SilverFile says:" / "You said:") so screen readers announce who is
     speaking. The newest question is in a live region, so it is read out when it appears.
   - Big buttons for "Go back", "I'm not sure", "Please explain" and "Talk to a volunteer".
-  - Date questions get three labelled boxes: Month (a list showing "3 - March", so the
-    person can scroll, or type the name or the number), Day and Year. No grey placeholder
-    format like MM/DD/YYYY: labels stay visible, and day-first vs month-first cannot mix.
+  - Date questions get three labelled boxes: Month (a list of month names, so the
+    person can scroll or type the first letters), Day and Year. Or the person types it in a
+    box labelled "MM-DD-YYYY, for example: 03-04-1950" (a visible label, not grey text that
+    disappears); 03-04-1950, 03/04/1950 and 03041950 all become "March 4, 1950", and Intake
+    reads it back before saving.
   - Six parts, like an application form: a "Your progress" list at the top shows each part's
     status in words ("Done", "In progress", "Not started", "1 skipped", "1 noted for a
     volunteer"). Above the answer box: "Part 2 – Age and eyesight – Question 3" in words, then
@@ -33,9 +37,10 @@ What it does:
     where it came from, plus a "Download the draft form" button. It says plainly that nothing
     has been filed. If nothing is computed yet, it says the form is not ready.
 
+  - Sessions are saved on disk (JiWon's SQLite checkpointer), so the case ID still works
+    after the app restarts.
+
 What is still missing:
-  - Sessions last only while the app is running, until JiWon's SQLite checkpointer is
-    plugged into chat_session.make_graph().
   - The volunteer side (resolving a pause) lives in the Kushim dashboard, not here.
 
 All logic is in src/ui/chat_session.py; this file only draws the page.
@@ -104,8 +109,8 @@ STOPPED_TEXT = "Thank you. A volunteer will be in touch with you about the next 
 
 @st.cache_resource
 def get_graph():
-    """One graph for the whole app, so sessions are kept while the app is running."""
-    return chat.make_graph()
+    """One graph for the whole app; sessions are saved on disk, so they survive a restart."""
+    return chat.make_graph(chat.open_saved_sessions())
 
 
 def bubble(role: str, text: str, live: bool = False) -> None:
@@ -156,8 +161,8 @@ def draft_form(graph, case_id: str) -> None:
 def date_form(graph, case_id: str) -> None:
     """Three boxes with labels that stay visible: no placeholder text, no day/month mix-ups."""
     with st.form("date", clear_on_submit=True):
-        st.markdown("**Month:** click the box and choose a month. You can also type its name or "
-                    "number, for example \"March\" or \"3\".")
+        st.markdown("**Month:** click the box and choose a month. You can also type the first "
+                    "letters, for example \"Mar\" for March.")
         month = st.selectbox("Month", chat.MONTH_OPTIONS, index=None, placeholder="Choose a month")
         day_col, year_col = st.columns(2)
         day = day_col.number_input("Day (1 to 31)", min_value=1, max_value=31, value=None, step=1)
@@ -191,11 +196,16 @@ def chat_screen(graph, case_id: str) -> None:
         st.info(chat.welcome_back(graph, case_id))
     progress_list(graph, case_id)
 
-    messages = chat.transcript(graph, case_id)
-    for i, message in enumerate(messages):
-        bubble(message["role"], message["content"], live=(i == len(messages) - 1))
-
+    # Only SilverFile's latest message, without the question (it is shown once, in large text
+    # below), so nothing appears twice. Earlier answers are under "Your answers so far".
     screen = chat.screen(graph, case_id)
+    replies = [m["content"] for m in chat.transcript(graph, case_id) if m["role"] == "assistant"]
+    latest = replies[-1] if replies else ""
+    current = chat.question_label(graph, case_id) if screen == chat.ASKING else None
+    if current and latest.endswith(current["text"]):
+        latest = latest[: -len(current["text"])].strip()
+    if latest:
+        bubble("assistant", latest, live=True)
     if screen == chat.WAITING_FOR_VOLUNTEER:
         st.warning(WAITING_TEXT)
         return
@@ -213,18 +223,19 @@ def chat_screen(graph, case_id: str) -> None:
         # which is the largest text on the page. One heading, so screen readers keep them together.
         where = f'Part {label["part"]} – {label["part_title"]} – Question {label["position"]}'
         st.markdown(
-            f'<h2 class="current-question"><span class="part-label">{html.escape(where)}</span>'
+            f'<h2 class="current-question" role="status" aria-live="polite"><span class="part-label">{html.escape(where)}</span>'
             f'{html.escape(label["text"])}</h2>',
             unsafe_allow_html=True,
         )
     if chat.asking_for_a_date(graph, case_id):
         date_form(graph, case_id)
 
+    asking_date = chat.asking_for_a_date(graph, case_id)
     with st.form("answer", clear_on_submit=True):
-        label = "Or type the date here" if chat.asking_for_a_date(graph, case_id) else "Type your answer here"
+        label = "Or type the date here as MM-DD-YYYY, for example: 03-04-1950" if asking_date else "Type your answer here"
         answer = st.text_input(label)
         if st.form_submit_button("Send my answer") and answer.strip():
-            chat.send(graph, case_id, answer)
+            chat.send(graph, case_id, chat.typed_date(answer) if asking_date else answer)
             st.rerun()
 
     st.write("Or choose one of these:")
