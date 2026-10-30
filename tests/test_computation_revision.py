@@ -8,7 +8,7 @@ from src.agents import computation
 from src.graph import build_graph
 from src.orchestration.access import ToolBox
 from src.scenarios import clean_case
-from tests.helpers import cfg
+from tests.helpers import cfg, text_amount_extraction
 
 SOURCES = {"check": "sources", "line": "line_1a", "severity": "error",
            "issue": "doc-1 box_1 (20000.0) does not reach line_1a"}
@@ -88,7 +88,8 @@ def test_a_text_taxable_amount_on_a_1099r_is_not_treated_as_undetermined():
 
 
 def test_the_real_review_sends_text_amounts_back_and_the_second_pass_passes(tmp_path):
-    result = build_graph(trace_dir=tmp_path).invoke(clean_case(), cfg("revision-e2e"))
+    graph = build_graph(trace_dir=tmp_path, agents={"extraction": text_amount_extraction})
+    result = graph.invoke(clean_case(), cfg("revision-e2e"))
     route = [e["to"] for e in result["handoff_log"]]
     assert result["status"] == S.COMPLETE and route.count("computation") == 2
     assert result["revision_count"] == 1

@@ -66,8 +66,10 @@ PASS     eval-case-2-spouse-died  Eval case 2 (HITL, resolved): spouse died duri
    final["human_decisions"]     # the decision, note and filing status, kept for the audit
    final["facts"]["filing_status"]
    # {'value': 'married_filing_jointly', 'source': 'human:FILING_STATUS_AMBIGUITY'}
+   final["eligibility"]["filing_status"]   # 'married_filing_jointly' (Rules ran again)
+   final["computed"]["line_12e"]["value"]  # 33100: joint standard deduction + one 65+ box
    ```
-   Route: `intake -> extraction -> rules -> human -> computation -> review -> end`.
+   Route: `intake -> extraction -> rules -> human -> rules -> computation -> review -> end`.
 
 To stop instead (e.g. the volunteer wants to see the death certificate first):
 `{"decision": "stop", "note": "..."}`. The case ends with status `halted_by_human`.
@@ -77,10 +79,8 @@ The same case with the scenario script: `python -m scripts.run_scenarios spouse-
 ## Status
 - Passes now: the interrupt fires, the volunteer's answer is validated and recorded, and the
   run completes.
-- **Known gap**, tracked by the pending case `eval-case-2-status-reaches-draft`: after the
-  volunteer answers, the orchestrator goes `human -> computation` without running Rules again,
-  so `eligibility.filing_status` stays `undetermined` on the draft even though the volunteer's
-  `married_filing_jointly` is saved in `facts`. Rules applies it correctly when it runs; the
-  fix is for the router to send the case back to Rules after a filing-status decision.
+- After the volunteer's answer the gate clears `eligibility`, so Rules runs again with the
+  volunteer's status: `eligibility.filing_status` is `married_filing_jointly` on the draft
+  (checked by `eval-case-2-status-reaches-draft`).
 - Intake's answers and the W-2 box values come from the case file (stand-ins), so the case runs
   offline. The real Extraction reads `w2_02.jpg` with an image model, which needs an API key.
