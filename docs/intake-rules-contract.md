@@ -32,7 +32,7 @@ starts reading a new fact, add it there too, or `tests/test_context_views.py` fa
 | `taxpayer_blind`, `spouse_blind` | Blindness boxes; `not_sure` raises `ANSWER_UNCERTAIN` | `run` |
 | `has_other_tax_forms`, `sold_stocks_or_property`, `business_or_rental_income`, `foreign_income_or_accounts`, `digital_assets`, `can_be_claimed_as_dependent`, `us_resident_all_year` | Out-of-scope screening | `screening_checks` in `run` |
 | `spouse_can_be_claimed` (married), `spouse_itemizing` (separate return) | Out-of-scope screening for the spouse | `run` |
-| `has_w2`, `has_ssa_1099`, `has_1099_r`, `has_1099_int`, `has_1099_div` | **Planned:** compared with uploaded documents to raise `SOURCE_CONFLICT` (#41); to be added to `RULES_FACTS` | to add |
+| `has_w2`, `has_ssa_1099`, `has_1099_r`, `has_1099_int`, `has_1099_div` | A `"no"` answer contradicted by an uploaded form raises `SOURCE_CONFLICT` (#55); in `RULES_FACTS` | `_find_document_answer_conflict` |
 
 Legacy names still accepted only for old test fixtures, never preferred: `filing_status_claim`, `age`, `spouse_age`.
 Old Rules names no longer used: `taxpayer_dob`, `spouse_dob`, `spouse_died_during_tax_year`,
@@ -74,7 +74,7 @@ Rules raises only the conditions it can detect itself:
 - `FORM_1099R_BOX_2B`: an extracted 1099-R with box 2b checked.
 - `FILING_STATUS_AMBIGUITY`: possible Head of Household, widowed, or another status it cannot prove.
 - `ANSWER_UNCERTAIN`: one `not_sure` answer it needs (section 2).
-- `SOURCE_CONFLICT` (**planned**, #41): a `has_*` answer is `"no"` but that form was uploaded.
+- `SOURCE_CONFLICT` (#55): a `has_*` answer is `"no"` but that form was uploaded.
 
 ## 4. Finishing with nothing decided: decided, built in orchestration
 **Decision (team):** the orchestrator must not finish with an empty filing status or eligibility
