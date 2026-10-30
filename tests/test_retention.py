@@ -146,3 +146,44 @@ def test_the_command_line_purges_one_case_and_refuses_a_bad_id(site, capsys):
     assert "removed" in capsys.readouterr().out and checkpoint_ids(site) == {"case-b"}
 
     assert purge_cases.main(["--case", "../x", *base]) == 2
+
+
+def add_case_with_upload(layout, case_id, handle):
+    """A case whose saved state points at an upload (image_ref), as a P3 document does."""
+    upload = layout.uploads / f"{handle}.png"
+    upload.write_bytes(b"png")
+    with SqliteSaver.from_conn_string(str(layout.checkpoints)) as saver:
+        graph = build_graph(saver, trace_dir=layout.trace_dirs[0])
+        case = clean_case(case_id)
+        case["documents"] = [{**case["documents"][0], "id": f"doc_{handle}", "image_ref": handle}]
+        graph.invoke(case, cfg(case_id))
+    return upload
+
+
+def test_purge_removes_the_upload_the_case_was_read_from(site):
+    upload = add_case_with_upload(site, "case-c", "a" * 64)
+
+    assert purge_case("case-c", site)["removed"]["uploads"] == 1
+    assert not upload.exists()
+
+
+def test_an_upload_a_live_case_still_points_at_survives_the_stale_sweep(site):
+    upload = add_case_with_upload(site, "case-c", "b" * 64)
+    two_days_ago = time.time() - 48 * 3600
+    os.utime(upload, (two_days_ago, two_days_ago))
+
+    assert purge_stale_uploads(site) == 0 and upload.exists()
+    assert purge_case("case-b", site)["removed"]["uploads"] == 0 and upload.exists()
+
+
+def test_a_path_like_image_ref_removes_nothing_and_does_not_fail_the_purge(site):
+    victim = site.runtime / "victim.png"  # what "../victim" points at from runtime/uploads
+    victim.write_bytes(b"not an upload")
+    with SqliteSaver.from_conn_string(str(site.checkpoints)) as saver:
+        graph = build_graph(saver, trace_dir=site.trace_dirs[0])
+        case = clean_case("case-d")
+        case["documents"] = [{**case["documents"][0], "id": "doc-d", "image_ref": "../victim"}]
+        graph.invoke(case, cfg("case-d"))
+
+    assert purge_case("case-d", site)["removed"]["uploads"] == 0
+    assert victim.exists()
