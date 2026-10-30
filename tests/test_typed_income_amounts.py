@@ -76,3 +76,19 @@ def test_a_skipped_form_with_a_typed_amount_on_another_line_still_says_not_read(
     computed = run(extracted, int1099_taxable=300.0)
     assert NOT_READ in computed["line_6a"]["source"]
     assert computed["line_2b"]["value"] == 300.0
+
+
+def test_forms_without_amounts_stops_listing_a_form_once_an_amount_is_typed():
+    """PR #40 lists the forms with no held amount; a typed amount must clear its form. Skipped until
+    #40 is merged (the function lives there), so it passes in either merge order."""
+    import pytest
+    import src.income_forms as income_forms
+    forms_without_amounts = getattr(income_forms, "forms_without_amounts", None)
+    if forms_without_amounts is None:
+        pytest.skip("forms_without_amounts arrives with PR #40")
+
+    assert forms_without_amounts(facts(has_ssa_1099="yes"), {}) == ["SSA-1099"]
+    assert forms_without_amounts(facts(has_ssa_1099="yes", ssa1099_benefits=20000.0), {}) == []
+    assert forms_without_amounts(facts(has_1099_int="yes", int1099_taxable=300.0), {}) == []
+    # a typed amount for one form does not hide another form that has none
+    assert forms_without_amounts(facts(has_1099_div="yes", ssa1099_benefits=20000.0), {}) == ["1099-DIV"]
