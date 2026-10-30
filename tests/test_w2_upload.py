@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests_p3"))
 from p3_helpers import FakeReader  # noqa: E402  (JiWon's offline stand-in for the AI)
 
-W2_PHOTO = (ROOT / "data" / "fixtures" / "w2_01.jpg").read_bytes()  # a made-up test W-2
+W2_PHOTO = (ROOT / "data" / "fixtures" / "w2_01.jpg").read_bytes()  # one of the project's sample W-2s
 CASE = "SF-900-123"
 
 
@@ -162,8 +162,8 @@ def test_page_shows_the_w2_box_with_the_confirmation(page_case):
     page = page_case("OPENAI_API_KEY=sk-test-openai\n")
     assert not page.exception
     assert any("Your W-2 form" in m.value for m in page.markdown)
-    assert [c.label for c in page.checkbox] == ["I confirm this is a made-up test W-2, not a real one."]
-    assert any("Never upload a real tax form" in m.value for m in page.markdown)
+    assert [c.label for c in page.checkbox] == ["I confirm this is not a real tax form."]
+    assert any("Please never upload a real tax form" in m.value for m in page.markdown)
 
 
 def test_page_without_a_key_says_a_volunteer_will_help(page_case):

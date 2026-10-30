@@ -39,8 +39,8 @@ What it does:
 
   - Sessions are saved on disk (JiWon's SQLite checkpointer), so the case ID still works
     after the app restarts.
-  - "Your W-2 form": after "yes" to the W-2 question, a box to add a photo of a made-up test
-    W-2 (tick "I confirm this is a made-up test W-2" first), any time before the last answer;
+  - "Your W-2 form": after "yes" to the W-2 question, a box to add a photo of a sample W-2
+    (tick "I confirm this is not a real tax form" first), any time before the last answer;
     more than one W-2 can be added. The photo is read when the questions end ("We are reading
     your W-2 now"), then a volunteer checks the amounts. No AI key in .env: the box says a
     volunteer will help instead. If reading fails, a "Try again" screen; answers are kept.
@@ -285,7 +285,7 @@ def progress_list(graph, case_id: str) -> None:
 
 
 def w2_box(service, case_id: str) -> None:
-    """After "yes" to the W-2 question: add a photo of a made-up W-2, any time before the last
+    """After "yes" to the W-2 question: add a photo of a sample W-2, any time before the last
     answer. It is read when the questions end."""
     graph = service.graph
     with st.container(key="tp-w2"):
@@ -303,10 +303,9 @@ def w2_box(service, case_id: str) -> None:
             st.write("You said you got a W-2. Please add a photo or scan of it here, so we can read the "
                      "amounts for you. You can do this now, or any time before the last question.")
         with st.expander("Add another W-2", expanded=False) if added else st.container():
-            st.markdown("**This is a class project: please use a made-up test W-2 only. "
-                        "Never upload a real tax form.**")
+            st.markdown("**This is a class project. Please never upload a real tax form.**")
             with st.form("w2", clear_on_submit=True):
-                confirmed = st.checkbox("I confirm this is a made-up test W-2, not a real one.")
+                confirmed = st.checkbox("I confirm this is not a real tax form.")
                 photo = st.file_uploader("Choose the photo of your W-2 (JPG or PNG)", type=["jpg", "jpeg", "png"])
                 if st.form_submit_button("Add my W-2", icon=":material/upload:"):
                     problem = chat.add_w2(service, case_id, photo.getvalue() if photo else None, confirmed)

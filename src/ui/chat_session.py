@@ -31,7 +31,7 @@ What it does:
     dashboard use its graph, so a W-2 reading can be read and approved on the same case.
     After "yes" to the W-2 question, `show_w2_upload()` tells the page to offer the upload,
     any time before the last answer (JiWon's rule: no upload after the questions end).
-    `add_w2()` adds a confirmed made-up W-2 photo; the photo is read when the questions end.
+    `add_w2()` adds a W-2 photo confirmed as not a real tax form; the photo is read when the questions end.
     Which AI reads it: the key in .env (OpenAI first, then Anthropic), read from the file only,
     never put in state or traces (`photo_reader()`). No key: the page says a volunteer will help.
   - If reading the photo fails (no internet, a rejected key), the case is not lost: `screen()`
@@ -260,7 +260,7 @@ def change(graph, case_id: str, question_text: str) -> None:
 
 # ---- W-2 photo ---------------------------------------------------------------------------------
 
-W2_CONFIRM_FIRST = "Please tick the box to confirm this is a made-up test W-2."
+W2_CONFIRM_FIRST = "Please tick the box to confirm this is not a real tax form."
 W2_NOT_ADDED = ("Sorry, we couldn't add that photo. Please check it is a JPG or PNG picture of the W-2 "
                 "and try again, or carry on and a volunteer will help.")
 
