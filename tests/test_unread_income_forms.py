@@ -4,7 +4,7 @@ warns at the top of the page. Nothing is invented: the amount stays zero, nothin
 import pytest
 
 from src.agents import computation
-from src.agents.computation import unread_forms
+from src.income_forms import unread_forms
 from src.draft_form import render_draft_html, write_draft_form
 from src.graph import build_graph
 from src.orchestration.access import ToolBox
@@ -156,3 +156,14 @@ def test_a_clean_w2_run_has_no_warning(tmp_path):
     page = write_draft_form(state, tmp_path / "out", "clean").read_text(encoding="utf-8")
     assert "Income is missing" not in page
     assert NOT_READ not in "".join(r["source"] for r in state["computed"].values())
+
+
+def test_the_draft_form_does_not_depend_on_an_agent_file():
+    """The form shares `src/income_forms.py` with Computation; it must not import an agent."""
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path("src/draft_form.py").read_text(encoding="utf-8"))
+    imported = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
+    imported += [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
+    assert not [m for m in imported if m.startswith("src.agents")]

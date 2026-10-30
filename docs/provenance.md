@@ -64,7 +64,7 @@ once a human has resolved the condition.
   Intake asks yes/no; issue #27). Computation does not invent them or stop the case. The lines the
   form feeds (6a/25b, 2a/2b/25b, 3a/3b/25b) stay zero and their source says `NOT READ`, and the
   draft form shows an "Income is missing from this draft" warning at the top (`unread_forms` in
-  `src/agents/computation.py`). Both stop as soon as an amount is read from the form. Still open and
+  `src/income_forms.py`). Both stop as soon as an amount is read from the form. Still open and
   not Computation's: capturing the amounts (Intake or Extraction) and whether a volunteer must
   acknowledge the gap before the draft is finished (Orchestration).
 
