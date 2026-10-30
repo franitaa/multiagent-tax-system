@@ -20,9 +20,9 @@ For tax year 2025, Form 1040-SR is available when the taxpayer was born **before
 
 ## 2.2 Filing status and volunteer override
 
-The supported filing statuses are `single`, `mfj`, `mfs`, `hoh`, and `qss`. Intake captures marital and household answers; Rules determines or validates the filing status. In particular, `caring_for_someone` alone does not prove eligibility for head-of-household status, and `widowed` alone does not prove qualifying-surviving-spouse status. Escalate ambiguous cases for human review rather than guessing.
+The supported filing statuses are single, married filing jointly, married filing separately, head of household, and qualifying surviving spouse. Intake captures marital and household answers; Rules determines or validates the filing status. In particular, `caring_for_someone` alone does not prove eligibility for head-of-household status, and `widowed` alone does not prove qualifying-surviving-spouse status. Escalate ambiguous cases for human review rather than guessing.
 
-A filing status explicitly supplied by the human gate under `facts["filing_status"]`, with an appropriate `human:` source, takes precedence over a new deduction from older Intake answers. Convert human-gate full names (`married_filing_jointly`, `married_filing_separately`, `head_of_household`, `qualifying_surviving_spouse`) to the canonical short codes (`mfj`, `mfs`, `hoh`, `qss`) before writing `eligibility["filing_status"]`.
+A filing status explicitly supplied by the human gate under `facts["filing_status"]`, with the source `human:FILING_STATUS_AMBIGUITY`, takes precedence over a new deduction from older Intake answers. Rules may use the short codes (`mfj`, `mfs`, `hoh`, `qss`) internally, but always writes the full names that Computation expects (`single`, `married_filing_jointly`, `married_filing_separately`, `head_of_household`, `qualifying_surviving_spouse`) to `eligibility["filing_status"]`.
 
 **References:** Assignment 7 §§3.1 and 4; team `docs/answer-names.md` and Intake–Rules contract.
 
@@ -100,6 +100,7 @@ corrected answer before allowing the draft to finish.
 
 **References:** Assignment 7 §4 (eligibility rules and human escalation);
 project `docs/answer-names.md` and the team handoff contract.
+
 ## 4.1 Human decisions and Review send-back
 
 Rules should honor a supported, resolved human decision and not endlessly re-escalate the same condition. Human-supplied factual corrections must be available in `facts` in the agreed `{"value": ..., "source": ...}` shape. Review may send a finding back through `pending_revision` when supported by state permissions and orchestration. Rules must inspect that finding, correct unsupported or missing citations by reference to this corpus, and only proceed if eligibility/scope decisions are supportable. Do not manufacture facts merely to satisfy Review.
