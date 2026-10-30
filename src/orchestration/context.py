@@ -15,7 +15,8 @@ same scenario can be measured both ways.
 from typing import Any, Mapping
 
 from src.orchestration.access import ALWAYS_READ, POLICY
-from src.state import DEFAULT_MAX_REVISIONS
+from src.income_forms import forms_without_amounts
+from src.state import DEFAULT_MAX_REVISIONS, INCOME_NOT_READ
 
 
 MAX_HANDOFFS_IN_VIEW = 3
@@ -125,6 +126,10 @@ def routing_view(state: Mapping[str, Any]) -> dict[str, Any]:
         "has_eligibility": bool(eligibility),
         "in_scope": eligibility.get("in_scope"),
         "eligibility_gaps": eligibility_gaps(eligibility) if eligibility else [],
+        # names of income forms the taxpayer has but no amount is held for (fixed vocabulary, at most five)
+        "income_gaps": forms_without_amounts(state.get("facts", {}), extracted),
+        "income_gap_acknowledged": any(
+            d.get("condition") == INCOME_NOT_READ for d in state.get("human_decisions", [])),
         "has_computed": bool(state.get("computed")),
         "review_verdict": review.get("verdict"),
         "revision_count": state.get("revision_count", 0),

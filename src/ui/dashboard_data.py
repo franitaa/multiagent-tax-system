@@ -67,6 +67,7 @@ ALARMS = {
     S.LOOP_GUARD: "The system went round in circles and stopped itself.",
     S.REVIEW_BOUND_EXCEEDED: "The final check kept failing and stopped itself.",
     S.ELIGIBILITY_UNDECIDED: "The rules could not decide the filing status or eligibility.",
+    S.INCOME_NOT_READ: "The taxpayer has an income form, but no amount from it reached the draft.",
 }
 
 # Plain words for the filing statuses the gate accepts.
@@ -199,6 +200,7 @@ NEED_WORDS = {
     S.EXPLOITATION_SIGNS: "Possible pressure", S.OUT_OF_SCOPE: "Out of scope",
     S.SOURCE_CONFLICT: "Answer vs document", S.FORM_1099R_BOX_2B: "1099-R box 2b",
     S.ANSWER_UNCERTAIN: "Unsure answer", S.EXTRACTION_REVIEW: "W-2 check",
+    S.INCOME_NOT_READ: "Income form not read",
 }
 OTHER_NEED = "Other"
 QUIET_NEED = "Asked for a person / not sure"

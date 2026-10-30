@@ -99,3 +99,16 @@ def unread_forms(facts, extracted, read_text=False):
 
 def answered_yes(facts, *names):
     return any(fact_value(facts, n) in (True, "yes") for n in names)
+
+
+def forms_without_amounts(facts, extracted):
+    """Names of the income forms the taxpayer says they have, or uploaded, for which no amount is held.
+    The three forms Extraction does not read (see `unread_forms`), plus a W-2 or 1099-R the taxpayer
+    declared but never uploaded. A typed-in amount or a text amount counts as held. Fixed names only
+    (never document text), so the list is safe to show the orchestrator."""
+    names = [form["form"] for form in unread_forms(facts, extracted, read_text=True)]
+    if answered_yes(facts, "has_w2") and not document_amounts(extracted, [("w2", "box_1")], read_text=True):
+        names.insert(0, "W-2")
+    if answered_yes(facts, "has_1099_r") and not any(document_kind(r).startswith("1099r") for r in extracted.values()):
+        names.append("1099-R")
+    return names

@@ -9,7 +9,8 @@ Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...}
 
   stop      always allowed. The case ends with status "halted_by_human". Note optional.
   continue  allowed only for SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST,
-            ANSWER_UNCERTAIN, EXTRACTION_REVIEW, and only with a non-empty note (it is part of the audit record). A human cannot
+            ANSWER_UNCERTAIN, INCOME_NOT_READ (the orchestrator's; no resolution: say in the note how the
+            missing income was handled), EXTRACTION_REVIEW, and only with a non-empty note (it is part of the audit record). A human cannot
             take responsibility for out-of-scope work, so OUT_OF_SCOPE, FORM_1099R_BOX_2B,
             EXPLOITATION_SIGNS (and the orchestrator's own LOOP_GUARD,
             REVIEW_BOUND_EXCEEDED and ELIGIBILITY_UNDECIDED) accept "stop" only.
@@ -30,10 +31,11 @@ from langgraph.types import interrupt
 from src.orchestration.access import ToolBox
 from src.state import (
     ANSWER_UNCERTAIN, AWAITING_HUMAN, EXTRACTION_REVIEW, FILING_STATUS_AMBIGUITY, HALTED_BY_HUMAN, RUNNING,
-    SOURCE_CONFLICT, TAX_ADVICE_REQUEST,
+    INCOME_NOT_READ, SOURCE_CONFLICT, TAX_ADVICE_REQUEST,
 )
 
-CONTINUABLE = frozenset({SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST, ANSWER_UNCERTAIN})
+CONTINUABLE = frozenset({SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST, ANSWER_UNCERTAIN,
+                         INCOME_NOT_READ})
 # The answers a volunteer may give for an ANSWER_UNCERTAIN fact (docs/answer-names.md). "not_sure"
 # is never one of them: it is the problem.
 _YES_NO = ("yes", "no")
@@ -80,6 +82,8 @@ def _validate(answer, condition: str, escalation: dict | None = None) -> tuple[s
     if resolution:
         if condition == TAX_ADVICE_REQUEST:
             raise ValueError("TAX_ADVICE_REQUEST has nothing to resolve; record the question in the note")
+        if condition == INCOME_NOT_READ:
+            raise ValueError("INCOME_NOT_READ has nothing to resolve; record how it was handled in the note")
         if not isinstance(resolution, dict) or not all(
             isinstance(k, str) and k and isinstance(v, _SCALARS) for k, v in resolution.items()
         ):

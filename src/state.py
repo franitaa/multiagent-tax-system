@@ -42,6 +42,7 @@ ANSWER_UNCERTAIN = "ANSWER_UNCERTAIN"
 LOOP_GUARD = "LOOP_GUARD"
 REVIEW_BOUND_EXCEEDED = "REVIEW_BOUND_EXCEEDED"
 ELIGIBILITY_UNDECIDED = "ELIGIBILITY_UNDECIDED"  # Rules returned no filing status or no verdict
+INCOME_NOT_READ = "INCOME_NOT_READ"  # the taxpayer has an income form but no amount from it reached the return (#27)
 # Most severe first. Decides which of several simultaneous escalations a human sees first.
 ESCALATION_PRIORITY = (
     EXPLOITATION_SIGNS,
@@ -53,6 +54,7 @@ ESCALATION_PRIORITY = (
     TAX_ADVICE_REQUEST,
     EXTRACTION_REVIEW,
     ELIGIBILITY_UNDECIDED,
+    INCOME_NOT_READ,
     LOOP_GUARD,
     REVIEW_BOUND_EXCEEDED,
 )

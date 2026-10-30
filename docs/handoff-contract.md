@@ -51,15 +51,18 @@ Computation, or escalates.
 - Review does its own arithmetic on purpose: the no-arithmetic rule binds Computation, whose numbers
   are the ones under test.
 - Known gap (#27): a document Extraction skipped (`status: "skipped"`, no fields) has no amounts to
-  compare, so Review passes it. Computation and the draft form flag it instead (see below).
+  compare, so Review passes it. The orchestrator pauses the case for it before Computation
+  (`INCOME_NOT_READ`, below), and Computation and the draft form flag it too.
 
 ### Documents Extraction does not read
 Extraction reads W-2s only. For anything else it still writes a record, so nothing disappears:
 - SSA-1099, 1099-INT and 1099-DIV (in scope, not read yet): `{"kind", "fields": {}, "status":
   "skipped", "reason"}` and a handoff to Rules. Their amounts never reach the draft (issue #27). The
   lines they feed say `NOT READ` in their provenance source (Computation) and the draft form shows an
-  "Income is missing from this draft" warning (`src/income_forms.py`). The amount stays zero and the
-  case is **not** stopped.
+  "Income is missing from this draft" warning (`src/income_forms.py`). The amount stays zero. The case
+  pauses once for a volunteer (`INCOME_NOT_READ`) before Computation, and goes on only if the volunteer
+  continues with a note. The same pause covers a W-2 or 1099-R the taxpayer said they have (`has_w2`,
+  `has_1099_r`) but never uploaded: without it that case finished with wages of $0.
 - 1099-R: escalates `FORM_1099R_BOX_2B` (box 2b cannot be read; a volunteer checks it).
 - Any other kind: escalates `OUT_OF_SCOPE`.
 - A W-2 whose reading needs a visual check: escalates `EXTRACTION_REVIEW` (below).
@@ -134,7 +137,7 @@ Set a flag; do not stop or work around it. The orchestrator performs the interru
 
 Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_REQUEST`,
 `FILING_STATUS_AMBIGUITY`, `EXPLOITATION_SIGNS`, `ANSWER_UNCERTAIN` and `EXTRACTION_REVIEW` (constants in `src/state.py`). The orchestrator
-adds `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED` and `ELIGIBILITY_UNDECIDED` itself.
+adds `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED`, `ELIGIBILITY_UNDECIDED` and `INCOME_NOT_READ` itself.
 When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
 and pauses the thread. The call returns `result["__interrupt__"][0].value` =
 `{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields,
@@ -148,6 +151,7 @@ A volunteer answers on the same `thread_id` with
 |---|---|
 | `OUT_OF_SCOPE`, `FORM_1099R_BOX_2B`, `EXPLOITATION_SIGNS` | `stop` only (a human cannot take responsibility for work the system must not attempt) |
 | `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED`, `ELIGIBILITY_UNDECIDED` (raised by the orchestrator) | `stop` only |
+| `INCOME_NOT_READ` (raised by the orchestrator, once, after Rules and before Computation) | `continue` (a note saying how the missing income was handled; **no resolution**) or `stop` |
 | `SOURCE_CONFLICT`, `FILING_STATUS_AMBIGUITY`, `TAX_ADVICE_REQUEST` | `continue` or `stop` |
 | `ANSWER_UNCERTAIN` | `continue` (with a valid corrected fact) or `stop` |
 | `EXTRACTION_REVIEW` (raised by Extraction) | `continue` (an accepted review of that document) or `stop` (rejects the reading) |
