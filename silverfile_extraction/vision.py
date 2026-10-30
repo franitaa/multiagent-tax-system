@@ -94,7 +94,7 @@ class VisionReader:
         self.provider = provider
         label = PROVIDER_LABELS[provider]
         if not api_key or not api_key.strip():
-            raise SafeInputError(f"Enter your {label} API key in the sidebar.")
+            raise SafeInputError(f"Add your {label} API key to the project-root .env file using OPENAI_API_KEY or ANTHROPIC_API_KEY, then save the file and reload the page.")
         key = api_key.strip()
         if provider == "openai" and key.startswith("sk-ant-"):
             raise SafeInputError("This looks like a Claude key. Select Claude before continuing.")
