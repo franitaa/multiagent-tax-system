@@ -630,7 +630,7 @@ and the branches it fed into.
 ## Francesca Rondinella (Person 1, orchestration) — Sat Oct 25, 2026 (graph, runner, human gate, context strategy)
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `orchestration-setup` and `orchestration-phase3`.
 
-**What the AI helped with**
+**What the AI generated**
 - Wrote the first versions of `src/state.py`, `src/graph.py`, the runner with JSONL tracing, the stub agents and the
   agent contract (`docs/handoff-contract.md`), from the rules in `CLAUDE.md`.
 - Escalation routing and the human gate (`interrupt` and `Command(resume=...)`), including stop-only conditions,
@@ -654,7 +654,7 @@ and the branches it fed into.
 ## Francesca Rondinella (Person 1, orchestration) — Mon Oct 26, 2026 (Intake and Rules integration findings)
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code.
 
-**What the AI helped with**
+**What the AI generated**
 - Reviewed the Intake and Rules branches against the contract and wrote end-to-end and contract tests with the
   real Intake and the real Rules.
 - Found that Rules and Intake used different fact names and value shapes (for example `bool("no")` is `True`),
@@ -675,7 +675,7 @@ and the branches it fed into.
 ## Francesca Rondinella (Person 1, orchestration) — Wed Oct 28, 2026 (integration of the real agents)
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code.
 
-**What the AI helped with**
+**What the AI generated**
 - Removed the expected-failure markers that Matthew's Rules now satisfied, and updated two of my own tests to the integrated behavior.
 - `live_agents()` (one definition of the real agent set) and a narrower Rules view of facts.
 - A tax-tool server that cannot start now ends the case as `halted_by_error` (no traceback, an audit entry).
@@ -695,7 +695,7 @@ and the branches it fed into.
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `p1/phase5-integration`, `p1/status-reruns-rules`
 and `p1/telemetry-dashboard`.
 
-**What the AI helped with**
+**What the AI generated**
 - `ANSWER_UNCERTAIN` as a registered, continuable condition; after a volunteer's answer the gate clears `eligibility`
   so Rules decides again. The same fix for a volunteer's filing status (#29).
 - Moved the project to Python 3.11 (CI, `requires-python`, the lock file, `mcp==2.3.0`).
@@ -718,7 +718,7 @@ and `p1/telemetry-dashboard`.
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `p1/income-not-read`, `p1/verify-chat-extraction`,
 `p1/shared-service-docs`, `p1/direct-input-label` and others; pull requests and comments through the `gh` CLI.
 
-**What the AI helped with**
+**What the AI generated**
 - `INCOME_NOT_READ` (#40, issue #27): the orchestrator pauses a case once when an income form has no amount; a
   volunteer can continue only with a note, or stop. Router rule, human gate, dashboard words, docs and 27 tests.
 - Fixes to JiWon's #39 after review, `scripts/verify_chat_extraction.py` (one real W-2 reading through the chat)
