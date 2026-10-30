@@ -334,7 +334,7 @@
     },
     {
       "id": "sold-property-not-sure",
-      "title": "Taxpayer is not sure whether they sold property: uncertainty does not continue",
+      "title": "Taxpayer is not sure whether they sold property: a volunteer must confirm (stop here)",
       "messages": [
         "Hi, I need help with my 2025 return.",
         "I might have sold some shares, I don't remember."
@@ -364,7 +364,7 @@
       ],
       "expect": {
         "interrupts": [
-          "OUT_OF_SCOPE"
+          "ANSWER_UNCERTAIN"
         ],
         "status": "halted_by_human"
       }

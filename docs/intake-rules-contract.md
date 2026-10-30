@@ -60,9 +60,8 @@ How `"not_sure"` is handled (it never silently becomes yes or no):
 
 | Answer | Rules |
 |---|---|
-| `married_dec31`, `file_jointly`, `household_situation`, `taxpayer_blind`, `spouse_blind` | `ANSWER_UNCERTAIN` for that one fact |
+| `married_dec31`, `file_jointly`, `household_situation`, `taxpayer_blind`, `spouse_blind`, and every screening question (section 5) | `ANSWER_UNCERTAIN` for that one fact |
 | `taxpayer_birth_date` | Back to Intake for a follow-up |
-| Any screening question | Escalated as out of scope (`OUT_OF_SCOPE`, reason ends "answer not_sure"); agreed, see section 5 |
 
 ## 3. Flags: use `escalation`, not facts
 Rules no longer reads flag facts. The real Intake raises `TAX_ADVICE_REQUEST`, `FILING_STATUS_AMBIGUITY`
@@ -109,8 +108,7 @@ Rules also screens extracted documents: a 1099-NEC is out of scope even if Intak
 
 **Status:** Rules now raises `OUT_OF_SCOPE` for a `"yes"` screening answer, with a reason that names the item
 (`tests/test_e2e_intake.py::test_an_out_of_scope_screening_answer_escalates_as_out_of_scope`, 5 cases), and
-an uncertain answer is not continued past (eval `sold-property-not-sure`). **Decision (Matthew and Supriya, 2026-10-30): a `not_sure` screening answer is
-escalated to a volunteer (`OUT_OF_SCOPE`), not re-asked by Intake.** The fact list above is from running the real Intake.
+an unsure answer is not continued past (eval `sold-property-not-sure`). **Decision (Matthew and Supriya, 2026-10-30; Supriya's request on #49): a `not_sure` screening answer raises `ANSWER_UNCERTAIN`, naming the fact, not `OUT_OF_SCOPE`.** The volunteer asks the taxpayer and answers yes or no (`UNCERTAIN_ANSWERS` in `human.py`): "no" lets the case continue, "yes" ends it as `OUT_OF_SCOPE`. A definite out-of-scope answer is checked first, so no one is asked about an unsure answer on a case that stops anyway (`tests/test_uncertain_screening.py`). Intake does not re-ask. The fact list above is from running the real Intake.
 
 ## Done means (all of these pass on `main`; the markers are gone)
 These were strict expected failures. They pass now, and the `xfail` markers are removed:
