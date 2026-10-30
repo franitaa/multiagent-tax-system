@@ -56,7 +56,7 @@ class ExtractionService:
         if state["pending"]:
             raise SafeInputError("Finish or reject the pending document review before uploading another.")
         if self.reader is None:
-            raise SafeInputError("Enter your OpenAI API key before extracting an image.")
+            raise SafeInputError("Configure the selected provider's API key in the project-root .env file using OPENAI_API_KEY or ANTHROPIC_API_KEY, then save the file and reload the page.")
         claims = [UserAmountClaim.model_validate(x) for x in (user_claims or [])]
         for claim in claims:
             money_string(claim.value)
