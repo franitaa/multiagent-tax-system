@@ -95,8 +95,14 @@ recorded `"no"` but an uploaded document of that type is present, Rules must fla
 `SOURCE_CONFLICT` and identify the disputed fact for human resolution before
 computation. A missing answer or `"not_sure"` is not, by itself, a contradiction.
 A volunteer can supply `{fact_name: corrected_value}`; the orchestrator records it
-in `facts` with source `human:SOURCE_CONFLICT`, and Rules must reevaluate the
-corrected answer before allowing the draft to finish.
+in `facts` with source `human:SOURCE_CONFLICT`; eligibility is then cleared and Rules
+re-runs its eligibility and scope checks with the corrected answer before the draft can
+finish. After a volunteer has continued, Rules does not raise the same conflict again.
+
+A conflict depends only on the uploaded document's kind, not on whether Extraction read
+its amounts. If the corrected form has no amounts (Extraction does not yet read SSA-1099,
+1099-INT or 1099-DIV), the case may pause again for `INCOME_NOT_READ` until the taxpayer
+types the amounts (see `docs/answer-names.md`).
 
 **References:** Assignment 7 §4 (eligibility rules and human escalation);
 project `docs/answer-names.md` and the team handoff contract.
