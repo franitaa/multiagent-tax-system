@@ -50,7 +50,14 @@ once a human has resolved the condition.
 - Limits: regex redaction is a defensive filter, not a guarantee. Embedded instructions are
   labelled as data; the Extraction agent must not treat document text as instructions.
   Escalation reasons and volunteer notes are redacted by the runner before they reach state.
-- Dual-status aliens (section 3.2 rule 2) are not detected here; Rules/Intake must escalate.
+- Dual-status aliens: the assignment (section 3.2, rule 2) says the standard deduction chart does not
+  apply to a taxpayer who was a dual-status alien, and that this is an escalation condition. Intake
+  does not ask about dual status. What the system does: Intake's Q23 ("Did you live in the United
+  States for all of 2025?") records `us_resident_all_year`; "no" makes Rules stop the case as out of
+  scope (policy.md §3.1) before the chart is used, and "not sure" asks a volunteer to clarify first
+  (ANSWER_UNCERTAIN). Not detected: a taxpayer who answers "yes" to Q23 but was a dual-status
+  alien for another reason (for example a change of tax residency status); that is a known
+  limitation.
 
 ## Known limitations
 - Line 16 uses the 2025 ordinary rate schedules only (brackets checked against Rev. Proc.
