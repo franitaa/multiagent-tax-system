@@ -17,9 +17,14 @@ No local Python needed. The image is built and checked in CI on every push.
 docker build -t silverfile .
 docker run --rm silverfile                                    # a clean case to "DRAFT READY"
 docker run --rm silverfile pytest -q                          # all tests, inside the container
-docker run --rm -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
-                                                              # taxpayer chat page: http://localhost:8501
+docker run --rm -p 8501:8501 silverfile streamlit run src/ui/silverfile_home.py
+                                                              # start page: http://localhost:8501
 ```
+
+The start page offers **"I'm a taxpayer"** (the chat) and **"I'm a Kushim volunteer"** (the dashboard:
+every case, and resolving alarms). Both run in this one container so they share the saved sessions;
+do not start them in two separate containers. Add `-v "$PWD/runtime:/app/runtime"` to keep sessions
+after the container stops.
 
 Secrets are never built into the image. Docker's `--env-file .env` sets environment variables, but the P3 W-2 page reads the `.env` file directly. To use that page in Docker, also mount your local `.env` file read-only at the project root inside the container, alongside `app.py`. Never copy secrets into the image.
 
@@ -88,7 +93,14 @@ Python 3.11 or newer (CI tests 3.11).
 python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest                                              # all tests, offline and fast
+.venv/bin/streamlit run src/ui/silverfile_home.py             # taxpayer chat + volunteer dashboard
 ```
+
+To see a human-in-the-loop event end to end: on the start page choose **I'm a taxpayer**, start a
+session, type your name, then answer *"Should I file jointly?"*. In a second browser tab open the start
+page again, choose **I'm a Kushim volunteer**, type your name in the sidebar, open the case at the top
+("Needs a volunteer"), choose *Continue*, add a note and save. Back in the first tab press **Check
+again**: the taxpayer carries on.
 
 Scenarios (all offline; each writes a trace to `traces/`):
 
