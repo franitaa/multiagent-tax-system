@@ -10,8 +10,44 @@ from src.p3.bridge import P3Tools
 def make_shared_service(checkpointer, runtime="runtime", reader=None, trace_dir="traces"):
     """Use the chat-owned saver; the caller owns its lifetime.
 
-    Use service.graph for chat.start/send and dashboard access as well.
-    The P3 registry must be installed when compiling, not after compilation.
+    How the chat page uses it (JiWon's integration pattern; a sketch, not a complete UI block: `reader`,
+    `case_id`, `uploaded_file` and `final_answer` come from the page)::
+
+        from src.ui import chat_session as chat
+        from src.p3.shared_service import make_shared_service
+
+        saver = chat.open_saved_sessions()                    # the chat's saved-session storage
+        service = make_shared_service(saver, reader=reader)   # reader: a VisionReader for the chosen provider
+        graph = service.graph                                 # use THIS graph for every chat operation
+        service.submit(case_id, uploaded_file.getvalue(), synthetic_confirmed=True)
+        chat.send(graph, case_id, final_answer)               # same graph, same case ID
+
+    What the upload step does:
+      * `submit()` saves the image and adds its reference to the existing case. It does not call the model.
+      * Extraction runs when the normal graph reaches the Extraction agent, which is when the interview
+        ends. Keep the configured reader available during that call, and show the taxpayer a wait message.
+      * Use `service.graph`, not `chat.make_graph()`: the adapter registers the P3 tools when compiling,
+        not after.
+      * Read results with `service.records(case_id)`. Human review is the existing EXTRACTION_REVIEW
+        interrupt; `service.resolve(case_id, decision)` resumes it with a validated HumanDecision.
+      * Pass `synthetic_confirmed=True` only after the user confirms the image is fictional test data.
+      * Reuse one service for the active session and serialize operations on the same case. There is no
+        cross-page locking, so disable the upload button while a call runs.
+
+    Timing is a rule, not advice. Upload before the interview's final answer, once the W-2 answer is "yes".
+    A taxpayer who says they have a W-2 and has uploaded nothing makes the orchestrator pause the case for a
+    volunteer (INCOME_NOT_READ), and `submit()` refuses a document while a volunteer request is pending or
+    after the lines are computed, so a late upload is impossible. If uploads must come later, the
+    orchestrator needs an explicit upload-wait step.
+
+    Also needed (added by Francesca):
+      * The volunteer dashboard must use the same service graph (build the service once and share it),
+        otherwise it resumes with a graph that has the default tools, not the P3 ones.
+      * The chat page has no provider selector. Decide how the provider is chosen (for example, the key
+        present in `.env`), and read the key from the `.env` file as app.py does. Never put a key in state.
+      * Approving a reading in the dashboard (service.resolve) is not built yet; today it is done on the
+        W-2 page. To check the whole path with a real provider: `python -m scripts.verify_chat_extraction`.
+
     `trace_dir` is where the runner writes traces and the audit log. Keep the chat's own default
     ("traces"): the volunteer dashboard and the telemetry page read `traces/audit`, so a different
     folder would leave a case's history empty there.
