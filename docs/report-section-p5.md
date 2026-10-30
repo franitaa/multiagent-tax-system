@@ -52,7 +52,7 @@ Hand-calculated expected values for each tool including boundary cases, an end-t
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
 tests that traces, the form and chat messages never show or hold a real-looking SSN, and a check
 that fails if the Computation agent does arithmetic itself. Full suite on `p5/issue-41-typed-amounts`
-(Windows, Python 3.13, based on `main` at PR #39), Oct 30, 2026: 1212 passing, 1 skipped (it waits
+(Windows, Python 3.13, based on `main` at PR #39), Oct 30, 2026: 1216 passing, 1 skipped (it waits
 for PR #40) and 3 expected failures (xfail), with the Streamlit version pinned in `requirements.txt`.
 Earlier, on Oct 28, the count was 835 passing and 2 expected failures, before PR #30 and #33 and this
 work merged.

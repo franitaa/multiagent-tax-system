@@ -108,6 +108,10 @@ agreed with Supriya. Each is a number, source `"direct user input"`, and is read
 Limit: one typed amount marks its form as read, so a withholding left out on the same form is not
 flagged. Intake should ask each box, or the form should be flagged until all its amounts are in.
 
+If a form was also read from an uploaded document, the document wins and the typed amount for that form is
+not added (it would count twice); the line's source says so. Review checks a typed amount against the answer
+in `facts`, including when it is summed with others (the input is labelled `facts.<name>`).
+
 ## Not answers (other agents can ignore these)
 | Name | Meaning |
 |---|---|

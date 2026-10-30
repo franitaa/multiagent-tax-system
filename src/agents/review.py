@@ -238,7 +238,7 @@ def check_provenance(computed):
     return findings
 
 
-def check_sources(ret, extracted):
+def check_sources(ret, extracted, facts=None):
     """Every cited document field or line matches; nothing from a document is dropped."""
     findings, verified = [], set()
     for line in sorted(ret.computed):
@@ -256,6 +256,17 @@ def check_sources(ret, extracted):
                         "sources", line, f"uses {key} = {cited}, but {key} is {ret.value(key)}"))
             elif "." in key:
                 doc_id, field = key.split(".", 1)
+                if doc_id == "facts" and doc_id not in extracted:
+                    # a typed amount summed with others (Computation labels it "facts.<answer name>")
+                    given = _amount(_fact(facts or {}, field))
+                    if given is None:
+                        findings.append(_finding("sources", line, f"cites {key}, but the taxpayer gave no amount"))
+                    elif _amount(cited) is not None and not _close(_amount(cited), given):
+                        findings.append(_finding(
+                            "sources", line, f"uses {key} = {cited}, but the taxpayer gave {given}"))
+                    else:
+                        doc_values.append(given)
+                    continue
                 if doc_id not in extracted:
                     findings.append(_finding("sources", line, f"cites {doc_id}, which was not extracted"))
                     continue
@@ -527,7 +538,7 @@ def review_return(view, tools):
     facts = view.get("facts") or {}
     ret = _Return(computed)
 
-    source_findings, doc_verified = check_sources(ret, extracted)
+    source_findings, doc_verified = check_sources(ret, extracted, facts)
     recompute_findings, tool_verified = check_recompute(ret, eligibility, tools)
     total_findings, total_verified = check_totals(ret)
     verified = doc_verified | tool_verified | total_verified
