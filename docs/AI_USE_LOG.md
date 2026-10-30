@@ -159,7 +159,7 @@ and `p5/redact-messages-at-boundary`.
   number that is not an SSN would also be removed from a chat message.
 
 ## Person 5 (Sahana) — Wed Oct 28, 2026 (security and Computation integration)
-**Tool:** Claude Code (model: [confirm before submitting]) in the terminal, on branch `p5/oct27-followups`
+**Tool:** Claude Code (model not recorded) in the terminal, on branch `p5/oct27-followups`
 and the branches it fed into.
 
 **What the AI helped with**
@@ -173,7 +173,7 @@ and the branches it fed into.
 - Corrected two 2025 bracket tops in `tax_math.py` against Rev. Proc. 2024-40, with tests.
 
 **What I decided or checked myself**
-- [Sahana to add: which fixes I reviewed by hand, and what I rejected.]
+- Reported to the team that the SEC-2 commit messages described runner and state changes that were not in the committed diff, rather than leaving the mismatch unmentioned.
 
 **How the AI's work was verified**
 - The full pytest suite before each commit. The remaining failures were listed in the P5 README
@@ -184,7 +184,7 @@ and the branches it fed into.
   caller supplies (there is no login yet).
 
 ## Person 5 (Sahana) — Thu Oct 29, 2026 (review fixes, unread income forms, merge)
-**Tool:** Claude Code (model: [confirm before submitting]) in the terminal, on branches `p5/clean`,
+**Tool:** Claude Code (model not recorded) in the terminal, on branches `p5/clean`,
 `p5/in-scope-income-warning` and a test-fix branch for PR #31.
 
 **What the AI helped with**
@@ -210,8 +210,8 @@ and the branches it fed into.
 - Issue #27 is only partly fixed: the draft warns, but the amounts still need Intake and Extraction work.
 
 ## Person 5 (Sahana) — Fri Oct 30, 2026 (typed income amounts, PR #40 review, retention)
-**Tool:** Claude Code (model: [confirm before submitting]) in the terminal, on branches
-`p5/typed-income-amounts` and `p5/clean`.
+**Tool:** Claude Code (Claude Haiku 5.5) in the terminal, on branches `p5/typed-income-amounts`,
+`p5/retention-uploads` and `p5/issue-41-typed-amounts`.
 
 **What the AI helped with**
 - Issue #41 P1 (issue #27, step 2): Computation reads amounts the taxpayer types for SSA-1099, 1099-INT
@@ -224,8 +224,8 @@ and the branches it fed into.
 - Updated the retention wording in `docs/security.md` and the P5 README, with a scheduling example.
 
 **What I decided or checked myself**
-- [Sahana to add: the fact names I proposed in `docs/answer-names.md` have not been agreed with Intake.]
-- [Sahana to add: whether the Windows Task Scheduler line was tested on this machine.]
+- The fact names in `docs/answer-names.md` are proposed, not agreed with Intake. The decision is with Supriya on PR #46.
+- The Windows Task Scheduler example has not been tested on this machine.
 
 **How the AI's work was verified**
 - Typed-amount change: full suite 1109 passed, 3 xfailed before the commit.
