@@ -235,11 +235,12 @@ and the branches it fed into.
 - One typed amount marks its whole form as read, so a missing withholding on that form is not flagged.
 - The scheduled purge only runs if someone sets up the schedule.
 
-## Person 5 (Sahana) — ChatGPT, used alongside Claude Code (dates not recorded)
+## Person 5 (Sahana) — ChatGPT, Oct 22 to Oct 25, 2026 (before switching to Claude Code)
 **Tool:** OpenAI ChatGPT.
 
 **What the AI helped with**
-- Helped me understand the project and the work I needed to do as Person 5.
+- Helped me understand the project and the work I needed to do as Person 5 (Computation, provenance and security).
+- Generated code for my Person 5 part.
 
 **What I decided or checked myself**
-- All code, commits and pull requests for my part were made in Claude Code (see the entries above).
+- After Oct 25 I switched to Claude Code, which made the changes described in the entries above.
