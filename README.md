@@ -24,10 +24,33 @@ docker run --rm -p 8501:8501 silverfile streamlit run src/ui/silverfile_home.py
 
 The start page offers **"I'm a taxpayer"** (the chat) and **"I'm a Kushim volunteer"** (the dashboard:
 every case, and resolving alarms). Both run in this one container so they share the saved sessions;
-do not start them in two separate containers. Add `-v "$PWD/runtime:/app/runtime"` to keep sessions
-after the container stops.
+do not start them in two separate containers.
 
-Secrets are never built into the image. Docker's `--env-file .env` sets environment variables, but the P3 W-2 page reads the `.env` file directly. To use that page in Docker, also mount your local `.env` file read-only at the project root inside the container, alongside `app.py`. Never copy secrets into the image.
+**Keeping cases between runs (recommended): Docker Compose.** It runs the start app and the W-2 photo
+page, with saved cases, uploads, traces and the audit log in Docker volumes, so they survive restarts
+and new containers:
+
+```
+cp .env.example .env                     # once; add an API key only to read W-2 photos
+docker compose up --build                # start page http://localhost:8501 (telemetry: /telemetry)
+                                         # W-2 photo page http://localhost:8502
+docker compose down                      # stop; saved cases are kept
+docker compose down -v                   # stop and delete all saved cases, uploads and traces
+```
+
+The same with `docker run`: mount both folders and the `.env` file.
+
+```
+docker run --rm -p 8501:8501 \
+  -v silverfile-runtime:/app/runtime -v silverfile-traces:/app/traces \
+  -v "$PWD/.env:/app/.env:ro" \
+  silverfile streamlit run src/ui/silverfile_home.py
+```
+
+- `runtime` holds the saved cases and uploads, `traces` the traces and the audit log (case history on
+  the dashboard, and telemetry). Mount both, or the history is lost when the container is replaced.
+- Secrets are never built into the image. The W-2 page reads the `.env` file itself, not environment
+  variables, so `--env-file` is not enough: mount the file read-only as above.
 
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to

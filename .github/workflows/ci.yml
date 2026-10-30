@@ -41,3 +41,52 @@ jobs:
           docker run -d --name chat -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
           for i in $(seq 1 30); do curl -sf http://localhost:8501/_stcore/health && exit 0; sleep 1; done
           docker logs chat; exit 1
+
+  # The documented way to run the whole app (docker-compose.yml): every page draws, the volunteer
+  # dashboard sees the chat's cases, and cases and their history survive new containers.
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start the app with volumes
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
+      - name: Both apps answer
+        run: |
+          for port in 8501 8502; do
+            for i in $(seq 1 60); do curl -sf "http://localhost:$port/_stcore/health" && break; sleep 1; done
+            curl -sf "http://localhost:$port/_stcore/health" || { docker compose logs; exit 1; }
+          done
+      - name: Every page draws without an error
+        run: |
+          docker compose exec -T app python -c "
+          from streamlit.testing.v1 import AppTest
+          pages = ['src/ui/silverfile_home.py', 'src/ui/taxpayer_chat.py', 'src/ui/volunteer_dashboard.py',
+                   'src/ui/telemetry_dashboard.py', 'app.py']
+          for page in pages:
+              errors = [e.value for e in AppTest.from_file(page, default_timeout=60).run().exception]
+              assert not errors, f'{page}: {errors[0]}'
+              print('ok', page)"
+      - name: A question on the chat reaches the volunteer dashboard
+        run: |
+          docker compose exec -T app python -c "
+          from src.ui import chat_session as chat
+          graph = chat.make_graph(chat.open_saved_sessions())
+          chat.start(graph, 'ci-case')
+          chat.send(graph, 'ci-case', 'Should I file jointly with my husband?')
+          from src.ui import dashboard_data as dash
+          assert dash.pending(dash.open_graph(), 'ci-case'), 'the dashboard does not see the case waiting'"
+      - name: Cases and their history survive new containers
+        run: |
+          docker compose down
+          docker compose up -d
+          sleep 5
+          docker compose exec -T app python -c "
+          from src.ui import dashboard_data as dash
+          assert 'ci-case' in dash.case_ids(dash.open_graph()), 'saved case lost'
+          assert dash.history('ci-case') and dash.history_intact('ci-case'), 'case history lost or broken'"
+          docker compose exec -T w2 test -s runtime/team_checkpoints.sqlite
+      - name: Stop and clean up
+        if: always()
+        run: docker compose down -v

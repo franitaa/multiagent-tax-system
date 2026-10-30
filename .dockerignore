@@ -1,4 +1,4 @@
-# Kept out of the image: secrets, local environments, caches and run output.
+# Kept out of the image: secrets, local environments, caches, saved cases, uploads and run output.
 .env
 .git
 .github
@@ -8,6 +8,8 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 traces/*.jsonl
+traces/audit/
+runtime/
 *.sqlite
 *.db
 .DS_Store
