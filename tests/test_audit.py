@@ -85,7 +85,10 @@ def test_a_decision_without_a_name_is_recorded_as_unidentified(tmp_path):
 
 def test_the_audit_log_holds_no_amounts_or_answers(tmp_path):
     _, log = spouse_run(tmp_path, "Pat Doe")
-    text = log.path("audit-case").read_text()
+    # Look at the entries without their hashes: a hash is 64 random hex characters and can contain
+    # "1000" by chance (this test failed about once in a few hundred runs when it read the raw file).
+    text = json.dumps([{k: v for k, v in e.items() if k not in ("hash", "prev", "ts")}
+                       for e in log.read("audit-case")])
     assert "married_filing_jointly" not in text  # the resolution VALUE; only field names are kept
     assert "1000" not in text and "TEST DATA" not in text
 
