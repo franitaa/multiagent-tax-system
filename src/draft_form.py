@@ -51,6 +51,7 @@ SECTIONS = (
     ("Payments", (
         ("line_25a", "25a", "Federal tax withheld from Form(s) W-2"),
         ("line_25b", "25b", "Federal tax withheld from Form(s) 1099"),
+        ("line_25c", "25c", "Federal tax withheld from other forms"),
         ("line_25d", "25d", "Total federal tax withheld"),
         ("line_26", "26", "Estimated tax payments"),
         ("line_31", "31", "Amount from Schedule 3 (other payments)"),

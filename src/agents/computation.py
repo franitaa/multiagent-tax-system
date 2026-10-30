@@ -292,7 +292,11 @@ def run(view, tools):
     # --- payments
     withheld_w2 = from_documents("line_25a")
     withheld_1099 = from_documents("line_25b")
-    withheld = total("line_25d", {"line_25a": withheld_w2, "line_25b": withheld_1099})
+    # 25c (other forms, e.g. W-2G) is never fed by an in-scope form, so it is zero, with its reason
+    withheld_other = total("line_25c", {}, "No other withholding forms: only W-2 (25a) and 1099 (25b) "
+                                           "forms are in scope")
+    withheld = total("line_25d", {"line_25a": withheld_w2, "line_25b": withheld_1099,
+                                  "line_25c": withheld_other})
     estimated = direct_or_zero("line_26", "estimated_payments_amount",
                               "No estimated payments entered")
     schedule3_payments = direct_or_zero("line_31", "schedule3_payments",
