@@ -52,12 +52,10 @@ jobs:
         run: |
           cp .env.example .env
           docker compose up -d --build
-      - name: Both apps answer
+      - name: The app answers
         run: |
-          for port in 8501 8502; do
-            for i in $(seq 1 60); do curl -sf "http://localhost:$port/_stcore/health" && break; sleep 1; done
-            curl -sf "http://localhost:$port/_stcore/health" || { docker compose logs; exit 1; }
-          done
+          for i in $(seq 1 60); do curl -sf http://localhost:8501/_stcore/health && break; sleep 1; done
+          curl -sf http://localhost:8501/_stcore/health || { docker compose logs; exit 1; }
       - name: Every page draws without an error
         run: |
           docker compose exec -T app python -c "
@@ -86,7 +84,27 @@ jobs:
           from src.ui import dashboard_data as dash
           assert 'ci-case' in dash.case_ids(dash.open_graph()), 'saved case lost'
           assert dash.history('ci-case') and dash.history_intact('ci-case'), 'case history lost or broken'"
-          docker compose exec -T w2 test -s runtime/team_checkpoints.sqlite
+      - name: A W-2 photo added in the chat is checked on the volunteer dashboard
+        run: |
+          docker compose exec -T app python -c "
+          import sys; sys.path.insert(0, 'tests_p3')
+          from pathlib import Path
+          from p3_helpers import FakeReader  # offline stand-in for the AI reader: no key, no call
+          from src.ui import chat_session as chat, dashboard_data as dash
+          from tests.test_intake_agent import FULL_ANSWERS
+          service = chat.make_app_service(reader=FakeReader())
+          graph, case = service.graph, chat.new_case_id()
+          chat.start(graph, case)
+          for answer in FULL_ANSWERS:
+              chat.send(graph, case, answer)
+              if chat.waiting_for_w2(graph, case):
+                  assert chat.add_w2(service, case, Path('data/fixtures/w2_01.jpg').read_bytes(), confirmed=True) is None
+          assert (dash.pending(graph, case) or {}).get('condition') == 'EXTRACTION_REVIEW', 'no W-2 check waiting'
+          assert dash.decide_w2(service, case, True, 'Amounts match the photo.', 'ci-volunteer',
+                                checked_photo=True, tax_year=2025) is None
+          values = graph.get_state({'configurable': {'thread_id': case}}).values
+          assert values['status'] == 'complete' and values['computed']['line_1a']['value'] > 0, 'no draft with wages'
+          assert list(Path('runtime/uploads').glob('*.png')), 'the photo is not in the runtime volume'"
       - name: Stop and clean up
         if: always()
         run: docker compose down -v

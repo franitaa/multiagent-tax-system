@@ -26,14 +26,13 @@ The start page offers **"I'm a taxpayer"** (the chat) and **"I'm a Kushim volunt
 every case, and resolving alarms). Both run in this one container so they share the saved sessions;
 do not start them in two separate containers.
 
-**Keeping cases between runs (recommended): Docker Compose.** It runs the start app and the W-2 photo
-page, with saved cases, uploads, traces and the audit log in Docker volumes, so they survive restarts
-and new containers:
+**Keeping cases between runs (recommended): Docker Compose.** It runs the start app, with saved
+cases, uploaded W-2 photos, traces and the audit log in Docker volumes, so they survive restarts and
+new containers. The W-2 photo is added in the chat and checked on the volunteer dashboard:
 
 ```
 cp .env.example .env                     # once; add an API key only to read W-2 photos
 docker compose up --build                # start page http://localhost:8501 (telemetry: /telemetry)
-                                         # W-2 photo page http://localhost:8502
 docker compose down                      # stop; saved cases are kept
 docker compose down -v                   # stop and delete all saved cases, uploads and traces
 docker compose exec app python -m scripts.purge_cases --expired   # retention: delete expired cases
@@ -52,8 +51,11 @@ docker run --rm -p 127.0.0.1:8501:8501 \
   have no login, and Docker's default would publish them on every network interface.
 - `runtime` holds the saved cases and uploads, `traces` the traces and the audit log (case history on
   the dashboard, and telemetry). Mount both, or the history is lost when the container is replaced.
-- Secrets are never built into the image. The W-2 page reads the `.env` file itself, not environment
-  variables, so `--env-file` is not enough: mount the file read-only as above.
+- Secrets are never built into the image. The app reads the API key from the `.env` file itself, not
+  from environment variables, so `--env-file` is not enough: mount the file read-only as above. Fill it
+  in before starting: the key is read once, when the app starts.
+- The separate W-2 workbench (`app.py`) is not started: it writes demo answers into the case ID it is
+  given. Use it only on its own, with a new case ID.
 
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to
