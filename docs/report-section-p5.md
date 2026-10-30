@@ -26,6 +26,10 @@ boundary that every agent call passes through.
   line, and the send-back makes Computation read them (a repaired draft says so in its formula). A
   volunteer's filing-status decision is never replaced by Rules' stale one; Review keeps failing
   until Rules agrees, and the bounded loop then hands the case to a human.
+- In-scope income forms Extraction does not read (SSA-1099, 1099-INT, 1099-DIV): the lines they feed
+  say "NOT READ" in their source, the draft form warns at the top, and nothing is invented. Amounts the
+  taxpayer types for those forms are used as direct-input records and count as read (the proposed
+  fact names are in `docs/answer-names.md`, not yet asked by Intake).
 - Taxpayer who can be claimed as a dependent, itemizing spouse, 1099-R with box 2b, 1099-NEC and
   similar: Computation stops and escalates to a human instead of calculating.
 - Not handled (documented in `docs/provenance.md`): qualified-dividend rates, QCD, dual-status
@@ -35,7 +39,8 @@ boundary that every agent call passes through.
   agent that obeys a document still cannot write outside its fields. A model persuaded to misreport
   a value inside its own fields is caught only by Review and the human gate.
 - Audit and retention: each case has a tamper-evident audit log (who decided what, no personal
-  data); cases can be deleted on request or expire after 30 idle days. Not done: encryption at
+  data); cases can be deleted on request or expire after 30 idle days, and deleting a case also removes
+  the uploads it was read from. Not done: encryption at
   rest, authentication, wiping backups (docs/security.md).
 - Redaction is regex-based and can miss unusual formats; it is a defensive filter, not a guarantee.
   Document text is labelled as data, but nothing here can stop a model that is careless with it.
@@ -46,8 +51,9 @@ boundary that every agent call passes through.
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
 tests that traces, the form and chat messages never show or hold a real-looking SSN, and a check
-that fails if the Computation agent does arithmetic itself. Full suite on `p5/oct27-followups`
-(Windows, Python 3.13), Oct 28, 2026: 835 passing and 2 expected failures.
+that fails if the Computation agent does arithmetic itself. Full suite on `p5/typed-income-amounts`
+(Windows, Python 3.13), Oct 30, 2026: 1111 passing, 3 expected failures (xfail). Earlier on Oct 28
+the count was 835 passing and 2 expected failures, before PR #30, #33 and this work merged.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed (in the chat page and again where messages enter the
