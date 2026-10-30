@@ -17,11 +17,16 @@ No local Python needed. The image is built and checked in CI on every push.
 docker build -t silverfile .
 docker run --rm silverfile                                    # a clean case to "DRAFT READY"
 docker run --rm silverfile pytest -q                          # all tests, inside the container
-docker run --rm -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
-                                                              # taxpayer chat page: http://localhost:8501
+docker run --rm -p 8501:8501 silverfile streamlit run src/ui/silverfile_home.py
+                                                              # start page: http://localhost:8501
 ```
 
-Secrets are never built into the image; pass them at run time with `--env-file .env`.
+The start page offers **"I'm a taxpayer"** (the chat) and **"I'm a Kushim volunteer"** (the dashboard:
+every case, and resolving alarms). Both run in this one container so they share the saved sessions;
+do not start them in two separate containers. Add `-v "$PWD/runtime:/app/runtime"` to keep sessions
+after the container stops.
+
+Secrets are never built into the image. Docker's `--env-file .env` sets environment variables, but the P3 W-2 page reads the `.env` file directly. To use that page in Docker, also mount your local `.env` file read-only at the project root inside the container, alongside `app.py`. Never copy secrets into the image.
 
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to
@@ -88,7 +93,14 @@ Python 3.11 or newer (CI tests 3.11).
 python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest                                              # all tests, offline and fast
+.venv/bin/streamlit run src/ui/silverfile_home.py             # taxpayer chat + volunteer dashboard
 ```
+
+To see a human-in-the-loop event end to end: on the start page choose **I'm a taxpayer**, start a
+session, type your name, then answer *"Should I file jointly?"*. In a second browser tab open the start
+page again, choose **I'm a Kushim volunteer**, type your name in the sidebar, open the case at the top
+("Needs a volunteer"), choose *Continue*, add a note and save. Back in the first tab press **Check
+again**: the taxpayer carries on.
 
 Scenarios (all offline; each writes a trace to `traces/`):
 
@@ -144,7 +156,7 @@ This folder combines the team files supplied in this conversation with P3's W-2 
 
 1. Extract into a **new folder**, leaving your existing team checkout untouched.
 2. Open the folder containing `start.py` in VS Code.
-3. Open Terminal → New Terminal and run:
+3. Before starting the app, copy `.env.example` to `.env` in the project root. Enter your own `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, leave unused keys blank, and save. Never commit `.env`. Open Terminal → New Terminal and run:
 
 ```powershell
 python start.py
@@ -153,7 +165,7 @@ python start.py
 Python 3.11+ is required. The launcher installs dependencies into this folder's `.venv`. No Tesseract, Docker, activation command or source-code editing is required.
 
 4. Open http://127.0.0.1:8501.
-5. Enter your OpenAI API key in the sidebar. Choose a new case ID.
+5. Select OpenAI or Anthropic in the sidebar, matching the key configured in `.env`. Choose a new case ID. Graders should configure their own API keys in `.env`.
 6. Upload `data/fixtures/w2_01.jpg`, confirm fictional data and click **Read W-2 image**.
 7. Compare the amounts, fill in the reviewer/note, confirm visual verification and save the review.
 8. Restart with the same case ID to inspect persisted results.
@@ -163,17 +175,19 @@ The workbench uses the **team graph**, access policies, parallel extraction node
 ## What was connected
 
 - `src/agents/extraction.py` calls a registered P3 tool, rather than returning a hard-coded amount.
-- Real images go to OpenAI; deterministic synthetic text fixtures exist only for the offline team tests.
-- The result uses `extracted[doc_id].fields.box_1` etc., with the team's five provenance fields. Exact monetary values stay decimal strings.
+- W-2 images are sent to the selected provider: OpenAI or Anthropic. Deterministic synthetic text fixtures are used for offline tests.
+- The result uses `extracted[doc_id].fields.box_1` etc., with the team's five provenance fields. Shared field values are numeric; internal extraction records preserve decimal strings and source evidence.
 - The Orchestrator sends `EXTRACTION_REVIEW` to its human gate. Each document must be approved separately. Corrections update the extracted record and preserve the original.
 - The runner records actual provider token usage for image extraction, keeping estimates labelled for other agents.
 - The demo supplies SQLite persistence to the team's graph. P2 can use `src.memory` for checkpointer factories, answer storage and a read-only resume summary.
 
 ## Privacy and operational limits
 
-Use **fictional test documents only**. The whole image is normalized and saved locally after your confirmation, then sent to OpenAI. This version retains the confirmed upload to allow retry/restart. Model-based SSN screening occurs after transmission; it is not reliable redaction or a guarantee that all real identifiers are blocked. This differs from the old standalone service, which saved only after model validation. Never upload real tax documents.
+Use **fictional test documents only**. The whole image is normalized and saved locally after your confirmation, then sent to the selected provider, OpenAI or Anthropic. This version retains the confirmed upload to allow retry/restart. Model-based SSN screening occurs after transmission; it is not reliable redaction or a guarantee that all real identifiers are blocked. This differs from the old standalone service, which saved only after model validation. Never upload real tax documents.
 
-The manual API key stays in process/session memory; it is not placed in graph state, traces or exported records. Calls may incur API charges. `store=False` is used, but does not promise zero provider retention. Case IDs are not authentication. Keep this classroom UI on localhost.
+API keys are read from the local `.env` file; the sidebar does not accept API keys. Keys remain in that local file and are not placed in graph state, traces or exported records. Never commit `.env`; only share `.env.example` with blank API-key values.
+
+Calls may incur charges on the selected provider account. OpenAI requests use `store=False`; this does not guarantee zero provider retention and is not an Anthropic setting. Case IDs are not authentication. Keep this classroom UI on localhost.
 
 Runtime images, databases and traces are under `runtime/` and ignored by Git. Do not commit `.env`, keys, `.venv` or runtime data. This ZIP contains no API key and does not migrate old checkpoints.
 
@@ -189,4 +203,4 @@ For the P3-only unit suite:
 .\.venv\Scripts\python.exe -m unittest discover -s tests_p3 -v
 ```
 
-See [P3_INTEGRATION.md](docs/P3_INTEGRATION.md), [P3_CHANGED_FILES.md](docs/P3_CHANGED_FILES.md) and [VALIDATION.md](docs/VALIDATION.md). The common graph/security-policy/human-gate changes must be reviewed by P1 before merging into the team branch. No commit or push was performed.
+See [P3_INTEGRATION.md](docs/P3_INTEGRATION.md), [P3_CHANGED_FILES.md](docs/P3_CHANGED_FILES.md) and [VALIDATION.md](docs/VALIDATION.md). The common graph/security-policy/human-gate changes must be reviewed by P1 before merging into the team branch. 

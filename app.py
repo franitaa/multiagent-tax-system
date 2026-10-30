@@ -1,4 +1,4 @@
-"""Local-only dual-provider vision workbench. The API key is never saved to disk."""
+"""Local-only dual-provider workbench. API keys are read from the local .env file."""
 import json
 import os
 import sys
@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 import streamlit as st
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 from pydantic import ValidationError
 from silverfile_extraction.models import BOX_LABELS, HumanDecision
 from silverfile_extraction.privacy import SafeInputError
@@ -17,7 +17,12 @@ from src.p3.service import ExtractionService
 from src.memory import load_resume_context
 from silverfile_extraction.vision import DEFAULT_MODELS, PROVIDER_LABELS, VisionReader
 
-load_dotenv(ROOT / '.env')
+ENV_PATH = ROOT / '.env'
+load_dotenv(ENV_PATH)
+
+# Read API keys directly from this file on each page rerun.
+# Do not fall back to previously loaded environment variables.
+env_config = dotenv_values(ENV_PATH, interpolate=False)
 st.set_page_config(page_title='SilverFile · W-2 Vision', page_icon='📄', layout='wide')
 st.title('SilverFile · Document Extraction')
 st.caption('Read a W-2 image with OpenAI or Claude. No Tesseract installation required.')
@@ -25,36 +30,60 @@ st.warning('P3 TEAM INTEGRATION DEMO: uses synthetic age 70 / Single inputs. Tea
 runtime = Path(os.getenv('SILVERFILE_RUNTIME', str(ROOT / 'runtime')))
 
 
-def clear_key():
-    st.session_state['openai_api_key'] = ''
-    st.session_state['anthropic_api_key'] = ''
-
+# Remove values left by the old API-key input fields.
+for key_slot in ('openai_api_key', 'anthropic_api_key'):
+    st.session_state.pop(key_slot, None)
 
 with st.sidebar:
     st.header('1. Choose an AI provider')
-    provider = st.selectbox('AI provider', ['openai', 'anthropic'],
-                            format_func=lambda name: PROVIDER_LABELS[name], key='selected_provider')
+    provider = st.selectbox(
+        'AI provider',
+        ['openai', 'anthropic'],
+        format_func=lambda name: PROVIDER_LABELS[name],
+        key='selected_provider',
+    )
     provider_label = PROVIDER_LABELS[provider]
     key_env = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
-    key_slot = provider + '_api_key'
-    if key_slot not in st.session_state:
-        st.session_state[key_slot] = os.getenv(key_env, '')
-    api_key = st.text_input(provider_label + ' API key', type='password', key=key_slot,
-                           help='Only the selected provider receives its key and image. Keys are not saved to files.')
-    st.button('Clear API keys', on_click=clear_key)
+    api_key = (env_config.get(key_env) or '').strip()
+
+    if api_key:
+        st.success(f'{provider_label} API key loaded from .env.')
+        st.caption('The key will be authenticated when extraction runs.')
+    else:
+        st.warning(
+            f'Add {key_env} to the .env file in the project root, '
+            'save it, and reload this page.'
+        )
+
     st.caption('API calls use the selected provider account and may incur charges.')
+
     with st.expander('Advanced settings'):
         model_env = 'OPENAI_MODEL' if provider == 'openai' else 'ANTHROPIC_MODEL'
-        model = st.text_input('Vision model', value=os.getenv(model_env, DEFAULT_MODELS[provider]),
-                              key=provider + '_model')
+        configured_model = (
+            env_config.get(model_env) or DEFAULT_MODELS[provider]
+        ).strip()
+        model = st.text_input(
+            'Vision model',
+            value=configured_model or DEFAULT_MODELS[provider],
+            key=provider + '_model',
+        )
         selective_recall = True
         st.caption('Each extraction worker receives only its current document.')
+
     st.header('2. Choose a case')
-    case_id = st.text_input('Case ID', value='demo', max_chars=64,
-                            help='Use the same ID when you come back. This is also the thread ID.')
+    case_id = st.text_input(
+        'Case ID',
+        value='demo',
+        max_chars=64,
+        help='Use the same ID when you come back. This is also the thread ID.',
+    )
     st.button('Reload saved case', use_container_width=True)
     st.caption('Use a new case ID for each new W-2 in this demo.')
-    st.caption('Your key stays in memory for this page session. Saved case data stays on this computer.')
+    st.caption(
+        'API keys are read from your local .env file. '
+        'This page does not write keys to files or saved cases. '
+        'Never commit .env.'
+    )
 
 try:
     with ExtractionService(runtime) as service:
@@ -70,8 +99,15 @@ try:
         with st.form('upload'):
             upload = st.file_uploader('Choose a PNG or JPEG image', type=['png', 'jpg', 'jpeg'])
             confirmed = st.checkbox(f'This image contains only fictional test data, and I agree to send it to {provider_label}.', key='consent_' + provider)
-            submitted = st.form_submit_button('Read W-2 image', disabled=saved['pending'])
+            submitted = st.form_submit_button(
+                'Read W-2 image',
+                disabled=saved['pending'] or not api_key,
+            )
         if submitted:
+            if not api_key:
+                raise SafeInputError(
+                    f'Add {key_env} to the project .env file before extraction.'
+                )
             if not upload:
                 raise SafeInputError('Choose an image first. Try data/fixtures/w2_01.jpg.')
             if not confirmed:

@@ -37,7 +37,7 @@ import secrets
 from contextlib import ExitStack
 
 from silverfile_extraction.checkpointer import sqlite_checkpointer
-from src.agents import intake_agent
+from src.agents import intake_agent, live_agents
 from src.draft_form import render_draft_html
 from src.graph import build_graph
 
@@ -77,7 +77,7 @@ def open_saved_sessions(path=None):
 
 def make_graph(checkpointer=None, trace_dir="traces"):
     """The SilverFile graph with the real Intake. Without a checkpointer, sessions live in memory."""
-    return build_graph(checkpointer, trace_dir=trace_dir, agents={"intake": intake_agent.run})
+    return build_graph(checkpointer, trace_dir=trace_dir, agents=live_agents())
 
 
 def _config(case_id: str) -> dict:
@@ -111,7 +111,7 @@ def screen(graph, case_id: str) -> str:
     values = snapshot.values
     if snapshot.interrupts:
         return WAITING_FOR_VOLUNTEER
-    if values.get("status") == "halted_by_human":
+    if values.get("status") in ("halted_by_human", "halted_by_error"):  # the taxpayer text is neutral for both
         return STOPPED
     if values.get("done") or values.get("intake_complete"):
         return FINISHED
@@ -128,7 +128,8 @@ def draft_form_html(graph, case_id: str) -> str | None:
         return render_draft_html(
             values["computed"], values.get("facts"), values.get("eligibility"),
             review=values.get("review"), review_history=values.get("review_history"),
-            decisions=values.get("human_decisions"), case_id=case_id)
+            decisions=values.get("human_decisions"), case_id=case_id,
+            extracted=values.get("extracted"))  # so a form that was not read shows "Income is missing"
     except ValueError:  # a line without provenance is never shown
         return None
 

@@ -26,8 +26,8 @@ rolling summarisation and selective recall.
 window for Intake only.**
 
 1. **Scoped views.** Each agent's view is its read allow-list narrowed further: Extraction gets
-   exactly one document; Rules gets facts and typed records; Computation gets numeric facts and the
-   filing status; Review gets the assembled return; the orchestrator gets flags and counts. Escalation
+   exactly one document; Rules gets typed records and only the answers it reads (`RULES_FACTS`, not names,
+   dependents or the volunteer notes); Computation gets numeric facts and the filing status; Review gets the assembled return; the orchestrator gets flags and counts. Escalation
    and human decisions are in every view, so a safety signal is never scoped away.
 2. **Rolling summary, templated not generated.** The orchestrator rebuilds `session_summary` at
    every visit from milestones, counts and condition codes ("documents extracted 12/12; review
@@ -79,8 +79,9 @@ of turns and documents. Tests:
 
 ## Privacy effect
 Smaller views also mean fewer agents see raw material. Raw document text: Extraction only, one
-document per worker. Raw chat: Intake only, last 6 messages. Review and Computation see structured
-values and provenance, not text. Traces record field *names*, never values. The summary holds no
+document per worker. Raw chat: Intake only, last 6 messages. Names, dependents (with their test SSNs) and the
+volunteer notes: Intake only; Rules sees just the answers it reads. Review and Computation see
+structured values and provenance, not text. Traces record field *names*, never values. The summary holds no
 free text.
 
 ## Results (30 turns, 12 documents, one revision round; estimates, see metrics.md)

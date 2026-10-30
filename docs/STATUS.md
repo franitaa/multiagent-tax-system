@@ -1,35 +1,50 @@
 # Status: orchestration (Person 1)
 
-Updated at the end of every phase. Branch: `p1/phase5-integration` (phase 5 plus the orchestration hooks Computation and the P5 security work need; stacked on `p5/clean`, PR #24).
+Updated 2026-10-30, after PRs #21 to #36 landed on `main`. All six agents exist; the graph, the human gate and the
+review loop run end to end. Tests: about 1,100 pass; the remaining expected failures are the three pending evals.
 
 ## Done
-- **Phases 1-3 (merged):** state contract, hub-and-spoke graph, runner with JSONL tracing, routing table, human interrupt with stop-only rules, parallel extraction with order-independent reducers, bounded review loop, loop guard.
-- **Phase 4 (PR open):** scoped views, Intake chat window (6), deterministic rolling summary, `--no-context-strategy`, long-session scenario, `scripts/measure_context.py` and `docs/metrics.md`, full decision record, orchestrator control channel, spouse-died demo.
-- **Phase 5:** README with run instructions and a diagram generated from the compiled graph (`scripts/draw_graph.py`, with a test that fails if it goes stale); plain `pytest` now collects the root-level tests too.
-- **Orchestrator invariant:** a case can never end "complete" without a filing status and an eligibility verdict; it pauses with `ELIGIBILITY_UNDECIDED` (orchestrator-raised, stop-only) right after Rules.
-- **P5 integration hooks (this branch):** the runner's document sanitising, update shape check (`validate.py`), audit events, free-text redaction and tool-transport trace; the human gate's `reviewer`; `append_messages`; Computation's scoped view (`COMPUTATION_FACTS`); the long-session scenario's decided Rules stand-in. Hunks are Sahana's, cherry-picked with authorship kept (one commit per source commit).
-- **Rules landed:** the strict xfail markers for Intake's names, the real-Intake eligibility run and the out-of-scope screening answers are removed (they pass). One xfail remains: a volunteer's filing status needs Rules to map the gate's full names (HUMAN_GATE_NAMES, PR #21).
-- **Integration check of the real Intake with the real Rules** (`docs/intake-rules-contract.md`, `tests/test_e2e_intake.py`, `tests/test_rules_intake_contract.py`). Real Intake works in our graph (24-question interview, 6-message window, escalation of a spouse who died). Rules now understands it (see above).
+- **Core (merged):** state contract, hub-and-spoke graph, runner with JSONL tracing, routing table, human gate with
+  stop-only rules, parallel extraction with order-independent reducers, bounded review loop, loop guard.
+- **Context management:** scoped views per agent (Rules sees only the facts it reads; Computation numeric facts and the
+  filing status; Review numeric facts and the sources), Intake chat window of 6, deterministic rolling summary,
+  `--no-context-strategy`, `docs/decisions/001-context-strategy.md`, `docs/metrics.md`.
+- **Orchestrator invariants:** a case never ends "complete" without a filing status and an eligibility verdict
+  (`ELIGIBILITY_UNDECIDED`, stop-only); after a volunteer answers `FILING_STATUS_AMBIGUITY` or `ANSWER_UNCERTAIN` the gate
+  clears `eligibility`, so Rules decides again with the answer.
+- **Failure handling:** a tax-tool server that cannot start ends the case as `halted_by_error` (nothing computed or filed;
+  trace and audit entry, no traceback).
+- **Integrated by the team:** Intake (real, wired into the chat page), Extraction (W-2 vision, `EXTRACTION_REVIEW`),
+  Rules (reads Intake's names, maps filing status at its output, raises `ANSWER_UNCERTAIN`), Computation over MCP with
+  provenance, Review/Audit (#30), CI and Docker, evals (`python -m evals.runner`), draft form, taxpayer chat with sessions
+  saved on disk (#34), volunteer dashboard (#35), and API keys read only from `.env` (#32).
+- **Docs:** `docs/handoff-contract.md` is current (Review, skipped documents, tools and transport, `EXTRACTION_REVIEW`,
+  `reviewer`, `halted_by_error`); `docs/intake-rules-contract.md` records what Rules now does.
 
-## In progress
-- Review of the Phase 4 PR. Matthew is reworking Rules. Supriya's Intake PR (`feature/intake-agent`) is under review; my findings are listed below.
+## Open
+- **#27, income forms that are not read (decision needed).** SSA-1099, 1099-INT and 1099-DIV are skipped by Extraction,
+  so their amounts never reach the draft. Today: the lines say `NOT READ` and the draft form warns (#33); Review still
+  passes the case, and it completes. Options: a Review finding that holds the case for a volunteer (recommended for now),
+  JiWon's earlier idea of blocking the draft in the router (dropped when #32 was narrowed; it had no way for a volunteer to
+  unblock it), or the real fix (Intake asks the amounts, or
+  Extraction reads the forms).
+- **Intake as the default:** `AGENTS["intake"]` is still the stub; only the chat page uses the real one (`live_agents()`).
+  Two evals stay pending for it (tax advice, exploitation signs), plus `interest-conflict` (nothing compares answers with
+  document amounts). Owner: Supriya, with a decision from orchestration.
+- **Review does not check `rule_citations` yet** (planned; `docs/handoff-contract.md`).
+- **Persistence:** chat sessions are saved in `runtime/team_checkpoints.sqlite` (#34), unencrypted, and nothing deletes old
+  cases on a timer: schedule `python -m scripts.purge_cases --expired`. JiWon's chat and W-2 upload integration and the
+  document gate were split out of #32 and are not merged; they come back as separate PRs, for review.
+- **Volunteer dashboard (#35):** no login, so a taxpayer can reach it from the start page; the volunteer's name is not verified;
+  it cannot resolve `EXTRACTION_REVIEW` (it says where to go). A staff passcode is a team decision.
+- **For the instructor:** the assignment's context section talks about "10 invoices", which does not match a tax project.
+  We treat it as "a long session or a batch of many documents". Is that acceptable?
 
-## Next
-- **Wire in the real Intake (on hold):** point `AGENTS["intake"]` at `intake_agent.run` only after the Intake PR is merged *and* Rules is fixed. The chat page already builds its own graph with the real Intake (`chat_session.make_graph`), so the PR does not change the CLI scenarios.
-- Wire Sahana's computation agent through the tool allow-list (`TOOLS` / `POLICY`); decide where PII redaction hooks in (suggestion: the runner).
-- Find the Extraction and Review owners; both are still stubs.
-- Possible follow-up (not built): give Intake only the facts relevant to its current question.
+## Next (orchestration)
+- Telemetry dashboard (bonus, read-only, over `traces/` and the audit log; not an agent): built, PR #38; spec in
+  `docs/telemetry-dashboard-spec.md`.
+- Review the #27 decision once the team has chosen, and the Review hold if it is chosen.
+- Review JiWon's document-gate and chat/W-2 upload changes when they come back as separate PRs.
 
-## Open questions
-- **For Matthew (Rules), four things, all with failing tests that define "done":**
-  1. Read the fact names Intake writes (`taxpayer_birth_date`, `spouse_died_2025`, ...); see the table in `docs/intake-rules-contract.md`.
-  2. Parse Intake's `"yes"/"no"/"not_sure"` strings. Today `bool("no")` is `True`, so a taxpayer who answered "no" to blindness is counted as blind (2 boxes instead of 1).
-  3. Use `facts["filing_status"]` (a volunteer's answer, source `human:...`) before deriving a status.
-  4. Always return a non-empty `filing_status` and a boolean `in_scope` (the orchestrator now pauses otherwise), and raise a specific escalation when you can say why.
-  5. **Raise `OUT_OF_SCOPE` from Intake's screening answers** (stocks, business, foreign income, digital assets, other forms): Intake only records them and Rules does not read them, so nobody escalates today (section 5 of the doc; 5 failing tests).
-- **Intake PR review (for Supriya):** green (427 tests on her branch merged with `main`), contract-compliant, no secrets or non-9xx SSNs, no disk writes, bad input and impossible dates handled, chat page launches. To discuss: (a) exploitation detection missed 7 of 8 realistic phrasings ("making me do this", "being forced", "was told to", "keeps my refund", "not to tell anyone") and a missed phrase just re-asks forever, so consider an escalation after repeated misunderstandings; (b) a real-looking SSN is stripped only by the chat page, so a direct graph call leaves it in `state["messages"]` (needs a redaction hook at the graph boundary: orchestration and Sahana); (c) `dependents` (name, relationship, SSN) and `volunteer_notes` (the taxpayer's own words) sit in `facts`, which Rules reads in full (orchestration to narrow Rules' view).
-- **For the instructor:** the assignment's context section talks about "10 invoices", which does not match a tax project. We are treating it as "a long session or a batch of many documents". Is that acceptable?
-- **For the Review owner:** `send_back_to` supports only `computation`; Review must return exactly `pass` or `fail`.
-- **Decided:** `LOOP_GUARD` and `REVIEW_BOUND_EXCEEDED` are stop-only.
-- **For the memory owner:** the checkpointer is `InMemorySaver` (`SqliteSaver` optional); it needs replacing for persistence across restarts.
-- **Process:** two Rules commits went straight to `main` without a PR. Suggest branch protection requiring PRs.
+## Process
+Two early Rules commits went straight to `main` without a PR. Suggest branch protection requiring PRs.
