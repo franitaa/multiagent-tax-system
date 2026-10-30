@@ -29,6 +29,7 @@ def test_every_typed_name_points_at_a_real_line_and_form():
 
 def test_a_typed_ssa_benefit_goes_on_line_6a_as_direct_input():
     line = run({}, ssa1099_benefits=20000.0)["line_6a"]
+    assert line["source"] == "direct user input"  # the label Review and answer-names.md expect
     assert line["value"] == 20000.0
     assert line["tool"] == "make_direct_input_provenance"
     assert line["inputs"]["field_name"] == "ssa1099_benefits"

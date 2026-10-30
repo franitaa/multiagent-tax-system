@@ -44,7 +44,6 @@ STATUS_NAMES = {
 }
 FULL_NAMES = set(STATUS_NAMES.values())
 
-DIRECT_INPUT = "direct user input"  # the source Review accepts for an amount the taxpayer typed
 OUT_OF_SCOPE_KINDS = ("1099nec", "1099misc", "1099b", "1099k")
 
 def _entered_by(facts, name):
@@ -185,10 +184,9 @@ def run(view, tools):
             note = f"{note}; typed {', '.join(ignored)} not used: the document was read"
         if not amounts and len(typed) == 1:
             name, value = typed[0]
-            # Review accepts a typed amount only with source exactly "direct user input" (answer-names.md),
-            # so a note about another unread form goes in the formula, not the source
+            # Review accepts a typed amount only with source exactly "direct user input", so a note
+            # about another unread form goes in the formula, not the source
             record = make_direct_input_provenance(value, name, _entered_by(facts, name))
-            record["source"] = DIRECT_INPUT
             record["formula"] = f"{record['formula']}{note}"
             return add(line, record)
         if len(amounts) == 1 and not typed:
