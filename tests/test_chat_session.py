@@ -21,6 +21,7 @@ def saved_sessions_in_a_temp_file(tmp_path, monkeypatch):
     import streamlit as st
 
     monkeypatch.setattr(chat, "SAVED_SESSIONS_FILE", str(tmp_path / "sessions.sqlite"))
+    monkeypatch.setattr(chat, "ENV_FILE", str(tmp_path / "no.env"))  # never the real API key
     st.cache_resource.clear()
 
 

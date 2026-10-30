@@ -17,6 +17,7 @@ def saved(tmp_path, monkeypatch):
     """A temporary saved-sessions file and audit log, shared by the test and the page."""
     monkeypatch.setattr(chat, "SAVED_SESSIONS_FILE", str(tmp_path / "sessions.sqlite"))
     monkeypatch.setattr(dash, "TRACE_DIR", str(tmp_path))
+    monkeypatch.setattr(chat, "ENV_FILE", str(tmp_path / "no.env"))  # never the real API key
     st.cache_resource.clear()
     return dash.open_graph()
 
