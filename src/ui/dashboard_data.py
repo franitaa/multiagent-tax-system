@@ -181,6 +181,42 @@ def counts(rows: list[dict]) -> dict:
     return result
 
 
+# Short names for the "what volunteers are needed for" chart.
+NEED_WORDS = {
+    S.TAX_ADVICE_REQUEST: "Tax advice question", S.FILING_STATUS_AMBIGUITY: "Filing status unclear",
+    S.EXPLOITATION_SIGNS: "Possible pressure", S.OUT_OF_SCOPE: "Out of scope",
+    S.SOURCE_CONFLICT: "Answer vs document", S.FORM_1099R_BOX_2B: "1099-R box 2b",
+    S.ANSWER_UNCERTAIN: "Unsure answer", S.EXTRACTION_REVIEW: "W-2 check",
+}
+OTHER_NEED = "Other"
+QUIET_NEED = "Asked for a person / not sure"
+
+
+def needs_breakdown(rows: list[dict]) -> dict:
+    """What volunteers are needed for right now, e.g. {"Tax advice question": 2, ...}: each paused
+    case by its alarm, plus cases with only quiet requests. Largest first."""
+    result = {}
+    for row in rows:
+        if row["condition"]:
+            need = NEED_WORDS.get(row["condition"], OTHER_NEED)
+        elif row["open_questions"]:
+            need = QUIET_NEED
+        else:
+            continue
+        result[need] = result.get(need, 0) + 1
+    return dict(sorted(result.items(), key=lambda item: -item[1]))
+
+
+def matches(row: dict, show: str, search: str) -> bool:
+    """Filter for the case list: a status (or "Open questions", or "All") and a search on ID or name."""
+    if show == OPEN_QUESTIONS and not row["open_questions"]:
+        return False
+    if show not in ("All", OPEN_QUESTIONS) and row["status"] != show:
+        return False
+    text = search.strip().lower()
+    return not text or text in row["case_id"].lower() or text in row["name"].lower()
+
+
 def time_ago(iso: str | None, now: datetime | None = None) -> str:
     """"5 minutes ago", "2 hours ago", "3 days ago"."""
     if not iso:

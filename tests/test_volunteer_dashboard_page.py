@@ -42,9 +42,26 @@ def test_list_shows_counts_and_the_alarm_first(saved):
     taxpayer(saved, "SF-200-002", "Should I file jointly?")
     page = open_page()
     assert not page.exception
-    assert [m.value for m in page.metric][:2] == ["1", "1"]  # 1 needs a volunteer, 1 answering
     rows = [m.value for m in page.markdown if "<b>SF-200-" in m.value]
     assert "SF-200-002" in rows[0]  # the case needing a volunteer is listed first
+    summary = next(m.value for m in page.markdown if '<div class="card-title">Summary' in m.value)
+    assert 'Total cases</span><span class="value">2</span>' in summary
+    status = next(m.value for m in page.markdown if "Cases by status" in m.value)
+    # the donut's numbers are also given as text, for screen readers
+    assert 'aria-label="Total 2. Needs a volunteer: 1, Answering questions: 1, Draft ready: 0, Stopped: 0"' in status
+    needs = next(m.value for m in page.markdown if "What volunteers are needed for" in m.value)
+    assert "Tax advice question<b>1</b>" in needs
+
+
+def test_search_by_case_id(saved):
+    """The filter buttons are tested in test_volunteer_dashboard.py (dash.matches)."""
+    taxpayer(saved, "SF-200-006", "no")
+    taxpayer(saved, "SF-200-007", "Should I file jointly?")
+    page = open_page()
+    listed = lambda: [m.value for m in page.markdown if "<b>SF-200-" in m.value]
+    assert len(listed()) == 2
+    page.text_input(key="search").input("006").run()
+    assert len(listed()) == 1 and "SF-200-006" in listed()[0]
 
 
 def test_a_volunteer_resolves_an_alarm_and_the_taxpayer_carries_on(saved):

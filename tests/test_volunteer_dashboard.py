@@ -119,6 +119,23 @@ def test_an_answer_given_later_closes_the_question(graph):
     assert dash.case_summary(graph, "SF-100-017")["open_questions"] == 0
 
 
+def test_needs_breakdown_and_filters(graph):
+    start(graph, "SF-100-020", "Should I file jointly?")
+    start(graph, "SF-100-021", "Can I deduct my medicine?")
+    start(graph, "SF-100-022", "He keeps my refund")
+    start(graph, "SF-100-023", "Can I talk to a real person?")
+    start(graph, "SF-100-024", "no")
+    rows = dash.all_cases(graph)
+    assert dash.needs_breakdown(rows) == {"Tax advice question": 2, "Possible pressure": 1,
+                                          "Asked for a person / not sure": 1}
+    shown = lambda show, search="": [r["case_id"] for r in rows if dash.matches(r, show, search)]
+    assert len(shown("All")) == 5
+    assert set(shown(dash.NEEDS_VOLUNTEER)) == {"SF-100-020", "SF-100-021", "SF-100-022"}
+    assert shown(dash.OPEN_QUESTIONS) == ["SF-100-023"]
+    assert shown("All", "sf-100-024") == ["SF-100-024"]
+    assert len(shown("All", NAME.split()[0].lower())) == 5
+
+
 def test_the_volunteer_must_give_their_name(graph):
     start(graph, "SF-100-011", "Should I file jointly?")
     assert "your name" in dash.resolve(graph, "SF-100-011", "continue", "Noted.", "  ")
