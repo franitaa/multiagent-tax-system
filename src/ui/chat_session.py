@@ -22,16 +22,21 @@ What it does:
   - When the case is finished, `draft_form_html()` gives the draft 1040-SR page (Sahana's
     PRV-3), where every amount opens to its formula, inputs and source. None until something
     is computed, and a line without a source is never shown.
+  - Sessions are saved on disk (`open_saved_sessions()`, JiWon's SQLite checkpointer), so a
+    session stopped on Tuesday continues on Friday, even if the app restarted in between.
+    It is the team's shared file, runtime/team_checkpoints.sqlite (not in git), which
+    Sahana's retention tool also cleans up. Real-looking SSNs never reach it.
 
 What is still missing:
-  - Permanent storage. `make_graph()` uses LangGraph's in-memory store by default, so
-    sessions last only while the app is running. JiWon's SQLite checkpointer plugs in
-    through `make_graph(checkpointer=...)`; nothing else needs to change.
+  - Nothing deletes old sessions on a timer: run Sahana's `python -m scripts.purge_cases
+    --expired` on a schedule.
 """
 import calendar
 import re
 import secrets
+from contextlib import ExitStack
 
+from silverfile_extraction.checkpointer import sqlite_checkpointer
 from src.agents import intake_agent
 from src.draft_form import render_draft_html
 from src.graph import build_graph
@@ -61,8 +66,17 @@ def clean_case_id(text: str) -> str | None:
     return case_id if _CASE_ID.match(case_id) else None
 
 
+SAVED_SESSIONS_FILE = "runtime/team_checkpoints.sqlite"  # the team's shared file (MEM-1)
+_KEEP_OPEN = ExitStack()  # holds each saver open; without it the file closes straight away
+
+
+def open_saved_sessions(path=None):
+    """JiWon's SQLite checkpointer, kept open while the app runs, so sessions survive a restart."""
+    return _KEEP_OPEN.enter_context(sqlite_checkpointer(path or SAVED_SESSIONS_FILE))
+
+
 def make_graph(checkpointer=None, trace_dir="traces"):
-    """The SilverFile graph with the real Intake. Pass Shruti's checkpointer when ready."""
+    """The SilverFile graph with the real Intake. Without a checkpointer, sessions live in memory."""
     return build_graph(checkpointer, trace_dir=trace_dir, agents={"intake": intake_agent.run})
 
 
@@ -133,8 +147,9 @@ def answers(graph, case_id: str) -> list[dict]:
     return intake_agent.answers_so_far(graph.get_state(_config(case_id)).values.get("facts", {}))
 
 
-# Month choices show the number and the name, so typing "3" or "mar" both find "3 - March".
-MONTH_OPTIONS = [f"{number} - {calendar.month_name[number]}" for number in range(1, 13)]
+# Month choices are just the names ("March"), so a choice never looks like a date such as
+# "2 - February". Typing "mar" finds March.
+MONTH_OPTIONS = list(calendar.month_name)[1:]
 
 
 def asking_for_a_date(graph, case_id: str) -> bool:
@@ -144,11 +159,27 @@ def asking_for_a_date(graph, case_id: str) -> bool:
 
 
 def date_answer(month_option: str | None, day: int | None, year: int | None) -> str | None:
-    """("3 - March", 4, 1950) -> "March 4, 1950", or None if a box is empty. Intake still reads
+    """("March", 4, 1950) -> "March 4, 1950", or None if a box is empty. Intake still reads
     the date back to the person before saving it."""
     if not month_option or not day or not year:
         return None
-    return f"{month_option.split(' - ')[1]} {int(day)}, {int(year)}"
+    return f"{month_option} {int(day)}, {int(year)}"
+
+
+# The typed-date box asks for MM-DD-YYYY, so month-first is safe to assume there.
+_TYPED_DATE = re.compile(r"^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$|^(\d{2})(\d{2})(\d{4})$")
+
+
+def typed_date(text: str) -> str:
+    """"03-04-1950", "03/04/1950" or "03041950" -> "March 4, 1950", because the label asks for
+    MM-DD-YYYY. Anything else is sent as typed; Intake reads it back to the person either way."""
+    match = _TYPED_DATE.match((text or "").replace(" ", ""))
+    if not match:
+        return text
+    month, day, year = (int(part) for part in match.groups() if part)
+    if not 1 <= month <= 12:
+        return text  # e.g. "13-04-1950" is day-first: let Intake read it and check with the person
+    return date_answer(MONTH_OPTIONS[month - 1], day, year)
 
 
 PARTS = [title for title, _ in intake_agent.PARTS]
@@ -172,7 +203,7 @@ def date_problem(month_option: str | None, day: int | None, year: int | None) ->
     """Checked before sending, e.g. "April has only 30 days. Please check the day." """
     if not month_option or not day or not year:
         return None
-    return intake_agent.day_problem(int(month_option.split(" - ")[0]), int(day), int(year))
+    return intake_agent.day_problem(MONTH_OPTIONS.index(month_option) + 1, int(day), int(year))
 
 
 def change(graph, case_id: str, question_text: str) -> None:

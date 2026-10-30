@@ -6,9 +6,9 @@ Owner: Supriya Patil. Draft for the team's five-page report (card REP-1).
 **What this section covers:** how the Intake agent talks to an older taxpayer, the design
 choices behind it (assignment §4.3), and the safety alarms that send a case to a human
 volunteer (§4.4, Guardrails & ethics).
-**Status:** everything described here is built and tested (about 490 automated tests in the team suite). Still
-open: permanent session storage (Memory owner) and switching the main graph from the
-placeholder Intake to the real one (after the Phase 3 merge).
+**Status:** everything described here is built and tested (about 960 automated tests in the team suite),
+including sessions saved on disk. Still open: switching the main graph's default from the
+placeholder Intake to the real one (the chat page already uses the real one).
 
 ---
 
@@ -56,16 +56,20 @@ All six areas in the brief were addressed.
 | **Plain language** | Forms are glossed in the question itself ("a Social Security benefits statement, called an SSA-1099"). "I don't understand" gives a one-sentence explanation of that question, never of a tax rule. | Understanding the question matters more than learning tax terms. |
 | **Repetition and drift** | "Go back" any number of times; simple corrections ("actually I was married") jump to that question; Change buttons next to every earlier answer. A changed answer is saved and the old one kept in `history`; Intake then carries on where the person left off. | §4.3 says losing answers is a failure, so no answer is ever deleted. |
 | **No unnecessary personal information** | Intake asks for names but never for the taxpayer's or spouse's SSN (§3.1 only requires dependents' SSNs) and never for bank account numbers. An SSN typed when not asked is removed before anything reads it, and the person is told kindly. | Collect only what the form needs; see section 5. |
-| **Resumability** | Each session has an easy case ID (e.g. SF-482-735) used as the LangGraph thread ID. Continuing shows "Welcome back. So far we've covered: ...". | Someone who stops on Tuesday can carry on on Friday without starting again. |
+| **Resumability** | Each session has an easy case ID (e.g. SF-482-735) used as the LangGraph thread ID, and is saved on disk after every step (the team's SQLite checkpointer), so it survives the app restarting. Continuing shows "Welcome back. So far we've covered: ...". | Someone who stops on Tuesday can carry on on Friday without starting again. |
 | **Honest uncertainty** | "I'm not sure" (and "I can't remember", "I don't know") is always accepted and noted for a volunteer; "Skip for now" sets a question aside until the end. Nothing is left blank: a question skipped twice is noted for a volunteer. | Not knowing is a valid answer, not a failure. |
 
 The chat page itself uses large text (22px and up), strong contrast, large buttons with a
 visible keyboard focus outline, visible labels instead of grey placeholder text, and plain
-text speaker labels so screen readers announce who is speaking. Dates use three labelled
-boxes (Month / Day / Year, where typing "3" or "mar" both find March) because people write
-dates in different orders; every date is read back for confirmation ("Just to check: you
-were born on March 4, 1950. Is that right?"), a date that could mean two days (03/04/1950)
-is never guessed, and a day that does not exist (April 31) is caught with a clear reason.
+text speaker labels so screen readers announce who is speaking. Each question appears once,
+in the largest text on the page, rather than also as a chat message above it, so nothing is
+read out twice; earlier answers stay under "Your answers so far". Dates use three labelled
+boxes (Month / Day / Year; the month list shows plain names, so "February" is never mistaken
+for "2 February") or a typing box labelled "MM-DD-YYYY, for example: 03-04-1950", where
+03-04-1950, 03/04/1950 and 03041950 are all read month first because the label says so.
+Every date is read back for confirmation ("Just to check: you were born on March 4, 1950. Is
+that right?"); a free-text date that could mean two days is never guessed, and a day that
+does not exist (April 31) is caught with a clear reason.
 
 ## 4. Guardrails: when Intake calls a human (§4.4)
 Every reply is checked before anything else. When a check matches, Intake replies
@@ -128,8 +132,10 @@ older people ("pay the IRS with gift cards", "wire money").
   Intake says "Let's not worry about this one" and notes the question for a volunteer, so
   nobody is stuck in a loop. A false alarm leads to a volunteer check. Both fail towards
   the safe side.
-- **Sessions are kept in memory** until the team's permanent checkpointer is connected;
-  a restart of the app currently loses open sessions.
+- **Saved sessions are kept until someone deletes them**: nothing removes old cases on a
+  timer yet. The Security owner's `scripts.purge_cases --expired` does it and should be
+  scheduled. The case ID is a convenience, not a password: anyone who has it can continue
+  that session.
 - **Free-text answers** (names, the helper's description) are stored as typed; a
   volunteer reviews them.
 - **Answers that stop applying** after a change (for example spouse details after

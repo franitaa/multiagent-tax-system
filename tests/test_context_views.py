@@ -56,10 +56,14 @@ def test_computation_sees_numbers_and_filing_status_not_chat_or_free_text():
     assert "messages" not in view and "documents" not in view
 
 
-def test_review_sees_the_assembled_return_not_chat_facts_or_documents():
+def test_review_sees_the_return_and_its_sources_not_chat_documents_or_text_answers():
     view = view_for("review", full_state())
-    assert set(view) == {"computed", "eligibility", "session_summary", "escalation", "human_decisions"}
+    assert set(view) == {"computed", "eligibility", "facts", "extracted", "session_summary",
+                         "escalation", "human_decisions"}
     assert view["eligibility"]["citations"] == ["x"]
+    assert view["extracted"] == {"doc-1": {"doc_id": "doc-1"}}
+    # numeric facts only: amounts to check lines against, no text answers or yes/no flags
+    assert set(view["facts"]) == {"age", "wages_claim"}
 
 
 def test_every_view_carries_the_escalation_flag():
