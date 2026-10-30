@@ -16,14 +16,22 @@ What it does:
     (src/orchestration/human.py) unchanged. The gate decides what is allowed (e.g. pressure or
     exploitation can only be stopped) and checks the answer; if it is not valid, its message
     is returned so the page can show it and the volunteer can try again. The volunteer's name
-    is required, so the record always shows who decided.
+    is required, so the record always shows who decided. Before saving it checks that the case
+    is still waiting for the same alarm (two volunteers on one case: the second is told, not
+    shown "saved"), and that "continue" on a filing-status alarm comes with a chosen status.
   - Case history from Sahana's audit log (src/audit.py): who did what and when, with its
     tamper check; opening a case is recorded as "viewed", as the audit log asks.
   - Answers with any SSN shown as •••-••-1234, and the draft form when there is one.
 
 What is still missing:
-  - Approving a W-2 reading (EXTRACTION_REVIEW) is done on JiWon's W-2 page, not here.
-  - No login: the dashboard is a classroom demo on one computer.
+  - Approving a W-2 reading (EXTRACTION_REVIEW) is done on JiWon's W-2 page, not here; the
+    dashboard shows the case as paused and says where to go (W2_PAGE_HELP).
+  - Cases started on the W-2 page (IDs not like SF-123-456) are listed too, named
+    "(test case from the W-2 page)", so a volunteer can tell them apart.
+  - No login: the volunteer's name is NOT verified (anyone can type any name, and the audit log
+    records it as typed), and anyone who has the address can open the dashboard and read
+    every case. Fine for a classroom demo with test data only; a staff passcode is a team
+    decision for later.
 """
 import re
 from datetime import datetime, timezone
@@ -73,6 +81,9 @@ FILING_STATUS_WORDS = {
 
 # Why some alarms offer only "Stop" (the gate's rule), so the volunteer does not look for a
 # missing button.
+W2_PAGE_HELP = ("This W-2 reading cannot be approved in this dashboard yet. Open JiWon's W-2 page "
+                "(app.py; see the README), enter this case ID, compare the amounts with the W-2 image "
+                "and save the review there. Until then this case stays paused.")
 STOP_ONLY_WHY = ("For this alarm the only choice is to stop the case: SilverFile cannot prepare it, "
                  "and a volunteer cannot take responsibility for continuing it here.")
 
@@ -87,6 +98,7 @@ EVENT_WORDS = {
     "draft_form_written": "Draft form saved",
     "case_stopped": "Case stopped",
     "case_purged": "Case deleted",
+    "halted_by_error": "Stopped on an error",
 }
 
 
@@ -284,13 +296,27 @@ def choices(waiting: dict) -> dict | None:
     return None
 
 
+NO_LONGER_WAITING = "This case is no longer waiting for a decision. Please reload."
+CHOOSE_STATUS = "Choose the filing status to continue."
+
+
 def resolve(graph, case_id: str, decision: str, note: str, reviewer: str,
-            resolution: dict | None = None) -> str | None:
-    """Send the volunteer's decision to the human gate. Returns the gate's error message if the
-    answer was not accepted (the case keeps waiting), or None when it was. The runner writes the
-    decision to the audit log with the volunteer's name."""
+            resolution: dict | None = None, condition: str | None = None) -> str | None:
+    """Send the volunteer's decision to the human gate. Returns a message if the answer was not
+    accepted (the case keeps waiting), or None when it was. The runner writes the decision to the
+    audit log with the volunteer's name.
+
+    Checked here first: the case is still waiting, and for the alarm the volunteer was looking at
+    (`condition`), so a second volunteer on the same case is told instead of seeing "saved"; and
+    "continue" on a filing-status alarm needs a chosen status (the gate alone would accept it)."""
     if not reviewer.strip():
         return "Please type your name first, so the record shows who decided."
+    waiting = pending(graph, case_id)
+    if not waiting or (condition and waiting["condition"] != condition):
+        return NO_LONGER_WAITING
+    if (waiting["condition"] == S.FILING_STATUS_AMBIGUITY and decision == "continue"
+            and not (resolution or {}).get("filing_status")):
+        return CHOOSE_STATUS
     answer = {"decision": decision, "note": note, "reviewer": reviewer.strip()}
     if resolution:
         answer["resolution"] = resolution

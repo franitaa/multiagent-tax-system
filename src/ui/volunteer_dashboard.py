@@ -2,7 +2,8 @@
 
 SUMMARY FOR THE TEAM
 In one line: the page where a Kushim volunteer sees every case and resolves the alarms.
-Run it next to the chat page:  streamlit run src/ui/volunteer_dashboard.py --server.port 8502
+Run it from the start page:  streamlit run src/ui/silverfile_home.py  ("I'm a Kushim volunteer",
+or http://localhost:8501/volunteer), so it shares the saved sessions with the taxpayer chat.
 
 What it does:
   - "All cases": counts at the top (needs a volunteer / answering questions / draft ready /
@@ -13,13 +14,17 @@ What it does:
   - Resolving: only the choices the human gate allows (e.g. pressure can only be stopped, and
     the page says why), a note, and a list of valid answers where one is needed (filing
     status, a "not sure" answer). The volunteer's name is required and goes in the audit log.
+    "Continue" on a filing-status alarm needs a chosen status; if another volunteer already
+    decided, the page says so instead of "saved".
   - Same saved-sessions file as the chat page, so a paused chat appears here straight away;
     after a decision the taxpayer presses "Check again" on their page and carries on.
 
 What is still missing:
-  - Approving a W-2 reading is done on JiWon's W-2 page.
-  - No login: a classroom demo on one computer. In real use only staff should see this page,
-    because it shows taxpayers' own words about possible pressure or abuse.
+  - Approving a W-2 reading is done on JiWon's W-2 page; the case screen says where to go.
+  - No login: the volunteer's name is not verified, and anyone with the address (including a
+    taxpayer, via the start page or /volunteer) can open this page. Classroom demo with test
+    data only. In real use only staff should see it, because it shows taxpayers' own words
+    about possible pressure or abuse; a staff passcode is a team decision.
 
 All logic is in src/ui/dashboard_data.py; this file only draws the page.
 """
@@ -266,7 +271,7 @@ def decision_box(graph, case_id: str, waiting: dict, volunteer: str) -> None:
     if waiting.get("error"):
         st.error(waiting["error"])
     if waiting["condition"] == S.EXTRACTION_REVIEW:
-        st.info("This W-2 reading is checked and approved on the W-2 page.")
+        st.info(dash.W2_PAGE_HELP)
         return
     options = waiting["options"]
     if options == ["stop"]:
@@ -288,8 +293,8 @@ def decision_box(graph, case_id: str, waiting: dict, volunteer: str) -> None:
                 resolution = {fact.strip(): value.strip()}
         note = st.text_area("Note for the record (required to continue)")
         if st.form_submit_button("Save decision"):
-            error = dash.resolve(graph, case_id, decision, note,
-                                 volunteer, resolution if decision == "continue" else None)
+            error = dash.resolve(graph, case_id, decision, note, volunteer,
+                                 resolution if decision == "continue" else None, condition=waiting["condition"])
             if error:
                 st.error(error)
             else:
@@ -332,7 +337,7 @@ def case_screen(graph, case_id: str, volunteer: str) -> None:
         answers = dash.answers(graph, case_id)
         if answers:
             st.dataframe([{"Question": a["question"], "Answer": a["answer"]} for a in answers],
-                         hide_index=True, use_container_width=True)
+                         hide_index=True, width="stretch")
         else:
             st.write("No answers yet.")
 
@@ -349,7 +354,7 @@ def case_screen(graph, case_id: str, volunteer: str) -> None:
         rows = dash.history(case_id)
         if rows:
             st.dataframe([{"When": local_time(r["when"]), "Who": r["who"], "What": r["what"], "Detail": r["detail"]}
-                          for r in rows], hide_index=True, use_container_width=True)
+                          for r in rows], hide_index=True, width="stretch")
             st.caption("Record intact: no entries changed." if dash.history_intact(case_id)
                        else "Warning: this record has been changed.")
         else:

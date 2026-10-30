@@ -136,6 +136,10 @@ older people ("pay the IRS with gift cards", "wire money").
   timer yet. The Security owner's `scripts.purge_cases --expired` does it and should be
   scheduled. The case ID is a convenience, not a password: anyone who has it can continue
   that session.
+- **The volunteer dashboard has no login**: the volunteer's name is not verified (it is
+  recorded in the audit log as typed), and anyone with the address can open the dashboard,
+  including a taxpayer through the start page or `/volunteer`. Acceptable only for this
+  classroom demo with test data; a staff passcode is a team decision for later.
 - **Free-text answers** (names, the helper's description) are stored as typed; a
   volunteer reviews them.
 - **Answers that stop applying** after a change (for example spouse details after
