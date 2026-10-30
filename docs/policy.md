@@ -74,6 +74,32 @@ When a relevant taxpayer or spouse blindness answer is `"not_sure"`, retain any 
 
 **References:** §2.3 above; project team's Intake/Rules/Human routing agreement.
 
+## 3.4 Form 1099-NEC screening
+
+Form 1099-NEC reports nonemployee compensation and is outside
+this assignment's supported income/document scope.
+
+If Extraction identifies an uploaded Form 1099-NEC,
+Rules must mark the case out of scope and raise OUT_OF_SCOPE,
+even when Intake did not report other tax forms.
+
+**References:** Assignment 7 §3.3 Scope;
+§3.1 above.
+
+## 3.5 Uploaded in-scope documents versus Intake answers
+
+Rules compares the presence of each uploaded **supported** document (W-2, SSA-1099,
+1099-R, 1099-INT, 1099-DIV) with the corresponding Intake answer (`has_w2`,
+`has_ssa_1099`, `has_1099_r`, `has_1099_int`, `has_1099_div`). If Intake explicitly
+recorded `"no"` but an uploaded document of that type is present, Rules must flag
+`SOURCE_CONFLICT` and identify the disputed fact for human resolution before
+computation. A missing answer or `"not_sure"` is not, by itself, a contradiction.
+A volunteer can supply `{fact_name: corrected_value}`; the orchestrator records it
+in `facts` with source `human:SOURCE_CONFLICT`, and Rules must reevaluate the
+corrected answer before allowing the draft to finish.
+
+**References:** Assignment 7 §4 (eligibility rules and human escalation);
+project `docs/answer-names.md` and the team handoff contract.
 ## 4.1 Human decisions and Review send-back
 
 Rules should honor a supported, resolved human decision and not endlessly re-escalate the same condition. Human-supplied factual corrections must be available in `facts` in the agreed `{"value": ..., "source": ...}` shape. Review may send a finding back through `pending_revision` when supported by state permissions and orchestration. Rules must inspect that finding, correct unsupported or missing citations by reference to this corpus, and only proceed if eligibility/scope decisions are supportable. Do not manufacture facts merely to satisfy Review.
