@@ -19,6 +19,7 @@ docker run --rm silverfile                                    # a clean case to 
 docker run --rm silverfile pytest -q                          # all tests, inside the container
 docker run --rm -p 8501:8501 silverfile streamlit run src/ui/silverfile_home.py
                                                               # start page: http://localhost:8501
+                                                              # telemetry (staff, not linked): http://localhost:8501/telemetry
 ```
 
 The start page offers **"I'm a taxpayer"** (the chat) and **"I'm a Kushim volunteer"** (the dashboard:
@@ -93,7 +94,7 @@ Python 3.11 or newer (CI tests 3.11).
 python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest                                              # all tests, offline and fast
-.venv/bin/streamlit run src/ui/silverfile_home.py             # taxpayer chat + volunteer dashboard
+.venv/bin/streamlit run src/ui/silverfile_home.py             # taxpayer chat + volunteer dashboard + /telemetry
 ```
 
 To see a human-in-the-loop event end to end: on the start page choose **I'm a taxpayer**, start a
@@ -124,6 +125,9 @@ document text.
 ```
 SILVERFILE_TRACE_DIR=traces .venv/bin/streamlit run src/ui/telemetry_dashboard.py --server.port 8503
 ```
+In Docker use the start page instead (one container, so it sees the traces the chat writes):
+http://localhost:8501/telemetry. There is no login: anyone who has the address can open it. The trace folder is
+fixed to `SILVERFILE_TRACE_DIR` (set `SILVERFILE_TELEMETRY_ANY_FOLDER=1` to edit it in the sidebar when debugging).
 Spec: [docs/telemetry-dashboard-spec.md](docs/telemetry-dashboard-spec.md).
 
 ## Layout

@@ -104,3 +104,15 @@ def test_the_page_cannot_write():
     text = PAGE.read_text()
     for forbidden in ("write_text", "open(", ".record(", "mkdir", "unlink", "rmtree"):
         assert forbidden not in text, forbidden
+
+
+def test_a_visitor_cannot_point_the_page_at_another_folder(tmp_path, monkeypatch):
+    page = open_page(tmp_path, monkeypatch)
+    assert [t.label for t in page.sidebar.text_input] == []
+    assert any(str(tmp_path) in c.value for c in page.sidebar.caption)
+
+
+def test_the_folder_can_be_edited_only_when_debugging_is_switched_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("SILVERFILE_TELEMETRY_ANY_FOLDER", "1")
+    page = open_page(tmp_path, monkeypatch)
+    assert [t.label for t in page.sidebar.text_input] == ["Trace folder"]

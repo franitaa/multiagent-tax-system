@@ -15,10 +15,15 @@ What it shows (spec: docs/telemetry-dashboard-spec.md):
 
 What it never does: write a file, call a tool or a model, or show an answer, an amount or document text.
 Traces hold field names and the audit log holds events and actors, so there is nothing else to show.
-Staff only, by address, no login (classroom demo); it is not linked from the taxpayer page.
+Staff only, by address, no login (classroom demo): anyone who has the address can open it, including a taxpayer.
+It is not linked from the taxpayer page. It shows names, counts and times only, never answers or amounts.
 
-Run it:  streamlit run src/ui/telemetry_dashboard.py --server.port 8503
-The folder is SILVERFILE_TRACE_DIR (default "traces"); change it in the sidebar. "Refresh" re-reads it.
+Run it with the rest of the app (one container, so it sees the traces the chat writes):
+  streamlit run src/ui/silverfile_home.py       then open http://localhost:8501/telemetry
+or on its own:  streamlit run src/ui/telemetry_dashboard.py --server.port 8503
+The folder is SILVERFILE_TRACE_DIR (default "traces"). It is fixed: a visitor cannot point the page at another
+folder. To let the sidebar change it (for local debugging), set SILVERFILE_TELEMETRY_ANY_FOLDER=1.
+"Refresh" re-reads it.
 
 All logic is in src/telemetry.py; this file only draws the page.
 """
@@ -78,7 +83,11 @@ def table(rows, empty="Nothing to show yet."):
 
 with st.sidebar:
     st.header("Where to look")
-    folder = st.text_input("Trace folder", value=os.environ.get("SILVERFILE_TRACE_DIR", "traces"))
+    folder = os.environ.get("SILVERFILE_TRACE_DIR", "traces")
+    if os.environ.get("SILVERFILE_TELEMETRY_ANY_FOLDER") == "1":  # local debugging only
+        folder = st.text_input("Trace folder", value=folder)
+    else:
+        st.caption(f"Reading the trace folder: {folder}")
     st.button("Refresh")  # any click re-runs the page, which reads the files again
     st.caption("Read-only. This page shows names, counts and times. It never shows answers, amounts or "
                "document text, and it writes nothing.")

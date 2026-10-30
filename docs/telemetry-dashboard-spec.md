@@ -70,7 +70,11 @@ joins on equality and shows the case without audit data otherwise.
   other pages (large text, labels, no colour-only meaning: every red item also says "ALERT"). Runs on its
   own port (`streamlit run src/ui/telemetry_dashboard.py --server.port 8503`) with a "Refresh" button;
   no live tailing.
-- Directory taken from `SILVERFILE_TRACE_DIR` (already in `.env.example`), default `traces`.
+- Directory taken from `SILVERFILE_TRACE_DIR` (already in `.env.example`), default `traces`. It is fixed: the page
+  does not let a visitor type another folder (that would let anyone read other `.jsonl` files on the host)
+  unless `SILVERFILE_TELEMETRY_ANY_FOLDER=1` is set for local debugging.
+- Also served as a hidden page of the start app at `/telemetry` (no link, no card), so a Docker container that
+  runs the start page shows the traces its own chat writes. A second container would see an empty folder.
 - No new dependency.
 
 ## Tests
