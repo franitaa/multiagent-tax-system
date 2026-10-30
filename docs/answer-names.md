@@ -89,24 +89,27 @@ Intake does raise these itself, because it is the only agent that hears the taxp
 `EXPLOITATION_SIGNS` (someone else answering without permission, pressure, or a refund
 account not in the taxpayer's name).
 
-## Proposed: amounts for the forms Extraction does not read (issue #27, step 2)
-Proposed by Computation (Sahana), not yet asked by Intake. Intake's question for each is still to be
-agreed with Supriya. Each is a number, source `"direct user input"`, and is read by Computation
-(`TYPED_AMOUNTS` in `src/income_forms.py`). Once a form has one of these, it counts as read.
+## Amounts for the forms Extraction does not read (issue #27, step 2)
+Proposed by Computation (Sahana); asked by Intake right after "yes" to the form (questions Q14a-b,
+Q16a-c and Q17f-h in `docs/intake-script.md`). Each is a number, source `"direct user input"`, and is
+read by Computation (`TYPED_AMOUNTS` in `src/income_forms.py`). Once a form has one of these, it counts
+as read.
 
-| Name | Box on the form | Line it feeds |
-|---|---|---|
-| `ssa1099_benefits` | SSA-1099 box 5, net benefits | 6a |
-| `ssa1099_withheld` | SSA-1099 box 6, federal tax withheld | 25b |
-| `int1099_taxable` | 1099-INT box 1, interest income | 2b |
-| `int1099_tax_exempt` | 1099-INT box 8, tax-exempt interest | 2a |
-| `int1099_withheld` | 1099-INT box 4, federal tax withheld | 25b |
-| `div1099_ordinary` | 1099-DIV box 1a, total ordinary dividends | 3b |
-| `div1099_qualified` | 1099-DIV box 1b, qualified dividends | 3a |
-| `div1099_withheld` | 1099-DIV box 4, federal tax withheld | 25b |
+| Name | Box on the form | Line it feeds | Question |
+|---|---|---|---|
+| `ssa1099_benefits` | SSA-1099 box 5, net benefits | 6a | Q14a |
+| `ssa1099_withheld` | SSA-1099 box 6, federal tax withheld | 25b | Q14b |
+| `int1099_taxable` | 1099-INT box 1, interest income | 2b | Q16a |
+| `int1099_tax_exempt` | 1099-INT box 8, tax-exempt interest | 2a | Q16b |
+| `int1099_withheld` | 1099-INT box 4, federal tax withheld | 25b | Q16c |
+| `div1099_ordinary` | 1099-DIV box 1a, total ordinary dividends | 3b | Q17f |
+| `div1099_qualified` | 1099-DIV box 1b, qualified dividends | 3a | Q17g |
+| `div1099_withheld` | 1099-DIV box 4, federal tax withheld | 25b | Q17h |
 
-Limit: one typed amount marks its form as read, so a withholding left out on the same form is not
-flagged. Intake should ask each box, or the form should be flagged until all its amounts are in.
+Limit: one typed amount marks its form as read. So Intake asks the other boxes of a form (withholding,
+tax-exempt interest, qualified dividends) only once the form's main amount (box 5, box 1 or box 1a)
+is a number: if the taxpayer is not sure of it, nothing is typed for that form and the case pauses for a
+volunteer (`INCOME_NOT_READ`) instead of finishing without that income.
 
 If a form was also read from an uploaded document, the document wins and the typed amount for that form is
 not added (it would count twice); the line's source says so. Review checks a typed amount against the answer
