@@ -84,7 +84,7 @@ jobs:
           from src.ui import dashboard_data as dash
           assert 'ci-case' in dash.case_ids(dash.open_graph()), 'saved case lost'
           assert dash.history('ci-case') and dash.history_intact('ci-case'), 'case history lost or broken'"
-      - name: A W-2 photo added in the chat is checked on the volunteer dashboard
+      - name: A W-2 photo added in the chat is checked on the volunteer dashboard, then purged
         run: |
           docker compose exec -T app python -c "
           import sys; sys.path.insert(0, 'tests_p3')
@@ -104,7 +104,15 @@ jobs:
                                 checked_photo=True, tax_year=2025) is None
           values = graph.get_state({'configurable': {'thread_id': case}}).values
           assert values['status'] == 'complete' and values['computed']['line_1a']['value'] > 0, 'no draft with wages'
-          assert list(Path('runtime/uploads').glob('*.png')), 'the photo is not in the runtime volume'"
+          photos = list(Path('runtime/uploads').glob('*.png'))
+          assert photos, 'the photo is not in the runtime volume'
+          # Retention (#44): purging the case with the documented command also deletes its W-2 photo.
+          import subprocess
+          subprocess.run([sys.executable, '-m', 'scripts.purge_cases', '--case', case,
+                          '--reason', 'CI retention check', '--actor', 'ci'], check=True)
+          assert not any(p.exists() for p in photos), 'the purged case left its W-2 photo behind'
+          assert case not in dash.case_ids(dash.open_graph()), 'the purged case is still saved'
+          assert 'ci-case' in dash.case_ids(dash.open_graph()), 'the purge removed another case'"
       - name: Stop and clean up
         if: always()
         run: docker compose down -v
