@@ -658,7 +658,7 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 ## Person 6 (Shruti Goel) — Oct 26 to Oct 30, 2026 (Review/Audit, CI, Docker, evals)
 **Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/review-agent`, `p6/ci`,
 `p6/docker`, `p6/evals`, `p6/evals-real-intake`, `p6/docker-volumes`, `p6/review-into-46`,
-`p6/compose-drop-w2-page`, `p6/report` and `p6/ai-log`.
+`p6/compose-drop-w2-page`, `p6/review-citations`, `p6/demo-click-through` and `p6/ai-log`.
 
 **What the AI helped with**
 - Mon Oct 26: explained the repository and the brief's Review requirement; wrote the Review/Audit
@@ -667,14 +667,19 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 - Tue Oct 27: Review checked against Sahana's real Computation (blank lines, text amounts, numeric
   facts only); the Docker image, `.dockerignore` and README section (#13); CI actions on Node 24.
 - Wed Oct 28: read teammates' PRs (#11, #15, #24, #25) for what they changed in other people's files
-  and drafted my comments and team messages.
+  and drafted my comments and team messages; wrote the prompt Sahana used to split her own changes out
+  of #11 into a P5-only PR (#24).
 - Thu Oct 29: the eval cases and runner, and the instructions for eval cases 1 and 2 (#26); prepared the
   Review PR on a test copy of `main` + #24 (#30) and found which failing tests were whose.
 - Fri Oct 30: the #41 Docker run-through and its fixes (#47); the real-Intake eval cases (#48); found
   that typed-in amounts failed Review while checking #46, and wrote the Review fix, merged into #46
   through #54; tested #52, #55 and #56 with the evals in scratch merges; found that #55's red check was
   GitHub testing against an old `main`; removed the old W-2 workbench from Docker Compose and added CI
-  checks for the chat W-2 flow and for purging a case's photo (#60); drafted my report section.
+  checks for the chat W-2 flow and for purging a case's photo (#60); added Review's check of Rules'
+  policy citations against `docs/policy.md`, with a guard test that every cited section exists (#65);
+  rewrote `demo/eval_case_1.md` and `eval_case_2.md` as click-by-click steps in the real app (#66);
+  resolved this log's merge conflict with #64; checked `main` against the assignment's deliverables
+  list; drafted my report section (kept outside the repository, as the team decided).
 
 **What I decided or checked myself**
 - Not to change Sahana's Computation stub while Review was being built: Review's own tests got their
@@ -689,6 +694,10 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 - Checked the eval cases against the assignment's §5.2 and asked for the demo instructions.
 - Merged `main` into #55's branch myself so its CI tested it with #52; closed my duplicate #58 once
   Matthew's #57 covered Sahana's review.
+- To build the `rule_citations` check rather than list it as a limitation, and to add the retention
+  (purge) check to #60 itself rather than as a follow-up.
+- To take the old W-2 workbench out of Docker Compose once the chat and dashboard handled the photo,
+  because it writes demo answers into any case ID it is given.
 - Approved every push and PR; nothing was pushed to `main` directly.
 
 **How the AI's work was verified**
@@ -697,9 +706,13 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 - Docker run locally for each change (build, every page, a case shared between pages, a restart), then
   the same steps in CI's `compose` job.
 - New Review tests were run against the earlier Review to confirm they fail there.
-- On `main` at #56 (Oct 30): 1353 passed; evals 15 pass, 0 fail, 0 pending.
+- On `main` at #64 (Oct 30): 1353 passed; evals 15 pass, 0 fail, 0 pending.
+- The demo steps were checked by running both journeys through the chat and dashboard code with
+  Ji's offline reader. I did not use an API key, so a run with the real AI reader was not checked by me.
 
 **Limits I am aware of**
-- Review does not check `rule_citations` yet.
-- The evals use stand-ins for Intake's answers and Extraction's boxes in most cases; the full chat
-  flow with a real W-2 upload is not covered until the upload step exists.
+- The evals use stand-ins for Intake's answers and Extraction's boxes in most cases. The full chat
+  flow with a W-2 photo is checked in CI's `compose` job, but with Ji's offline reader, not the real AI.
+- A box a volunteer corrects still shows "Document Extraction" as its source on the draft, so Review
+  cannot tell a corrected amount from a read one (the audit log has the decision).
+- In eval case 2 the deceased spouse's age is not asked, so only the taxpayer's 65+ box is counted.
