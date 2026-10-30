@@ -38,7 +38,7 @@ jobs:
         run: docker run --rm silverfile python -m evals.runner
       - name: Chat page starts and answers
         run: |
-          docker run -d --name chat -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
+          docker run -d --name chat -p 127.0.0.1:8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
           for i in $(seq 1 30); do curl -sf http://localhost:8501/_stcore/health && exit 0; sleep 1; done
           docker logs chat; exit 1
 

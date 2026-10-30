@@ -17,7 +17,7 @@ No local Python needed. The image is built and checked in CI on every push.
 docker build -t silverfile .
 docker run --rm silverfile                                    # a clean case to "DRAFT READY"
 docker run --rm silverfile pytest -q                          # all tests, inside the container
-docker run --rm -p 8501:8501 silverfile streamlit run src/ui/silverfile_home.py
+docker run --rm -p 127.0.0.1:8501:8501 silverfile streamlit run src/ui/silverfile_home.py
                                                               # start page: http://localhost:8501
                                                               # telemetry (staff, not linked): http://localhost:8501/telemetry
 ```
@@ -36,17 +36,20 @@ docker compose up --build                # start page http://localhost:8501 (tel
                                          # W-2 photo page http://localhost:8502
 docker compose down                      # stop; saved cases are kept
 docker compose down -v                   # stop and delete all saved cases, uploads and traces
+docker compose exec app python -m scripts.purge_cases --expired   # retention: delete expired cases
 ```
 
 The same with `docker run`: mount both folders and the `.env` file.
 
 ```
-docker run --rm -p 8501:8501 \
+docker run --rm -p 127.0.0.1:8501:8501 \
   -v silverfile-runtime:/app/runtime -v silverfile-traces:/app/traces \
   -v "$PWD/.env:/app/.env:ro" \
   silverfile streamlit run src/ui/silverfile_home.py
 ```
 
+- Ports are published on this computer only (`127.0.0.1`): the volunteer dashboard and `/telemetry`
+  have no login, and Docker's default would publish them on every network interface.
 - `runtime` holds the saved cases and uploads, `traces` the traces and the audit log (case history on
   the dashboard, and telemetry). Mount both, or the history is lost when the container is replaced.
 - Secrets are never built into the image. The W-2 page reads the `.env` file itself, not environment
