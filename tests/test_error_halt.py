@@ -11,16 +11,21 @@ from src.graph import build_graph
 from src.mcp_client import McpUnavailable
 from src.orchestration import access
 from src.scenarios import clean_case
+from src.tax_tools import TAX_TOOLS
 from src.ui import chat_session
 from tests.helpers import cfg, read_trace
 
 
-def server_down(*args, **kwargs):
-    raise McpUnavailable("the tax tool server could not start: /secret/path/to/python missing")
-
-
 def run_with_server_down(tmp_path, monkeypatch, thread="down"):
-    monkeypatch.setattr(access.ToolBox, "call", server_down)
+    """Only the tax tools go over the server; Extraction's own tool keeps working."""
+    real_call = access.ToolBox.call
+
+    def call(self, name, **kwargs):
+        if name in TAX_TOOLS:
+            raise McpUnavailable("the tax tool server could not start: /secret/path/to/python missing")
+        return real_call(self, name, **kwargs)
+
+    monkeypatch.setattr(access.ToolBox, "call", call)
     graph = build_graph(trace_dir=tmp_path)
     return graph, graph.invoke(clean_case(), cfg(thread))
 
@@ -59,9 +64,7 @@ def test_no_agent_runs_after_the_halt(tmp_path, monkeypatch):
 
 
 def test_the_chat_page_shows_the_neutral_stopped_screen(tmp_path, monkeypatch):
-    monkeypatch.setattr(access.ToolBox, "call", server_down)
-    graph = build_graph(trace_dir=tmp_path)
-    graph.invoke(clean_case(), cfg("page"))
+    graph, _ = run_with_server_down(tmp_path, monkeypatch, thread="page")
     assert chat_session.screen(graph, "page") == chat_session.STOPPED
 
 
