@@ -24,24 +24,42 @@ photo; the system produces a draft 1040-SR with the source of every amount. Noth
 ## Steps
 **A. The taxpayer** (http://localhost:8501 → **I'm a taxpayer** → **Start or continue my questions**)
 1. Click **Start a new session**. Note the case ID shown at the top (e.g. `SF-482-735`).
-2. Answer each question in **Type your answer here**, then **Send my answer**:
+2. Answer each question in **Type your answer here**, then **Send my answer**. `#` is the order the
+   questions appear in this interview; **Q** is the question's number in
+   [`docs/intake-script.md`](../docs/intake-script.md) (questions that do not apply, such as the spouse's,
+   are skipped, so the two do not match):
 
-   | # | Question (short) | Answer |
-   |---|---|---|
-   | 1 | Your full name | `Pat Tester` |
-   | 2 | Married on December 31, 2025? | `no` |
-   | 3 | Single, widowed, or taking care of someone? | `single` |
-   | 4 | Date of birth | `March 4, 1950` (or the Month / Day / Year boxes → **Send this date**) |
-   | 5 | "You were born on March 4, 1950. Is that right?" | `yes` |
-   | 6 | Legally blind? | `no` |
-   | 7 | Anyone depend on you? | `no` |
-   | 8 | **Did you get a W-2 form from a job this year?** | `yes` |
+   | # | Q | Question (short) | Answer |
+   |---|---|---|---|
+   | 1 | Q0 | Your full name | `Pat Tester` |
+   | 2 | Q1 | Married on December 31, 2025? | `no` |
+   | 3 | Q3 | Single, widowed, or taking care of someone? | `single` |
+   | 4 | Q4 | Date of birth | `March 4, 1950` (or the Month / Day / Year boxes → **Send this date**) |
+   | 5 | (Q4) | "You were born on March 4, 1950. Is that right?" (Intake reads the date back) | `yes` |
+   | 6 | Q5 | Legally blind? | `no` |
+   | 7 | Q8 | Anyone depend on you for support? | `no` |
+   | 8 | Q13 | **Did you get a W-2 form from a job this year?** | `yes` → the W-2 step (3. below) |
+   | 9 | Q14 | SSA-1099 (Social Security)? | `no` |
+   | 10 | Q15 | 1099-R (pension or retirement)? | `no` |
+   | 11 | Q16 | 1099-INT (bank interest)? | `no` |
+   | 12 | Q17 | 1099-DIV (dividends)? | `no` |
+   | 13 | Q17a | Any other tax forms (1099-NEC, 1099-MISC, 1099-B)? | `no` |
+   | 14 | Q17b | Sold stocks, funds or property? | `no` |
+   | 15 | Q17c | Business, freelance or rental income? | `no` |
+   | 16 | Q17d | Income or accounts outside the US? | `no` |
+   | 17 | Q17e | Digital assets? | `no` |
+   | 18 | Q18 | Sent tax payments to the IRS yourself? | `no` |
+   | 19 | Q20 | Any adjustments to your income? | `no` |
+   | 20 | Q20b | Refund by bank account or paper check? | `paper check` |
+   | 21 | Q21 | Can someone claim you as a dependent? | `no` |
+   | 22 | Q22 | Did a spouse pass away during 2025? | `no` |
+   | 23 | Q23 | Lived in the US for all of 2025? | `yes` |
+   | 24 | Q24 | Answering these questions yourself? | `yes` |
 
-3. **The W-2 step appears.** Tick **I confirm this is not a real tax form.**, choose
+3. **The W-2 step appears right after #8 (Q13).** Tick **I confirm this is not a real tax form.**, choose
    `data/fixtures/w2_01.jpg` under **Choose the photo of your W-2 (JPG or PNG)**, click **Add my W-2**.
-4. Answer the remaining questions (9–24): `no` to every question, except
-   *refund by bank account or paper check?* → `paper check`, *lived in the US for all of 2025?* →
-   `yes`, *answering these questions yourself?* → `yes`.
+   Then carry on with #9.
+4. Answer through #24.
 5. After the last answer the photo is read, and the chat says a volunteer is checking: the case waits
    for the W-2 check (`EXTRACTION_REVIEW`).
 

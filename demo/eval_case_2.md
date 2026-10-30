@@ -22,14 +22,18 @@ open http://localhost:8501.
 **A. The taxpayer** (**I'm a taxpayer** → **Start or continue my questions** → **Start a new session**;
 note the case ID)
 
-Answer as in eval case 1, with these differences:
+Answer as in eval case 1, with these differences (`#` is the order in this interview, **Q** the number in
+[`docs/intake-script.md`](../docs/intake-script.md)):
 
-| # | Question (short) | Answer |
-|---|---|---|
-| 2 | Married on December 31, 2025? | `no` |
-| 3 | Single, widowed, or taking care of someone? | **`widowed`** |
-| 8 | Did you get a W-2 form? | `yes` → tick **I confirm this is not a real tax form.**, choose **`w2_02.jpg`**, **Add my W-2** |
-| 22 | **Did a spouse pass away during 2025?** | **`yes`** |
+| # | Q | Question (short) | Answer |
+|---|---|---|---|
+| 2 | Q1 | Married on December 31, 2025? | `no` |
+| 3 | Q3 | Single, widowed, or taking care of someone? | **`widowed`** |
+| 8 | Q13 | Did you get a W-2 form? | `yes` → tick **I confirm this is not a real tax form.**, choose **`w2_02.jpg`**, **Add my W-2** |
+| 22 | Q22 | **Did a spouse pass away during 2025?** | **`yes`** |
+
+Q3a (*"In what year did your husband or wife pass away?"*) is not asked: it is only for a widowed
+taxpayer with dependents.
 
 **B. Pause 1: the filing status.** After `yes` to question 22 the chat says a volunteer will help. The
 case waits as `FILING_STATUS_AMBIGUITY` (raised by Intake).
