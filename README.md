@@ -54,7 +54,18 @@ docker run --rm -p 127.0.0.1:8501:8501 \
   the dashboard, and telemetry). Mount both, or the history is lost when the container is replaced.
 - Secrets are never built into the image. The W-2 page reads the `.env` file itself, not environment
   variables, so `--env-file` is not enough: mount the file read-only as above.
+## Team Roles and Responsibilities
 
+The following table shows the team's specialization assignments.
+
+| Focus area | Team member assigned |
+|---|---|
+| Agent memory | To confirm |
+| Inter-agent communication | To confirm |
+| Task division and management | To confirm |
+| MLOps/DevOps | To confirm |
+| Guardrails and ethics | To confirm |
+| Security | To confirm |
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to
 stop; it does not extract, compute, or talk to the user. The other five (Intake, Document Extraction,
