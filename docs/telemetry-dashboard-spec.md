@@ -1,6 +1,6 @@
 # Telemetry dashboard: spec
 
-Owner: orchestration (Person 1). Status: proposal, bonus work. Nothing here changes how a case runs.
+Owner: orchestration (Person 1). Status: agreed (separate page, staff only, no login); bonus work. Nothing here changes how a case runs.
 
 ## What it is for
 The volunteer dashboard answers "which case needs a person?". This page answers "is the system behaving?":
@@ -95,8 +95,8 @@ Live tailing, alerts by email, a login, per-taxpayer drill-down into answers or 
 trace format. Whatever the page needs from the runner that does not exist yet is listed here and decided
 separately.
 
-## Open questions
-1. **Separate page or a tab in the volunteer dashboard (#35)?** Recommendation: separate page. The
-   audiences differ (team and grader versus volunteers) and it avoids touching Supriya's files.
-2. **Should the page be reachable from the taxpayer app?** Recommendation: no. Staff only, by URL, like
-   the volunteer page; it has no login (classroom demo).
+## Decisions
+1. **Separate page**, not a tab in the volunteer dashboard (#35): the audiences differ (team and grader
+   versus volunteers) and it keeps this work out of that file.
+2. **Staff only, by URL, no login** (classroom demo), like the volunteer page. It is not linked from the
+   taxpayer app.
