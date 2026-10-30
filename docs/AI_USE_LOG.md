@@ -217,8 +217,9 @@ and the branches it fed into.
 - Issue #41 P1 (issue #27, step 2): Computation reads amounts the taxpayer types for SSA-1099, 1099-INT
   and 1099-DIV as direct-input records, and a form with a typed amount counts as read. Commit `c40de88`,
   not pushed.
-- Read PR #40 and ran its tests on a temporary copy of `main` with the PR merged. The 9 failures
-  already exist on `main`. Posted a comment review on #40.
+- Read PR #40 and ran its tests on a temporary copy of `main` with the PR merged. Posted a comment
+  review on #40. Nine page tests failed on my machine because my Streamlit (1.50.0) was older than
+  the pinned 1.66.1; they pass with the pinned version, so they were not a problem in `main`.
 - Retention: the purge now removes the uploads (`runtime/uploads/<sha>.png`) that a case was read
   from, and the stale-upload sweep skips uploads a saved case still points at. Two tests added.
 - Updated the retention wording in `docs/security.md` and the P5 README, with a scheduling example.
