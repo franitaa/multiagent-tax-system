@@ -13,7 +13,8 @@ from src.scenarios import CONDITION_SOURCES, clean_case, escalation_case, raisin
 STOP_ONLY = sorted(set(CONDITION_SOURCES) - CONTINUABLE)
 # ANSWER_UNCERTAIN is continuable too, but only with a corrected value for the fact Rules named, so
 # the bare-note tests below do not apply; tests/test_answer_uncertain.py covers its whole path.
-CONTINUE_OK = sorted(CONTINUABLE - {S.ANSWER_UNCERTAIN, S.INCOME_NOT_READ})  # the last: orchestrator-raised, see test_income_not_read.py
+# FILING_STATUS_AMBIGUITY also needs the status itself (tests below); INCOME_NOT_READ is orchestrator-raised (test_income_not_read.py)
+CONTINUE_OK = sorted(CONTINUABLE - {S.ANSWER_UNCERTAIN, S.INCOME_NOT_READ, S.FILING_STATUS_AMBIGUITY})
 
 
 def cfg(tid):
@@ -35,8 +36,8 @@ def paused(tmp_path, condition, tid=None):
 
 
 def test_rules_partition_the_conditions():
-    assert set(CONTINUE_OK) == {S.SOURCE_CONFLICT, S.FILING_STATUS_AMBIGUITY, S.TAX_ADVICE_REQUEST}
-    assert CONTINUABLE == set(CONTINUE_OK) | {S.ANSWER_UNCERTAIN, S.INCOME_NOT_READ}  # the last is orchestrator-raised
+    assert set(CONTINUE_OK) == {S.SOURCE_CONFLICT, S.TAX_ADVICE_REQUEST}
+    assert CONTINUABLE == set(CONTINUE_OK) | {S.ANSWER_UNCERTAIN, S.INCOME_NOT_READ, S.FILING_STATUS_AMBIGUITY}
     assert set(STOP_ONLY) == {S.OUT_OF_SCOPE, S.FORM_1099R_BOX_2B, S.EXPLOITATION_SIGNS}
 
 
@@ -103,6 +104,31 @@ def test_stop_halts_and_runs_no_more_agents(tmp_path, condition):
     records = trace(tmp_path, condition)
     last_human = max(i for i, r in enumerate(records) if r["agent"] == "human")
     assert {r["agent"] for r in records[last_human + 1:]} <= {"orchestrator"}
+
+
+@pytest.mark.parametrize("resolution", [None, {}], ids=["none", "empty"])
+def test_filing_status_continue_without_a_status_is_rejected_then_corrected(tmp_path, resolution):
+    graph, _ = paused(tmp_path, S.FILING_STATUS_AMBIGUITY)
+    command = answer("continue", "asked the taxpayer", **({} if resolution is None else {"resolution": resolution}))
+    payload = re_asked(graph, S.FILING_STATUS_AMBIGUITY, command, "needs the filing status")
+    assert payload["options"] == ["continue", "stop"]
+    final = graph.invoke(answer("continue", "asked the taxpayer", resolution={"filing_status": "single"}),
+                         cfg(S.FILING_STATUS_AMBIGUITY))
+    assert final["status"] == S.COMPLETE and final["facts"]["filing_status"]["value"] == "single"
+
+
+@pytest.mark.parametrize("note", ["", None])
+def test_filing_status_continue_still_needs_a_note(tmp_path, note):
+    graph, _ = paused(tmp_path, S.FILING_STATUS_AMBIGUITY)
+    re_asked(graph, S.FILING_STATUS_AMBIGUITY,
+             Command(resume={"decision": "continue", "note": note, "resolution": {"filing_status": "single"}}),
+             "non-empty note")
+
+
+def test_filing_status_stop_needs_no_status(tmp_path):
+    graph, _ = paused(tmp_path, S.FILING_STATUS_AMBIGUITY)
+    final = graph.invoke(answer("stop", note=""), cfg(S.FILING_STATUS_AMBIGUITY))
+    assert final["status"] == S.HALTED_BY_HUMAN
 
 
 def test_filing_status_resolution_is_stored_as_a_sourced_fact(tmp_path):

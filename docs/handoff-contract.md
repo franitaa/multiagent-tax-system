@@ -163,7 +163,7 @@ A volunteer answers on the same `thread_id` with
 | `EXTRACTION_REVIEW` (raised by Extraction) | `continue` (an accepted review of that document) or `stop` (rejects the reading) |
 
 - `continue` **requires a non-empty `note`**; it is stored in `human_decisions` (the audit record).
-- `continue` may carry a `resolution`: `FILING_STATUS_AMBIGUITY` takes `{"filing_status": <single |
+- `continue` may carry a `resolution` (for `FILING_STATUS_AMBIGUITY` it is **required**; a bare `continue` is refused): `FILING_STATUS_AMBIGUITY` takes `{"filing_status": <single |
   married_filing_jointly | married_filing_separately | head_of_household | qualifying_surviving_spouse>}`;
   `SOURCE_CONFLICT` takes `{fact_name: value}`;
   `ANSWER_UNCERTAIN` takes `{fact_name: corrected_value}` for the specific unresolved

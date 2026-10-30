@@ -1,7 +1,7 @@
 # Status: orchestration (Person 1)
 
-Updated 2026-10-30, after PRs #21 to #36 landed on `main`. All six agents exist; the graph, the human gate and the
-review loop run end to end. Tests: about 1,100 pass; the remaining expected failures are the three pending evals.
+Updated 2026-10-30, after PRs #21 to #56 landed on `main`. All six agents exist; the graph, the human gate and the
+review loop run end to end. Tests: about 1,350 pass; the evals run 15 of 15 (none pending).
 
 ## Done
 - **Core (merged):** state contract, hub-and-spoke graph, runner with JSONL tracing, routing table, human gate with
@@ -25,25 +25,20 @@ review loop run end to end. Tests: about 1,100 pass; the remaining expected fail
 - **#27, income forms that are not read.** SSA-1099, 1099-INT and 1099-DIV are skipped by Extraction, so their amounts
   never reach the draft. Safety net (built): the lines say `NOT READ`, the draft form warns (#33), and the orchestrator
   pauses the case once for a volunteer (`INCOME_NOT_READ`) before Computation, also when a declared W-2 or 1099-R was never
-  uploaded. The real fix is still open: Intake asks the amounts (typed, `direct user input`) and Computation uses them.
-  Until then every such case needs a volunteer, and the chat has no upload step, so a chat case with a W-2 pauses.
-- **Intake as the default:** `AGENTS["intake"]` is still the stub; only the chat page uses the real one (`live_agents()`).
-  Two evals stay pending for it (tax advice, exploitation signs), plus `interest-conflict` (nothing compares answers with
-  document amounts). Owner: Supriya, with a decision from orchestration.
+  uploaded. Computation now uses typed amounts (`direct user input`, #46) and the chat has the W-2 upload (#56). What is left:
+  Intake asking the SSA-1099, 1099-INT and 1099-DIV amounts (Supriya); until then those cases still pause for a volunteer.
+- **Intake as the default (decided):** `AGENTS["intake"]` stays the stub for offline use; the chat, the shared service, the CLI
+  and the evals' `real_intake` mode use the real one (`live_agents()`). See `docs/decisions/002-demo-defaults-and-assumptions.md`.
 - Review checks `rule_citations` against `docs/policy.md` (each cited section must exist; `docs/handoff-contract.md`).
 - **Persistence:** chat sessions are saved in `runtime/team_checkpoints.sqlite` (#34), unencrypted, and nothing deletes old
-  cases on a timer: schedule `python -m scripts.purge_cases --expired`. JiWon's chat and W-2 upload integration and the
-  document gate were split out of #32 and are not merged; they come back as separate PRs, for review.
+  cases on a timer: schedule `python -m scripts.purge_cases --expired`. JiWon's chat and W-2 upload integration is merged (#39, #56).
 - **Volunteer dashboard (#35):** no login, so a taxpayer can reach it from the start page; the volunteer's name is not verified;
-  it cannot resolve `EXTRACTION_REVIEW` (it says where to go). A staff passcode is a team decision.
-- **For the instructor:** the assignment's context section talks about "10 invoices", which does not match a tax project.
-  We treat it as "a long session or a batch of many documents". Is that acceptable?
+  a staff passcode is a team decision. It resolves `EXTRACTION_REVIEW` (accept or reject a W-2 reading).
 
 ## Next (orchestration)
+- Rehearse the demo path: a clean case with a W-2 upload, the spouse-died case, a stop.
 - Telemetry dashboard (bonus, read-only, over `traces/` and the audit log; not an agent): built, PR #38; spec in
   `docs/telemetry-dashboard-spec.md`.
-- Review the #27 decision once the team has chosen, and the Review hold if it is chosen.
-- Review JiWon's document-gate and chat/W-2 upload changes when they come back as separate PRs.
 
 ## Process
 Two early Rules commits went straight to `main` without a PR. Suggest branch protection requiring PRs.
