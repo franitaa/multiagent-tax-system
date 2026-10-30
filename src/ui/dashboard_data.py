@@ -67,7 +67,8 @@ ALARMS = {
     S.LOOP_GUARD: "The system went round in circles and stopped itself.",
     S.REVIEW_BOUND_EXCEEDED: "The final check kept failing and stopped itself.",
     S.ELIGIBILITY_UNDECIDED: "The rules could not decide the filing status or eligibility.",
-    S.INCOME_NOT_READ: "The taxpayer has an income form, but no amount from it reached the draft.",
+    S.INCOME_NOT_READ: "The taxpayer has an income form, but no amount from it reached the draft. "
+                       "Continuing does not add it.",
 }
 
 # Plain words for the filing statuses the gate accepts.

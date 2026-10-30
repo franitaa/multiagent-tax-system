@@ -104,7 +104,7 @@ def test_the_names_come_in_a_fixed_order_and_a_fixed_vocabulary():
 
 def test_the_routing_view_carries_names_only():
     view = routing_view({"facts": fact(has_ssa_1099="yes"), "extracted": {}, "human_decisions": []})
-    assert view["income_gaps"] == ["SSA-1099"] and view["income_gap_acknowledged"] is False
+    assert view["income_gaps"] == ["SSA-1099"]
 
 
 def ready_view(**changes):
@@ -112,7 +112,7 @@ def ready_view(**changes):
             "has_pending_question": False, "intake_complete": True, "n_docs_pending": 0, "has_eligibility": True,
             "in_scope": True, "eligibility_gaps": [], "has_computed": False, "review_verdict": None,
             "has_pending_revision": False, "revision_count": 0, "max_revisions": 3, "review_fail": None,
-            "income_gaps": [], "income_gap_acknowledged": False}
+            "income_gaps": []}
     return {**view, **changes}
 
 
@@ -124,8 +124,36 @@ def test_a_gap_sends_the_case_to_a_human_before_computation():
     assert "SSA-1099, W-2" in esc["reason"]
 
 
-def test_an_acknowledged_gap_goes_on_to_computation():
-    assert route(ready_view(income_gaps=["SSA-1099"], income_gap_acknowledged=True)).next == "computation"
+def test_the_reason_says_that_continuing_does_not_add_the_amount():
+    reason = route(ready_view(income_gaps=["SSA-1099"])).update["escalation"]["reason"]
+    assert "does not add the amount" in reason and "$0" in reason
+
+
+def test_the_escalation_names_the_forms_it_covers():
+    assert route(ready_view(income_gaps=["W-2", "SSA-1099"])).update["escalation"]["forms"] == ["W-2", "SSA-1099"]
+
+
+def decided(*forms, decision="continue"):
+    entry = {"condition": S.INCOME_NOT_READ, "decision": decision, "note": "n", "resolution": None}
+    return {**entry, "forms": list(forms)} if forms else entry
+
+
+def test_a_volunteers_continue_covers_only_the_forms_it_named():
+    state = {"facts": fact(has_w2="yes", has_ssa_1099="yes"), "extracted": {}, "human_decisions": [decided("W-2")]}
+    assert routing_view(state)["income_gaps"] == ["SSA-1099"]  # a form that turns up later pauses again
+    state["human_decisions"].append(decided("SSA-1099"))
+    assert routing_view(state)["income_gaps"] == []
+
+
+def test_a_decision_without_forms_covers_every_form():
+    state = {"facts": fact(has_w2="yes", has_ssa_1099="yes"), "extracted": {}, "human_decisions": [decided()]}
+    assert routing_view(state)["income_gaps"] == []
+
+
+def test_a_stop_or_another_condition_does_not_cover_a_form():
+    other = {"condition": S.TAX_ADVICE_REQUEST, "decision": "continue", "note": "n", "resolution": None}
+    state = {"facts": fact(has_w2="yes"), "extracted": {}, "human_decisions": [decided("W-2", decision="stop"), other]}
+    assert routing_view(state)["income_gaps"] == ["W-2"]
 
 
 def test_no_gap_goes_straight_to_computation():
@@ -161,6 +189,7 @@ def test_continue_with_a_note_finishes_once_and_is_not_asked_again(tmp_path):
     assert "__interrupt__" not in final and final["status"] == S.COMPLETE
     decisions = [d for d in final["human_decisions"] if d["condition"] == S.INCOME_NOT_READ]
     assert len(decisions) == 1 and decisions[0]["note"] == "W-2 amounts added by hand"
+    assert decisions[0]["forms"] == ["W-2"]  # the router pauses again only for a form this did not cover
     assert final["computed"]["line_1a"]["value"] == 0  # nothing invented
 
 
@@ -189,3 +218,13 @@ def test_a_case_with_its_documents_is_not_paused(tmp_path):
 def test_a_case_that_declares_nothing_is_not_paused(tmp_path):
     _, result = start(tmp_path, documents=[], has_w2="no")
     assert "__interrupt__" not in result and result["status"] == S.COMPLETE
+
+
+def test_a_form_that_turns_up_after_the_pause_pauses_the_case_again(tmp_path):
+    graph, _ = start(tmp_path, documents=[], has_w2="yes")
+    graph.update_state(cfg("t"), {"facts": fact(has_ssa_1099="yes")})  # a corrected answer while it waited
+    again = resume(graph, decision="continue", note="W-2 handled by hand")
+    assert pending(again)["condition"] == S.INCOME_NOT_READ
+    assert "SSA-1099" in pending(again)["reason"] and "W-2" not in pending(again)["reason"]
+    final = resume(graph, decision="continue", note="SSA-1099 handled by hand")
+    assert "__interrupt__" not in final and final["status"] == S.COMPLETE

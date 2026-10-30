@@ -162,7 +162,10 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
     update = {
         "human_decisions": [
             {"condition": condition, "decision": decision, "note": note,
-             "resolution": resolution or None, **({"reviewer": _reviewer(answer)} if _reviewer(answer) else {})}
+             "resolution": resolution or None, **({"reviewer": _reviewer(answer)} if _reviewer(answer) else {}),
+             # which forms a "continue" on INCOME_NOT_READ covers: the router pauses again only for others
+             **({"forms": list(escalation["forms"])} if condition == INCOME_NOT_READ and escalation.get("forms")
+                else {})}
         ],
         "escalation": None,
         "status": RUNNING,

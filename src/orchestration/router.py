@@ -5,7 +5,7 @@ table is unit-testable. The orchestrator node applies `update` to state.
 
 Rules, first match wins: pending escalation -> human; done -> end; waiting for the taxpayer
 -> end (yield); intake -> extraction -> rules -> (out of scope -> human) -> (an income form the
-taxpayer has but no amount is held for -> human, once: INCOME_NOT_READ) -> computation -> review; a passed review ends the case (never with an empty filing status or eligibility
+taxpayer has but no amount is held for -> human, once per form: INCOME_NOT_READ) -> computation -> review; a passed review ends the case (never with an empty filing status or eligibility
 verdict: that escalates as ELIGIBILITY_UNDECIDED, stop-only); a failed review is sent back to Computation until
 `max_revisions` is used up, then escalates. The loop guard (guard.py) wraps this function.
 
@@ -64,9 +64,11 @@ def _income_not_read(forms: list[str], base: dict[str, Any]) -> Route:
                 "pending": True,
                 "condition": INCOME_NOT_READ,
                 "reason": f"The taxpayer has {names}, but no amount from it reached the return, so the draft "
-                          "would leave that income out. Compare with the paper form. Continue only with a "
-                          "note saying how it was handled; the draft still warns where it can.",
+                          "would leave that income out. Continuing does not add the amount: the draft keeps $0 "
+                          "for it (and warns where it can). Compare with the paper form, and continue only with "
+                          "a note saying how it was handled.",
                 "raised_by": "orchestrator",
+                "forms": list(forms),
             },
         },
     )
@@ -120,8 +122,8 @@ def route(view: Mapping[str, Any]) -> Route:
         )
     if view["eligibility_gaps"]:
         return _undecided(view, base)
-    gaps = view.get("income_gaps") or []
-    if gaps and not view.get("income_gap_acknowledged"):
+    gaps = view.get("income_gaps") or []  # only forms no volunteer has acknowledged yet
+    if gaps:
         return _income_not_read(gaps, base)
     if not view["has_computed"]:
         return Route("computation", "no computed lines", base)

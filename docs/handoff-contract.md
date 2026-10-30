@@ -153,7 +153,7 @@ A volunteer answers on the same `thread_id` with
 |---|---|
 | `OUT_OF_SCOPE`, `FORM_1099R_BOX_2B`, `EXPLOITATION_SIGNS` | `stop` only (a human cannot take responsibility for work the system must not attempt) |
 | `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED`, `ELIGIBILITY_UNDECIDED` (raised by the orchestrator) | `stop` only |
-| `INCOME_NOT_READ` (raised by the orchestrator, once, after Rules and before Computation) | `continue` (a note saying how the missing income was handled; **no resolution**) or `stop` |
+| `INCOME_NOT_READ` (raised by the orchestrator, after Rules and before Computation, once per form) | `continue` (a note saying how the missing income was handled; **no resolution**; it does not add the amount, the draft keeps $0 for that form) or `stop` |
 | `SOURCE_CONFLICT`, `FILING_STATUS_AMBIGUITY`, `TAX_ADVICE_REQUEST` | `continue` or `stop` |
 | `ANSWER_UNCERTAIN` | `continue` (with a valid corrected fact) or `stop` |
 | `EXTRACTION_REVIEW` (raised by Extraction) | `continue` (an accepted review of that document) or `stop` (rejects the reading) |
