@@ -31,7 +31,7 @@ apply), a 1099-R whose taxable amount is not determined, and out-of-scope 1099 t
 """
 from provenance import make_direct_input_provenance, make_provenance
 from src.income_forms import (DOC_LINES, answered_yes, as_number, document_amounts, document_kind,
-                              fact_value, record_field, text_amount, unread_forms)
+                              fact_value, record_field, text_amount, typed_amounts, unread_forms)
 from src.state import FORM_1099R_BOX_2B, OUT_OF_SCOPE
 
 # Rules uses short codes; the tax tools use full names.
@@ -168,24 +168,37 @@ def run(view, tools):
         return add(line, record)
 
     def from_documents(line):
-        """Line total from documents. One document keeps its own source; several are summed. A line
-        fed by a form that was not read says so in its source, rather than passing as a plain zero."""
+        """Line total from documents and from amounts the taxpayer typed in (issue #27, step 2). One
+        document keeps its own source; a single typed amount is a direct-input record; several are
+        summed. A line fed by a form that was not read says so in its source, rather than passing as
+        a plain zero."""
         amounts = document_amounts(extracted, DOC_LINES[line], read_text)
+        typed = typed_amounts(facts, line)
         missing = [u["form"] for u in unread if line in u["lines"]]
         note = (f"; NOT READ: {', '.join(missing)} amounts were not captured, so this line may be "
                 "understated") if missing else ""
-        if len(amounts) == 1:
+        if not amounts and len(typed) == 1:
+            name, value = typed[0]
+            record = make_direct_input_provenance(value, name, _entered_by(facts, name))
+            record["source"] = f"{record['source']}{note}"
+            return add(line, record)
+        if len(amounts) == 1 and not typed:
             label, value, doc_id = amounts[0]
             raw = record_field(extracted[doc_id], label.split(".", 1)[1])
             text = f" (text {raw!r} read as a number after a review finding)" if isinstance(raw, str) else ""
             return add(line, make_provenance(
                 value, f"{line} = value read from document field {label}{text}", {label: value},
                 f"Document {doc_id} (Document Extraction){note}", "document_extraction"))
-        if amounts:
-            source = "Documents: " + ", ".join(sorted({d for _, _, d in amounts}))
+        if amounts or typed:
+            sources = ["Documents: " + ", ".join(sorted({d for _, _, d in amounts}))] if amounts else []
+            if typed:
+                sources.append("typed by taxpayer: " + ", ".join(name for name, _ in typed))
+            source = "; ".join(sources)
         else:
             source = "No amount read; shown as zero" if missing else "No matching documents; amount is zero"
-        return total(line, {label: v for label, v, _ in amounts}, f"{source}{note}")
+        parts = {label: v for label, v, _ in amounts}
+        parts.update({f"facts.{name}": v for name, v in typed})
+        return total(line, parts, f"{source}{note}")
 
     # --- income lines (documents), totals (a) and taxable (b)
     wages = total("line_1z", {"line_1a": from_documents("line_1a")},

@@ -89,6 +89,25 @@ Intake does raise these itself, because it is the only agent that hears the taxp
 `EXPLOITATION_SIGNS` (someone else answering without permission, pressure, or a refund
 account not in the taxpayer's name).
 
+## Proposed: amounts for the forms Extraction does not read (issue #27, step 2)
+Proposed by Computation (Sahana), not yet asked by Intake. Intake's question for each is still to be
+agreed with Supriya. Each is a number, source `"direct user input"`, and is read by Computation
+(`TYPED_AMOUNTS` in `src/income_forms.py`). Once a form has one of these, it counts as read.
+
+| Name | Box on the form | Line it feeds |
+|---|---|---|
+| `ssa1099_benefits` | SSA-1099 box 5, net benefits | 6a |
+| `ssa1099_withheld` | SSA-1099 box 6, federal tax withheld | 25b |
+| `int1099_taxable` | 1099-INT box 1, interest income | 2b |
+| `int1099_tax_exempt` | 1099-INT box 8, tax-exempt interest | 2a |
+| `int1099_withheld` | 1099-INT box 4, federal tax withheld | 25b |
+| `div1099_ordinary` | 1099-DIV box 1a, total ordinary dividends | 3b |
+| `div1099_qualified` | 1099-DIV box 1b, qualified dividends | 3a |
+| `div1099_withheld` | 1099-DIV box 4, federal tax withheld | 25b |
+
+Limit: one typed amount marks its form as read, so a withholding left out on the same form is not
+flagged. Intake should ask each box, or the form should be flagged until all its amounts are in.
+
 ## Not answers (other agents can ignore these)
 | Name | Meaning |
 |---|---|
