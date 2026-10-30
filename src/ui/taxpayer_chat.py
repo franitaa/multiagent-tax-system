@@ -50,7 +50,6 @@ What it does:
 
 What is still missing:
   - The volunteer side (resolving a pause) lives in the Kushim dashboard, not here.
-  - The volunteer approves the W-2 reading on JiWon's W-2 page, not yet in the dashboard.
 
 All logic is in src/ui/chat_session.py; this file only draws the page.
 """

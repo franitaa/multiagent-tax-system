@@ -16,11 +16,13 @@ What it does:
     status, a "not sure" answer). The volunteer's name is required and goes in the audit log.
     "Continue" on a filing-status alarm needs a chosen status; if another volunteer already
     decided, the page says so instead of "saved".
+  - A W-2 reading to check (EXTRACTION_REVIEW): the photo the taxpayer added beside each box and
+    the amount read; the volunteer accepts (typing a corrected amount for any wrong or unread box)
+    or rejects (which stops the case). Saved through JiWon's service, with his checks.
   - Same saved-sessions file as the chat page, so a paused chat appears here straight away;
     after a decision the taxpayer presses "Check again" on their page and carries on.
 
 What is still missing:
-  - Approving a W-2 reading is done on JiWon's W-2 page; the case screen says where to go.
   - No login: the volunteer's name is not verified, and anyone with the address (including a
     taxpayer, via the start page or /volunteer) can open this page. Classroom demo with test
     data only. In real use only staff should see it, because it shows taxpayers' own words
@@ -259,6 +261,60 @@ def resolve_form(graph, case_id: str, waiting: dict, volunteer: str) -> None:
         decision_box(graph, case_id, waiting, volunteer)
 
 
+W2_ACCEPT, W2_REJECT = "accept", "reject"
+W2_CHOICES = {W2_ACCEPT: "Accept: the amounts match the photo (correct any box below first)",
+              W2_REJECT: "Reject: the photo cannot be used (this stops the case)"}
+
+
+def w2_check(case_id: str, volunteer: str) -> None:
+    """A W-2 reading to check: the photo beside the amounts read, then accept (with any corrected
+    amount) or reject. Saved through JiWon's service, so his checks and the audit log apply."""
+    service = app_service.get_service()
+    reading = dash.w2_reading(service, case_id)
+    if reading is None:
+        st.info(dash.NO_LONGER_WAITING)
+        return
+    st.write("Compare each amount with the photo. If one is wrong or missing, type the amount you read on "
+             "the photo in its box below.")
+    photo_col, boxes_col = st.columns([1, 1], gap="medium")
+    with photo_col:
+        if reading["photo"]:
+            st.image(reading["photo"], caption="The W-2 photo the taxpayer added", width="stretch")
+        else:
+            st.warning("The photo could not be found on this computer. Reject unless you can see the paper form.")
+    with boxes_col:
+        rows = [{"Box": b["box"], "What it is": b["label"], "Amount read": "–" if b["amount"] is None else b["amount"]}
+                for b in reading["boxes"]]
+        if reading["needs_amount"]:  # only when the reader could not read a box
+            for row in rows:
+                row["Needs your amount"] = "yes" if row["Box"] in reading["needs_amount"] else ""
+        st.dataframe(rows, hide_index=True, width="stretch")
+        st.caption(f"Tax year read: {reading['tax_year'] or 'not read'}")
+        for warning in reading["warnings"]:
+            st.warning(warning)
+    with st.form("w2-check"):
+        choice = st.radio("Your decision", list(W2_CHOICES), format_func=W2_CHOICES.get)
+        corrections = {}
+        for b in reading["boxes"]:
+            label = f"Box {b['box']} ({b['label']}): "
+            label += ("the amount on the photo (needed)" if b["box"] in reading["needs_amount"]
+                      else "the correct amount, only if it is different")
+            corrections[b["box"]] = st.text_input(label + ", for example 1234.56", key=f"w2-box-{b['box']}")
+        tax_year = None
+        if not reading["tax_year"]:
+            tax_year = st.number_input("Tax year printed on the W-2", min_value=2000, max_value=2030, value=None, step=1)
+        checked = st.checkbox("I compared the amounts with the photo, and this is a W-2.")
+        note = st.text_area("Note for the record (required)")
+        if st.form_submit_button("Save decision", type="primary"):
+            error = dash.decide_w2(service, case_id, choice == W2_ACCEPT, note, volunteer, checked_photo=checked,
+                                   corrections=corrections, tax_year=tax_year)
+            if error:
+                st.error(error)
+            else:
+                st.session_state.saved = f"Decision saved for {case_id}."
+                st.rerun()
+
+
 def decision_box(graph, case_id: str, waiting: dict, volunteer: str) -> None:
     st.subheader("Needs your decision")
     alarm = dash.ALARMS.get(waiting["condition"], waiting["condition"])
@@ -271,7 +327,7 @@ def decision_box(graph, case_id: str, waiting: dict, volunteer: str) -> None:
     if waiting.get("error"):
         st.error(waiting["error"])
     if waiting["condition"] == S.EXTRACTION_REVIEW:
-        st.info(dash.W2_PAGE_HELP)
+        w2_check(case_id, volunteer)
         return
     options = waiting["options"]
     if options == ["stop"]:

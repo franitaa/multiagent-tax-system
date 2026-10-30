@@ -24,8 +24,10 @@ What it does:
   - Answers with any SSN shown as •••-••-1234, and the draft form when there is one.
 
 What is still missing:
-  - Approving a W-2 reading (EXTRACTION_REVIEW) is done on JiWon's W-2 page, not here; the
-    dashboard shows the case as paused and says where to go (W2_PAGE_HELP).
+  - Approving a W-2 reading (EXTRACTION_REVIEW): `w2_reading()` gives the photo the taxpayer
+    added and each box with the amount read, and `decide_w2()` accepts it (optionally with a
+    corrected amount for a box) or rejects it through JiWon's service (`service.resolve`), which
+    checks the decision and goes through the same human gate and audit log.
   - Cases started on the W-2 page (IDs not like SF-123-456) are listed too, named
     "(test case from the W-2 page)", so a volunteer can tell them apart.
   - No login: the volunteer's name is NOT verified (anyone can type any name, and the audit log
@@ -38,7 +40,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from langgraph.types import Command
+from pydantic import ValidationError
 
+from silverfile_extraction.models import BOX_LABELS, REQUIRED_BOXES
+from silverfile_extraction.privacy import SafeInputError
 from src import state as S
 from src.agents import intake_agent
 from src.audit import AuditLog
@@ -63,7 +68,7 @@ ALARMS = {
     S.SOURCE_CONFLICT: "An answer does not match a tax document.",
     S.FORM_1099R_BOX_2B: "A 1099-R says the taxable amount was not determined (box 2b).",
     S.ANSWER_UNCERTAIN: "The taxpayer was not sure about an answer the return needs.",
-    S.EXTRACTION_REVIEW: "A W-2 reading needs to be checked (on the W-2 page).",
+    S.EXTRACTION_REVIEW: "A W-2 reading needs to be checked against the photo.",
     S.LOOP_GUARD: "The system went round in circles and stopped itself.",
     S.REVIEW_BOUND_EXCEEDED: "The final check kept failing and stopped itself.",
     S.ELIGIBILITY_UNDECIDED: "The rules could not decide the filing status or eligibility.",
@@ -83,9 +88,6 @@ FILING_STATUS_WORDS = {
 
 # Why some alarms offer only "Stop" (the gate's rule), so the volunteer does not look for a
 # missing button.
-W2_PAGE_HELP = ("This W-2 reading cannot be approved in this dashboard yet. Open JiWon's W-2 page "
-                "(app.py; see the README), enter this case ID, compare the amounts with the W-2 image "
-                "and save the review there. Until then this case stays paused.")
 STOP_ONLY_WHY = ("For this alarm the only choice is to stop the case: SilverFile cannot prepare it, "
                  "and a volunteer cannot take responsibility for continuing it here.")
 
@@ -332,3 +334,63 @@ def resolve(graph, case_id: str, decision: str, note: str, reviewer: str,
     graph.invoke(Command(resume=answer), _config(case_id))
     still_waiting = pending(graph, case_id)
     return still_waiting.get("error") if still_waiting else None
+
+
+# ---- W-2 reading (EXTRACTION_REVIEW) --------------------------------------------------------------
+
+# Warnings from JiWon's reader that mean a box needs an amount typed by the volunteer.
+_NEEDS_AMOUNT = {"MISSING_OR_UNREADABLE_BOX", "AMBIGUOUS_BOX", "UNREADABLE_AMOUNT"}
+
+
+def w2_reading(service, case_id: str) -> dict | None:
+    """The W-2 waiting for a volunteer, or None: {"document_id", "photo" (PNG bytes or None),
+    "tax_year", "boxes": [{"box", "label", "amount", "seen"}], "needs_amount": [box, ...],
+    "warnings": [text, ...]}. Boxes 1 and 2 are always listed, read or not."""
+    waiting = pending(service.graph, case_id)
+    if not waiting or waiting["condition"] != S.EXTRACTION_REVIEW:
+        return None
+    values = service.graph.get_state(_config(case_id)).values
+    doc_id = waiting.get("document_id")
+    record = ((values.get("extracted") or {}).get(doc_id) or {}).get("record") or {}
+    document = next((d for d in values.get("documents") or [] if d.get("id") == doc_id), {})
+    photo_file = Path(service.tools.runtime) / "uploads" / f"{document.get('image_ref', '')}.png"
+    fields = record.get("fields") or {}
+    needs = {i["box"] for i in record.get("issues") or [] if i.get("box") and i.get("code") in _NEEDS_AMOUNT}
+    needs |= {c["box"] for c in record.get("conflicts") or [] if c.get("box")}
+    needs |= {box for box in REQUIRED_BOXES if box not in fields}
+    shown = sorted(set(fields) | needs, key=lambda b: (len(b), b))
+    return {
+        "document_id": doc_id,
+        "photo": photo_file.read_bytes() if document.get("image_ref") and photo_file.is_file() else None,
+        "tax_year": record.get("tax_year"),
+        "boxes": [{"box": box, "label": BOX_LABELS.get(box, ""), "amount": (fields.get(box) or {}).get("value"),
+                   "seen": ((fields.get(box) or {}).get("source") or {}).get("observed_text")} for box in shown],
+        "needs_amount": sorted(needs, key=lambda b: (len(b), b)),
+        "warnings": [i["message"] for i in record.get("issues") or []
+                     if i.get("code") != "VISION_REVIEW_REQUIRED" and i.get("message")],
+    }
+
+
+def decide_w2(service, case_id: str, accept: bool, note: str, reviewer: str, *, checked_photo: bool = False,
+              corrections: dict | None = None, tax_year: int | None = None) -> str | None:
+    """Accept or reject the W-2 reading with JiWon's service, which checks the decision and writes it to
+    the case and the audit log. Returns a message if it was not saved, or None. `corrections` maps a box
+    to the amount the volunteer read on the photo, e.g. {"1": "30000.00"}; empty ones are ignored."""
+    if not reviewer.strip():
+        return "Please type your name first, so the record shows who decided."
+    if not note.strip():
+        return "Please write a short note for the record."
+    if w2_reading(service, case_id) is None:
+        return NO_LONGER_WAITING
+    decision = {"action": "accept" if accept else "reject", "reviewer": reviewer.strip(), "reason": note.strip(),
+                "corrections": {box: amount.strip() for box, amount in (corrections or {}).items() if amount and amount.strip()},
+                "confirmed_w2": bool(checked_photo)}
+    if tax_year:
+        decision["tax_year"] = int(tax_year)
+    try:
+        service.resolve(case_id, decision)
+    except SafeInputError as problem:
+        return str(problem)
+    except ValidationError:
+        return "Please check the amounts and the tax year, then try again."
+    return None

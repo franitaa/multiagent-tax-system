@@ -42,7 +42,6 @@ What it does:
 What is still missing:
   - Nothing deletes old sessions on a timer: run Sahana's `python -m scripts.purge_cases
     --expired` on a schedule.
-  - A volunteer still approves each W-2 reading on JiWon's W-2 page, not yet in the dashboard.
 """
 import calendar
 import re
