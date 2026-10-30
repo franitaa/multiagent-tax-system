@@ -5,13 +5,14 @@ names and value shapes are the source of truth (`docs/answer-names.md`). Rules a
 Everything below comes from running the real Intake and the real Rules together in our graph, and
 from a pattern search of `src/agents/rules.py`.
 
-> **Status: the name mapping in section 1 is UNCONFIRMED.** It is my reading, not an agreement.
-> It stays marked unconfirmed until Matthew (Rules) and Supriya (Intake) have both confirmed it.
+> **Status (2026-10-29): Rules now reads Intake's names and every test in "Done means" passes, but the name
+> mapping in section 1 is still UNCONFIRMED by people.** It was my reading, not an agreement. It stays marked
+> unconfirmed until Matthew (Rules) and Supriya (Intake) have both confirmed it.
 > **The reference for what Intake writes is Supriya's shared list of answer names,
 > [`docs/answer-names.md`](answer-names.md)** (merged to `main` in #8). If that list and this table
 > disagree, the list wins, and this table should be corrected.
 
-## What happens today
+## What happened before Rules was fixed (history)
 (The orchestrator now pauses instead of finishing; see section 4.) A scripted single filer (born 1950, one W-2) answered all 24 Intake questions. The graph finished
 with status `complete`, but Rules returned `filing_status: None`, `eligible_1040sr: None`,
 `taxpayer_qualifies: None`, no citations, and still `in_scope: true`. Rules never saw the answers
@@ -85,15 +86,13 @@ screening questions (Q17a-e, plus Q21 and Q23) but, **by design, only records th
 | `has_other_tax_forms` | no |
 | `can_be_claimed_as_dependent`, `us_resident_all_year` | not under these names |
 
-So today a taxpayer who says they have crypto, a business and foreign accounts is not turned away: the
-run pauses as `ELIGIBILITY_UNDECIDED` (for the wrong reason), and once Rules can read Intake's names it
-would **complete** unless it also handles these. **Owner: Matthew (Rules).** For each screening fact,
-`"yes"` (and, your call, `"not_sure"`) should raise `OUT_OF_SCOPE` with a reason that names the item.
-Status of this section: the fact list above is from running the real Intake; whether `not_sure` should
-escalate or be re-asked is a decision for Matthew and Supriya.
+**Status:** Rules now raises `OUT_OF_SCOPE` for a `"yes"` screening answer, with a reason that names the item
+(`tests/test_e2e_intake.py::test_an_out_of_scope_screening_answer_escalates_as_out_of_scope`, 5 cases), and
+an uncertain answer is not continued past (eval `sold-property-not-sure`). Whether `not_sure` should instead
+be re-asked is still a decision for Matthew and Supriya. The fact list above is from running the real Intake.
 
-## Done means
-These strict expected failures start passing, and the `xfail` markers are removed:
+## Done means (all of these pass on `main`; the markers are gone)
+These were strict expected failures. They pass now, and the `xfail` markers are removed:
 - `tests/test_rules_intake_contract.py::test_rules_finds_the_birth_date_under_intakes_name`
 - `tests/test_rules_intake_contract.py::test_a_no_answer_to_blindness_is_not_counted_as_blind`
 - `tests/test_e2e_intake.py::test_rules_decides_eligibility_and_status_from_real_intake_facts`
@@ -102,7 +101,12 @@ These strict expected failures start passing, and the `xfail` markers are remove
 - `tests/test_e2e_intake.py::test_an_out_of_scope_screening_answer_escalates_as_out_of_scope` (5 cases)
 
 Already guaranteed by orchestration, whatever Rules does: a run never ends "complete" without a filing
-status (`tests/test_eligibility_invariant.py`).
+status (`tests/test_eligibility_invariant.py`), and after a volunteer's answer the gate clears `eligibility`
+so Rules decides again (`tests/test_status_reruns_rules.py`, `tests/test_answer_uncertain.py`).
+
+Rules' view of `facts` is now an allow-list of the answers it reads (`RULES_FACTS` in
+`src/orchestration/context.py`): it no longer receives names, dependents or volunteer notes. If Rules starts
+reading a new fact, add it there; the guard test fails until you do.
 
 Run them with `pytest -rxX`; strict mode reports the first one that is fixed as a failure, which is
 the signal to delete its marker.
