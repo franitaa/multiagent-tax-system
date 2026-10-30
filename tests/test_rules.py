@@ -404,26 +404,48 @@ def test_non_full_year_residency_escalates():
 
 
 def test_not_sure_scope_answer_is_not_assumed_safe():
-    # Current Rules treats uncertainty as out-of-scope, not a clarify-once loop.
-    # If the team adopts clarify-once, this assertion must be updated.
+    # A volunteer confirms yes or no (ANSWER_UNCERTAIN, the gate checks the answer); it never continues alone.
     result = evaluate(single_facts(digital_assets=fact("not_sure")))
     assert result["handoff_request"]["to"] == "human"
+    assert result["eligibility"]["in_scope"] is True
+    require_escalation(result, S.ANSWER_UNCERTAIN)
+    assert result["escalation"]["fact"] == "digital_assets"
+
+
+def test_a_definite_yes_wins_over_a_not_sure_answer():
+    # The case ends as out of scope anyway, so nobody is asked about the unsure answer first.
+    result = evaluate(single_facts(digital_assets=fact("not_sure"), sold_stocks_or_property=fact("yes")))
     assert result["eligibility"]["in_scope"] is False
     require_escalation(result, S.OUT_OF_SCOPE)
 
 
-@pytest.mark.parametrize("answer", ["yes", "not_sure"])
-def test_spouse_eligible_as_dependent_is_escalated_for_joint_return(answer):
-    result = evaluate(joint_facts(spouse_can_be_claimed=fact(answer)))
+def test_the_volunteers_no_lets_screening_pass():
+    result = evaluate(single_facts(digital_assets=fact("no")))
+    assert result["eligibility"]["in_scope"] is True and "escalation" not in result
+
+
+def test_spouse_eligible_as_dependent_yes_is_escalated_for_joint_return():
+    result = evaluate(joint_facts(spouse_can_be_claimed=fact("yes")))
     assert result["eligibility"]["in_scope"] is False
     require_escalation(result, S.OUT_OF_SCOPE)
 
 
-@pytest.mark.parametrize("answer", ["yes", "not_sure"])
-def test_mfs_spouse_itemizes_or_uncertain_escalates(answer):
-    result = evaluate(joint_facts(file_jointly=fact("no"), spouse_itemizing=fact(answer)))
+def test_spouse_eligible_as_dependent_not_sure_asks_a_volunteer():
+    result = evaluate(joint_facts(spouse_can_be_claimed=fact("not_sure")))
+    require_escalation(result, S.ANSWER_UNCERTAIN)
+    assert result["escalation"]["fact"] == "spouse_can_be_claimed"
+
+
+def test_mfs_spouse_itemizes_yes_is_escalated():
+    result = evaluate(joint_facts(file_jointly=fact("no"), spouse_itemizing=fact("yes")))
     assert result["eligibility"]["in_scope"] is False
     require_escalation(result, S.OUT_OF_SCOPE)
+
+
+def test_mfs_spouse_itemizing_not_sure_asks_a_volunteer():
+    result = evaluate(joint_facts(file_jointly=fact("no"), spouse_itemizing=fact("not_sure")))
+    require_escalation(result, S.ANSWER_UNCERTAIN)
+    assert result["escalation"]["fact"] == "spouse_itemizing"
 
 
 @pytest.mark.parametrize("kind", ["W-2", "1099-INT", "1099-DIV", "1099-R", "SSA-1099"])

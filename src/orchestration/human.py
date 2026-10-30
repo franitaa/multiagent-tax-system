@@ -43,6 +43,12 @@ UNCERTAIN_ANSWERS = {
     "taxpayer_blind": _YES_NO, "spouse_blind": _YES_NO,
     "married_dec31": _YES_NO, "file_jointly": _YES_NO,
     "household_situation": ("single", "widowed", "caring_for_someone"),
+    # The scope-screening questions: the volunteer asks the taxpayer. A "yes" still ends as OUT_OF_SCOPE.
+    **{fact: _YES_NO for fact in (
+        "has_other_tax_forms", "sold_stocks_or_property", "business_or_rental_income",
+        "foreign_income_or_accounts", "digital_assets", "can_be_claimed_as_dependent",
+        "us_resident_all_year", "spouse_can_be_claimed", "spouse_itemizing",
+    )},
 }
 FILING_STATUSES = (
     "single",
@@ -180,7 +186,7 @@ def human_gate(view: dict, tools: ToolBox) -> dict:
             name: {"value": value, "source": f"human:{condition}"}
             for name, value in resolution.items()
         }
-    if decision == "continue" and condition in (ANSWER_UNCERTAIN, FILING_STATUS_AMBIGUITY):
+    if decision == "continue" and condition in (ANSWER_UNCERTAIN, FILING_STATUS_AMBIGUITY, SOURCE_CONFLICT):
         # The volunteer's answer is a new fact. Rules ran on the old one, and the router only runs
         # Rules when there is no eligibility, so clear it: otherwise the provisional result stands
         # (for a filing status, the case then stops as ELIGIBILITY_UNDECIDED).

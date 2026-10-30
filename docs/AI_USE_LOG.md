@@ -339,3 +339,290 @@ and `p5/redact-messages-at-boundary`.
   not every route a number could take.
 - The redaction pattern removes any 9-digit number that is not 900-999, so a 9-digit
   number that is not an SSN would also be removed from a chat message.
+
+## Matthew — Tue Oct 27, 2026 (Eligibility & Rules Agent)
+**Tool:** ChatGPT (OpenAI), used for reviewing Python code, test design, and explanations while working on the multi-agent tax-system repository.
+
+**What the AI helped with**
+- Interpreted Assignment 7's Eligibility & Rules responsibilities: Form 1040-SR eligibility, filing-status validation, age/blindness boxes, supported tax scope, and escalation to volunteers.
+- Reviewed the Rules code and the Intake-to-Rules field contract. Suggested reading the shared `facts` records (`taxpayer_birth_date`, `married_dec31`, `file_jointly`, `household_situation`, `taxpayer_blind`, and related fields) instead of relying on old stub names.
+- Suggested explicit parsing of `"yes"`, `"no"`, and `"not_sure"`, and deriving filing status in Rules rather than expecting Intake to supply it.
+- Explained the existing escalation conditions and how `handoff_request` differs from a real pending `escalation`.
+
+**What I decided or checked myself**
+- Used the team's `docs/answer-names.md` as the reference for Intake fact names and value shapes.
+- Reviewed the suggestions against my Rules responsibility and discussed integration questions with the Intake and orchestration teammates.
+
+**How the AI's work was verified**
+- Reviewed the Python code and team contracts; later tested the updated behavior in my local repository using pytest.
+
+**Limits I am aware of**
+- A Rules unit test does not establish that the orchestrator honors a human handoff or that a draft return is completed correctly.
+
+## Matthew — Wed Oct 28, 2026 (Rules citations and human-review behavior)
+**Tool:** ChatGPT (OpenAI), used for code suggestions, test generation, debugging, documentation, and GitHub comment drafting.
+
+**What the AI helped with**
+- Suggested pairing every applied rule with a policy citation in `eligibility["rule_citations"]`, using numbered sections of `data/policy.md` and a helper function to avoid duplicate entries.
+- Helped revise `tests/test_rules_policy_citations.py`, investigate failures from outdated field expectations, and add the missing Form 1099-R Box 2b citation (`policy.md §3.2`).
+- Helped debug the `"not_sure"` blindness case: keep confirmed age boxes, do not count unconfirmed blindness, and refer unresolved answers to Human Review rather than returning to Intake.
+- Reviewed teammate feedback explaining why a handoff request by itself can be ignored by the router. Suggested a real pending escalation and helped draft a response for PR #21.
+- Drafted updates to `docs/handoff-contract.md` describing Rules' output and the citation structure.
+
+**What I decided or checked myself**
+- Chose the paired `rule_citations` format and asked that the old fields not be retained in the contract description.
+- Reviewed teammate comments and agreed that uncertain blindness should be resolved by a volunteer without losing the known age box.
+- Ran the policy-citation tests in my own project and shared the failing output to identify the missing Box 2b citation; I subsequently confirmed that those tests passed.
+
+**How the AI's work was verified**
+- The policy-citation suite passed locally after the missing 1099-R citation was added (17 tests in the suite discussed).
+- The reviewer independently found that a handoff-only blindness response did not pause the full workflow, so this integration behavior was not considered verified.
+
+**Limits I am aware of**
+- AI-generated tests and documentation must be checked against the actual branch, the supplied `policy.md`, and the orchestrator's state contract.
+
+## Matthew — Thu Oct 29, 2026 (ANSWER_UNCERTAIN, filing status, and regression tests)
+**Tool:** ChatGPT (OpenAI), used for code review, Python test-suite drafting, and interpreting pytest failures.
+
+**What the AI helped with**
+- Reviewed `rules(6).py` and `rules(7).py` and suggested using the agreed `ANSWER_UNCERTAIN` condition for relevant `"not_sure"` answers (`married_dec31`, `file_jointly`, `household_situation`, `taxpayer_blind`, and `spouse_blind`).
+- Suggested preserving confirmed age/blindness boxes, raising `escalation["pending"] = True`, and rereading human-corrected facts on a resumed Rules run.
+- Helped maintain `HUMAN_GATE_NAMES` for volunteer filing-status inputs while outputting canonical long names (for example, `married_filing_jointly`) through `eligibility["filing_status"]` for Computation.
+- Generated and refined Rules regression tests covering all five filing statuses, uncertainty escalation, volunteer corrections, tax scope, citations, Social Security rules, and Forms 1099-R and 1099-NEC.
+- Helped interpret errors caused by a missing `ANSWER_UNCERTAIN` constant in `src/state.py`, a missing local `data/policy.md`, and an obsolete strict `xfail` marker for the now-passing 1099-NEC screening test.
+
+**What I decided or checked myself**
+- Chose to keep short status codes inside Rules calculations but return the long-form names expected by Computation.
+- Worked with the team's proposed `ANSWER_UNCERTAIN` contract rather than reusing `SOURCE_CONFLICT` for uncertain answers.
+- Added or tested a check for extracted 1099-NEC documents that Intake might not flag, and reviewed the test outcomes in my local PowerShell environment.
+
+**How the AI's work was verified**
+- A local `test_rules.py` run reported 107 passing tests and one `XPASS(strict)` after the 1099-NEC behavior was implemented. The strict XPASS indicated that the obsolete expected-failure marker needed to be removed; it was not evidence of a broken Rules calculation.
+- Separate AI-provided validation runs used isolated test environments; they do not substitute for running the full project and end-to-end human-review scenarios.
+
+**Limits I am aware of**
+- Real pause/resume behavior, volunteer resolution storage, and final draft propagation require integration tests with the actual orchestrator, human gate, and Computation agent.
+- I still need to verify the final branch's full test run and record any remaining integration issues before submission; AI-generated files are not automatically committed or pushed to GitHub.
+
+## Matthew — Fri Oct 30, 2026 (contract confirmation and AI log, demo day)
+**Tool:** Claude (Claude Opus 5.5) in the Claude in Chrome side panel. It read the repository
+through my logged-in GitHub browser session and edited files in the GitHub web editor.
+
+**What the AI helped with**
+- Explained my P1/P2 tasks in issue #41, and suggested how to raise `SOURCE_CONFLICT` in Rules
+  (compare the `has_*` answers with uploaded document kinds); not implemented yet.
+- Reviewed my draft of `docs/intake-rules-contract.md` against `rules.py`, `answer-names.md` and
+  `src/orchestration/context.py`. It found missing facts in the mapping (`spouse_can_be_claimed`,
+  `spouse_death_year`, the `has_*` answers) and that the `has_*` answers are not in `RULES_FACTS`,
+  so a `SOURCE_CONFLICT` check must add them there.
+- Rewrote sections 1, 2, 3 and 5 of the contract to match the current code, and recorded the
+  agreed `not_sure` decision.
+- Looked up the dates of my ChatGPT sessions (only dates are shown, not times) to help me
+  write the entries above, and committed both files to a branch for a pull request.
+
+**What I decided or checked myself**
+- Agreed with Supriya that a `not_sure` screening answer is escalated, not re-asked.
+- Confirmed the mapping for Rules; Supriya confirms the Intake side on the pull request.
+- Chose to commit through a branch and pull request rather than to `main`, and approved each commit.
+
+**How the AI's work was verified**
+- The contract statements were checked against `rules.py` and `context.py` on `main`, and the
+  1099-NEC test name against `tests/test_rules.py`. Claude could not run the tests; I run
+  `pytest` locally before merging.
+
+**Limits I am aware of**
+- Documentation only this session: no code changed, so `SOURCE_CONFLICT` is still to do.
+
+
+## Ji Won Park — October 26, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for setup troubleshooting, explanations, and testing guidance.
+
+**What the AI helped with**
+
+- Explained how to run the project on Windows using VS Code and a Python virtual environment.
+- Helped troubleshoot dependencies and explained the Tesseract requirement for image extraction.
+- Explained case IDs, checkpointing, and how to test saved answers and resumed sessions.
+
+**What I decided or checked myself**
+
+- Ran the checkpoint pause/resume and intake-answer save/resume examples.
+- Checked that the case ID, summary, and next-question position were retained.
+
+**How the AI's work was verified**
+
+- Checked the command outputs and ran the unit suite: 60 tests were reported, with 12 skipped.
+
+**Limits I am aware of**
+
+- The skipped image and integration tests did not verify actual W-2 image extraction.
+
+
+## Ji Won Park — October 27, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for reviewing test failures and explaining shared graph state.
+
+**What the AI helped with**
+
+- Reviewed a failing extraction integration test and its saved state.
+- Explained the difference between an empty `computed` dictionary and a missing `computed` field.
+
+**What I decided or checked myself**
+
+- Ran the tests and inspected the failure output.
+- Checked that the case was awaiting human extraction review and contained no calculated amounts.
+
+**How the AI's work was verified**
+
+- The test output showed 242 passed tests, one failure, and five passed subtests.
+- The failure concerned an assertion about the presence of the `computed` key.
+
+**Limits I am aware of**
+
+- Diagnosing this assertion did not verify the complete extraction, review, and restart workflow.
+
+
+## Ji Won Park — October 29, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for Python changes, documentation, debugging, and Git guidance.
+
+**What the AI helped with**
+
+- Suggested changes to read API keys from `.env` and remove the sidebar key input.
+- Helped update configuration instructions for OpenAI and Anthropic.
+- Drafted an initial connection between chat sessions and W-2 storage.
+- Helped diagnose indentation and UI-test failures.
+
+**What I decided or checked myself**
+
+- Applied the changes in VS Code, ran tests, and committed changes through my working branch.
+- Kept actual API keys out of the committed configuration template.
+
+**How the AI's work was verified**
+
+- After corrections, the local suite reported 760 passed tests and five passed subtests.
+- Submitted the changes for teammate review.
+
+**Limits I am aware of**
+
+- Local tests did not prove compatibility with newer team changes.
+- The initial integration changed shared chat and routing files too broadly. Teammate feedback led to separating those changes from the API-key PR.
+
+
+## Ji Won Park — October 30, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for code review, test design, integration explanations, and documentation.
+
+**What the AI helped with**
+
+- Helped narrow PR #32 to API-key handling and related setup instructions.
+- Drafted the P3 shared-service adapter and tests for using the chat's existing case ID and checkpointer.
+- Explained how to preserve intake answers and existing documents when adding W-2 uploads.
+- Helped prepare integration instructions and the Extraction and memory report sections.
+
+**What I decided or checked myself**
+
+- Followed teammate feedback to separate shared integration work from the API-key PR.
+- Tested a synthetic W-2 through the standalone workbench using my OpenAI key.
+- Ran the adapter and full test suites before pushing changes.
+- Confirmed that extraction would remain W-2 only and coordinated chat UI integration with the Intake owner.
+
+**How the AI's work was verified**
+
+- The API-key branch reported 1,100 passed tests, three expected failures, and five passed subtests after incorporating main.
+- The adapter tests reported nine passed tests and five passed subtests, including preservation of saved answers and documents after reopening the database.
+- The full suite after adding the adapter reported 1,145 passed tests, three expected failures, and ten passed subtests.
+- Teammate review identified further integration requirements before PR #39 was merged.
+
+**Limits I am aware of**
+
+- My successful OpenAI test used the standalone workbench, not the complete chat upload flow. I had not personally verified a live Anthropic call.
+- Adapter tests do not prove that the chat UI, routing, and dashboard work together correctly.
+- Vision results require human verification. Model-assisted identifier screening does not guarantee that real identifiers are blocked before transmission.
+## Person 5 (Sahana) — Wed Oct 28, 2026 (security and Computation integration)
+**Tool:** Claude Code (Claude Sonnet 5.5) in the terminal, on branch `p5/oct27-followups`
+and the branches it fed into.
+
+**What the AI helped with**
+- Moved the tax-tool calls to MCP (a stdio client, on by default, with no silent fallback) and added
+  `mcp==2.3.0` to `requirements.txt`.
+- Added the prompt-injection defences, the hash-chained audit log (`src/audit.py`) and case retention
+  (`src/retention.py`, `scripts/purge_cases.py`).
+- Made Computation act on Review send-backs, and wrote the draft form from a completed run.
+- Redacted escalation reasons and volunteer notes before they reach state, and removed real-looking
+  SSNs from chat messages at the state boundary (SEC-2).
+- Corrected two 2025 bracket tops in `tax_math.py` against Rev. Proc. 2024-40, with tests.
+
+**What I decided or checked myself**
+- Reported to the team that the SEC-2 commit messages described runner and state changes that were not in the committed diff, rather than leaving the mismatch unmentioned.
+
+**How the AI's work was verified**
+- The full pytest suite before each commit. The remaining failures were listed in the P5 README
+  rather than hidden.
+
+**Limits I am aware of**
+- The audit chain does not detect deletion of the last lines, and the volunteer name is whatever the
+  caller supplies (there is no login yet).
+
+## Person 5 (Sahana) — Thu Oct 29, 2026 (review fixes, unread income forms, merge)
+**Tool:** Claude Code (Claude Sonnet 5.5) in the terminal, on branches `p5/clean`,
+`p5/in-scope-income-warning` and a test-fix branch for PR #31.
+
+**What the AI helped with**
+- Fixed the two send-back tests on PR #30's branch by giving them an Extraction stand-in that returns
+  text amounts (`tests/helpers.py`), and opened PR #31 with Shruti as reviewer.
+- Investigated an MCP test failure. The cause was the stub Review on `p5/clean`, which PR #30 replaces.
+- Added the unread in-scope income safeguard (issue #27, PR #33): Computation and the draft form warn
+  when an SSA-1099, 1099-INT or 1099-DIV has no amount, and never invent one.
+- Moved the shared income-form code to `src/income_forms.py` after Francesca's review, so the draft form
+  does not import an agent, and added a test that checks this.
+- Merged `main` into `p5/clean` after PR #33 and ran the full suite.
+
+**What I decided or checked myself**
+- Chose to keep my three local test edits in a stash, since `main` already had identical content.
+- Chose `src/income_forms.py` over `src/tax_tools.py`, because the tax-tool list says it imports only
+  `tax_math`.
+- Posted the replies on PR #33 and PR #35 myself, and corrected the #35 wording after PR #33 merged.
+
+**How the AI's work was verified**
+- Full suite on the merged branch: 1100 passed, 3 xfailed.
+
+**Limits I am aware of**
+- Issue #27 is only partly fixed: the draft warns, but the amounts still need Intake and Extraction work.
+
+## Person 5 (Sahana) — Fri Oct 30, 2026 (typed income amounts, PR #40 review, retention)
+**Tool:** Claude Code (Claude Sonnet 5.5; part of the session ran on Claude Haiku 5.5 before the model was switched) in VS Code, on branches `p5/typed-income-amounts`,
+`p5/retention-uploads` and `p5/issue-41-typed-amounts`.
+
+**What the AI helped with**
+- Issue #41 P1 (issue #27, step 2): Computation reads amounts the taxpayer types for SSA-1099, 1099-INT
+  and 1099-DIV as direct-input records, and a form with a typed amount counts as read. Commit `c40de88`,
+  not pushed.
+- Read PR #40 and ran its tests on a temporary copy of `main` with the PR merged. Posted a comment
+  review on #40. Nine page tests failed on my machine because my Streamlit (1.50.0) was older than
+  the pinned 1.66.1; they pass with the pinned version, so they were not a problem in `main`.
+- Retention: the purge now removes the uploads (`runtime/uploads/<sha>.png`) that a case was read
+  from, and the stale-upload sweep skips uploads a saved case still points at. Two tests added.
+- Updated the retention wording in `docs/security.md` and the P5 README, with a scheduling example.
+
+**What I decided or checked myself**
+- The fact names in `docs/answer-names.md` are proposed, not agreed with Intake. The decision is with Supriya on PR #46.
+- The Windows Task Scheduler example has not been tested on this machine.
+
+**How the AI's work was verified**
+- Typed-amount change: full suite 1109 passed, 3 xfailed before the commit.
+- Retention: `tests/test_retention.py` 18 passed.
+
+**Limits I am aware of**
+- One typed amount marks its whole form as read, so a missing withholding on that form is not flagged.
+- The scheduled purge only runs if someone sets up the schedule.
+
+## Person 5 (Sahana) — ChatGPT, Oct 22 to Oct 25, 2026 (before switching to Claude Code)
+**Tool:** OpenAI ChatGPT.
+
+**What the AI helped with**
+- Helped me understand the project and the work I needed to do as Person 5 (Computation, provenance and security).
+- Started the first versions of `provenance.py`, `tax_math.py`, the Computation agent (`src/agents/computation.py`) and the tests for them. Claude Code continued and changed them afterwards.
+
+**What I decided or checked myself**
+- After Oct 25 I switched to Claude Code, which made the changes described in the entries above.
