@@ -616,6 +616,8 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
     ]
 
     detected_out_of_scope: list[str] = []
+    # (fact, reason) for each not_sure answer: a volunteer asks the taxpayer (ANSWER_UNCERTAIN).
+    uncertain_screening: list[tuple[str, str]] = []
 
     for fact_name, trigger_value, reason in screening_checks:
         answer = _fact_value(facts, fact_name)
@@ -626,11 +628,9 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
 
         normalized = _normalize(answer)
 
-        # For scope-screening questions, uncertainty cannot safely continue.
+        # Uncertainty never continues on its own: a volunteer confirms yes or no.
         if normalized == "not_sure":
-            detected_out_of_scope.append(
-                f"{reason} (answer not_sure)"
-            )
+            uncertain_screening.append((fact_name, reason))
         elif normalized == trigger_value:
             detected_out_of_scope.append(reason)
 
@@ -640,8 +640,8 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
             "spouse_can_be_claimed",
         )
         if _is_not_sure(spouse_can_be_claimed):
-            detected_out_of_scope.append(
-                "Whether the spouse can be claimed is not_sure"
+            uncertain_screening.append(
+                ("spouse_can_be_claimed", "Whether the spouse can be claimed")
             )
         elif _is_yes(spouse_can_be_claimed):
             detected_out_of_scope.append(
@@ -651,8 +651,8 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
     if filing_status == "mfs":
         spouse_itemizing = _fact_value(facts, "spouse_itemizing")
         if _is_not_sure(spouse_itemizing):
-            detected_out_of_scope.append(
-                "Whether the separately filing spouse itemizes is not_sure"
+            uncertain_screening.append(
+                ("spouse_itemizing", "Whether the separately filing spouse itemizes")
             )
         elif _is_yes(spouse_itemizing):
             detected_out_of_scope.append(
@@ -673,6 +673,17 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
                 eligibility,
             )
         
+    # A definite out-of-scope answer stops the case above, so a volunteer is never asked about an
+    # unsure answer on a case that ends anyway.
+    if uncertain_screening:
+        fact_name, reason = uncertain_screening[0]
+        return _make_escalation(
+            ANSWER_UNCERTAIN,
+            f"{fact_name} is not_sure ({reason}); volunteer clarification required",
+            eligibility,
+            fact=fact_name,
+        )
+
     _record_rule(eligibility, "Supported tax scope screening", "3.1")
 
     return {
