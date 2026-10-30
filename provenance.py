@@ -64,6 +64,6 @@ def make_direct_input_provenance(
             "entered_by": entered_by,
             "entered_on": entered_on,
         },
-        source="User-provided value",
+        source="direct user input",  # the label Review and docs/answer-names.md expect
         tool="make_direct_input_provenance",
     )
