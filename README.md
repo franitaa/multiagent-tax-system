@@ -60,12 +60,12 @@ The following table shows the team's specialization assignments.
 
 | Focus area | Team member assigned |
 |---|---|
-| Agent memory | To confirm |
-| Inter-agent communication | To confirm |
-| Task division and management | To confirm |
-| MLOps/DevOps | To confirm |
-| Guardrails and ethics | To confirm |
-| Security | To confirm |
+| Agent memory | Ji Won Park |
+| Inter-agent communication | Matthew E. Suruadji |
+| Task division and management | Francesca & Supriya |
+| MLOps/DevOps | Shruti Goel |
+| Guardrails and ethics | Francesca & Supriya |
+| Security | Sahana Jay |
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to
 stop; it does not extract, compute, or talk to the user. The other five (Intake, Document Extraction,
