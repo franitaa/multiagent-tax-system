@@ -4,20 +4,20 @@
 #   docker compose up --build         then open:
 #     http://localhost:8501           start page: "I'm a taxpayer" / "I'm a Kushim volunteer"
 #     http://localhost:8501/telemetry telemetry (staff, not linked from the start page)
-#     http://localhost:8502           W-2 photo page
 #   docker compose down               stop; saved cases are kept
 #   docker compose down -v            stop and delete all saved cases, uploads and traces
 #
 # The chat, the volunteer dashboard and telemetry are pages of one app (src/ui/silverfile_home.py), so
-# they run in one container. The W-2 page is a separate app; it shares the same volumes, so both see
-# the same cases. Saved cases and uploads (runtime/) and traces plus the audit log (traces/) live in
+# they run in one container. The W-2 photo is added in the chat and checked on the volunteer dashboard
+# (#56), so the separate W-2 workbench (app.py) is not started here: it writes demo answers into the
+# case ID it is given and would overwrite a taxpayer's real case. Saved cases and uploads (runtime/) and traces plus the audit log (traces/) live in
 # named volumes, not in a container, so they survive restarts and new containers.
 #
 # Ports are published on this computer only (127.0.0.1): the volunteer dashboard and /telemetry have
 # no login, and Docker would otherwise publish them on every network interface.
 #
-# Secrets: the W-2 page reads the .env file itself, not environment variables, so the file is
-# mounted read-only. It is never copied into the image (.dockerignore) or committed (.gitignore).
+# Secrets: the app reads the API key (to read W-2 photos) from the .env file itself, not from
+# environment variables, so the file is mounted read-only. It is never copied into the image (.dockerignore) or committed (.gitignore).
 
 x-silverfile: &silverfile
   build: .
@@ -38,11 +38,6 @@ services:
     <<: *silverfile
     command: streamlit run src/ui/silverfile_home.py --server.port 8501
     ports: ["127.0.0.1:8501:8501"]
-
-  w2:
-    <<: *silverfile
-    command: streamlit run app.py --server.port 8502
-    ports: ["127.0.0.1:8502:8502"]
 
 volumes:
   runtime:
