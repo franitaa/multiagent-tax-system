@@ -44,7 +44,9 @@ returns findings `{check, line, issue, severity}` and either passes, sends the w
 Computation, or escalates.
 - Checks: `provenance` (every line has a full record), `sources` (cited document amounts match
   `extracted`; every in-scope document amount reaches its line), `recompute` (lines 6b, 12e, 13b and 16
-  re-run through the same `tax_math` tools), `totals`, `contradictions`, `completeness`, `scope`.
+  re-run through the same `tax_math` tools), `totals`, `contradictions`, `completeness`, `scope`,
+  `citations` (each entry of `eligibility["rule_citations"]` names its rule and cites a section that
+  exists in `docs/policy.md`; a decided eligibility cites at least one rule).
 - Errors fail the review (`send_back_to: "computation"`, bounded by the review loop below). Warnings
   never fail it. A scope problem also raises `OUT_OF_SCOPE` (Rules said out of scope or not eligible
   for the 1040-SR, an out-of-scope document or a Schedule A/C/D/E line) or `FORM_1099R_BOX_2B`.
@@ -90,9 +92,11 @@ This is part of `eligibility`, **not** a separate top-level state field.
   (a real section of `docs/policy.md`).
 - Do not add duplicate rule/citation pairs. An empty list is valid if no policy
   rule has been applied yet (for example, an early incomplete-input return).
-- The Review Agent is meant to check `eligibility["rule_citations"]` against `docs/policy.md` and report
-  missing, invalid, or nonexistent references as findings. **Not built yet**: Review does not read
-  the citations today.
+- The Review Agent checks `eligibility["rule_citations"]` against `docs/policy.md` (`check_citations`
+  in `src/agents/review.py`): a missing rule name, a citation not of the form `policy.md §n.n`, a
+  section that does not exist, or no citation at all for a decided eligibility is an error; a repeated
+  pair is a warning. A new section Rules cites must be added to `docs/policy.md`, or every return
+  fails Review (`tests/test_review.py::test_every_section_rules_can_cite_exists_in_policy_md`).
 - Dollar-amount provenance (`ProvenanceRecord`) is a separate requirement and
   is **not** replaced by policy citations.
 

@@ -23,6 +23,9 @@ Checks (each produces findings {check, line, issue, severity}):
   scope           eligibility in scope and 1040-SR eligible, only in-scope documents, no
                   1099-R with box 2b checked, no Schedule A/C/D/E or capital-gain lines, and
                   eligibility agrees with a filing status a volunteer decided
+  citations       each of Rules' eligibility["rule_citations"] names a rule and cites a section
+                  that exists in docs/policy.md ("policy.md §2.1"); a decided eligibility cites
+                  at least one rule
 
 Errors fail the review (sent back to Computation). Scope problems also raise
 OUT_OF_SCOPE / FORM_1099R_BOX_2B so a human sees them. Warnings never fail the review.
@@ -41,6 +44,10 @@ Labels it checks against (docs/handoff-contract.md; taxpayer answers: docs/answe
   typed amounts   source "direct user input" with entered_by and entered_on, as answer-names.md
   typed answers   provenance input "facts.<answer name>", checked against the numeric answer
 """
+import re
+from functools import lru_cache
+from pathlib import Path
+
 from src.state import ESCALATION_PRIORITY, FORM_1099R_BOX_2B, OUT_OF_SCOPE
 
 TOLERANCE = 0.5  # dollars; covers whole-dollar rounding of a tool's cents result
@@ -50,6 +57,21 @@ DIRECT_INPUT = "direct user input"  # a `source`, as in docs/answer-names.md
 DIRECT_INPUT_TOOL = "make_direct_input_provenance"  # provenance.py helper for typed-in amounts
 FACT_REF = "facts."  # an input taken from the taxpayer's typed answer: "facts.<answer name>"
 REQUIRED_RECORD_KEYS = ("value", "formula", "inputs", "source", "tool")
+
+# Rules cites numbered sections of the team's reference corpus (docs/handoff-contract.md, "Rules
+# policy citations"); Review checks each one exists there.
+POLICY_FILE = Path(__file__).resolve().parents[2] / "docs" / "policy.md"
+CITATION = re.compile(r"^policy\.md\s*§\s*(\d+\.\d+)$")
+
+
+@lru_cache(maxsize=1)
+def policy_sections(path=POLICY_FILE) -> frozenset[str]:
+    """The numbered sections ("2.1", "3.5", ...) of docs/policy.md; empty if it cannot be read."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return frozenset()
+    return frozenset(re.findall(r"^##\s+(\d+\.\d+)\b", text, flags=re.M))
 
 FILING_STATUS_ALIASES = {
     "single": "single",
@@ -458,6 +480,40 @@ def check_contradictions(ret):
     return findings
 
 
+def check_citations(eligibility, sections=None):
+    """Each rule Rules applied is grounded in the reference corpus: it names the rule and cites a
+    numbered section of docs/policy.md that exists. Older Rules output without `rule_citations` is
+    not checked."""
+    if "rule_citations" not in eligibility:
+        return []
+    sections = policy_sections() if sections is None else sections
+    entries = eligibility["rule_citations"]
+    if not isinstance(entries, list):
+        return [_finding("citations", None, "rule_citations is not a list")]
+    if not sections:
+        return [_finding("citations", None, "docs/policy.md could not be read, so citations were not checked",
+                         severity="warning")]
+    findings, seen = [], set()
+    if not entries and eligibility.get("eligible_1040sr") is not None:
+        findings.append(_finding("citations", None, "Rules decided eligibility but cited no rule"))
+    for entry in entries:
+        if not isinstance(entry, dict) or not str(entry.get("rule") or "").strip():
+            findings.append(_finding("citations", None, f"a citation does not name its rule: {entry!r}"))
+            continue
+        rule, citation = entry["rule"], str(entry.get("citation") or "").strip()
+        match = CITATION.match(citation)
+        if not match:
+            findings.append(_finding("citations", None,
+                                     f"{rule!r} cites {citation!r}, not a section like 'policy.md §2.1'"))
+        elif match.group(1) not in sections:
+            findings.append(_finding("citations", None,
+                                     f"{rule!r} cites policy.md §{match.group(1)}, which does not exist"))
+        if (rule, citation) in seen:
+            findings.append(_finding("citations", None, f"{rule!r} is cited twice", severity="warning"))
+        seen.add((rule, citation))
+    return findings
+
+
 def check_completeness(ret, extracted, eligibility, verified):
     findings = []
     kinds = {_kind(r) for r in extracted.values() if isinstance(r, dict)}
@@ -560,6 +616,7 @@ def review_return(view, tools):
         *total_findings,
         *check_contradictions(ret),
         *check_completeness(ret, extracted, eligibility, verified),
+        *check_citations(eligibility),
     ]
 
 

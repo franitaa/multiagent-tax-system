@@ -30,7 +30,7 @@ review loop run end to end. Tests: about 1,100 pass; the remaining expected fail
 - **Intake as the default:** `AGENTS["intake"]` is still the stub; only the chat page uses the real one (`live_agents()`).
   Two evals stay pending for it (tax advice, exploitation signs), plus `interest-conflict` (nothing compares answers with
   document amounts). Owner: Supriya, with a decision from orchestration.
-- **Review does not check `rule_citations` yet** (planned; `docs/handoff-contract.md`).
+- Review checks `rule_citations` against `docs/policy.md` (each cited section must exist; `docs/handoff-contract.md`).
 - **Persistence:** chat sessions are saved in `runtime/team_checkpoints.sqlite` (#34), unencrypted, and nothing deletes old
   cases on a timer: schedule `python -m scripts.purge_cases --expired`. JiWon's chat and W-2 upload integration and the
   document gate were split out of #32 and are not merged; they come back as separate PRs, for review.
