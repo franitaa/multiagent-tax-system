@@ -19,10 +19,11 @@ Every agent can also read `escalation` and `human_decisions`, and write `escalat
 |---|---|---|
 | Orchestrator | compact routing view (flags, counts; no documents or chat) | control fields only (`next_agent`, `status`, `step`, `handoff_log`, ...) |
 | Intake | `messages` (**last 6 only**), `facts` (all), `session_summary` | `messages`, `facts`, `pending_question`, `intake_complete` |
-| Extraction | `documents` | `extracted` (keyed by `doc_id`) |
-| Rules | `facts`, `extracted`, `session_summary` | `eligibility`(including `rule_citations`) |
+| Extraction | `documents` (one per worker) | `extracted` (keyed by `doc_id`); tool `p3_extract_w2` |
+| Rules | `facts` (**only the answers Rules reads**, `RULES_FACTS` in `context.py`: no names, dependents or volunteer notes), `extracted`, `session_summary` | `eligibility`(including `rule_citations`) |
 | Computation | `facts` (**numeric values only**), `extracted`, `eligibility` (**`filing_status` only**), `pending_revision` | `computed` (line -> ProvenanceRecord) |
-| Review | `computed`, `eligibility`(including `rule_citations`), `facts` (**numeric values only**), `extracted`, `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything |
+| Review | `computed`, `eligibility`(including `rule_citations`), `facts` (**numeric values only**), `extracted`, `session_summary` | `review` (`{verdict: "pass"\|"fail", findings, send_back_to}`); never fixes anything. Tools: the four `tax_math` tools, to recompute |
+| Human gate | `case_id`, `extracted` | `human_decisions`, `status`, `done`, `facts`, `extracted`, `eligibility`; tool `p3_verify_w2` (orchestrator-owned, not an agent) |
 
 ### Labels for form lines and documents
 Taxpayer answers are named in `docs/answer-names.md`. This adds the two labels it does not
@@ -36,6 +37,32 @@ against them and sends work back that does not follow them.
 - **Tool lines:** 6b, 12e, 13b and 16 come from the `tax_math` tool of the same name in `TOOLS`.
 - **Typed-in amounts:** as in `docs/answer-names.md`: `source: "direct user input"` plus
   `entered_by` and `entered_on`.
+
+### What Review checks
+Review (`src/agents/review.py`) tries to falsify the assembled return. It never fixes anything: it
+returns findings `{check, line, issue, severity}` and either passes, sends the work back to
+Computation, or escalates.
+- Checks: `provenance` (every line has a full record), `sources` (cited document amounts match
+  `extracted`; every in-scope document amount reaches its line), `recompute` (lines 6b, 12e, 13b and 16
+  re-run through the same `tax_math` tools), `totals`, `contradictions`, `completeness`, `scope`.
+- Errors fail the review (`send_back_to: "computation"`, bounded by the review loop below). Warnings
+  never fail it. A scope problem also raises `OUT_OF_SCOPE` (Rules said out of scope or not eligible
+  for the 1040-SR, an out-of-scope document or a Schedule A/C/D/E line) or `FORM_1099R_BOX_2B`.
+- Review does its own arithmetic on purpose: the no-arithmetic rule binds Computation, whose numbers
+  are the ones under test.
+- Known gap (#27): a document Extraction skipped (`status: "skipped"`, no fields) has no amounts to
+  compare, so Review passes it. Computation and the draft form flag it instead (see below).
+
+### Documents Extraction does not read
+Extraction reads W-2s only. For anything else it still writes a record, so nothing disappears:
+- SSA-1099, 1099-INT and 1099-DIV (in scope, not read yet): `{"kind", "fields": {}, "status":
+  "skipped", "reason"}` and a handoff to Rules. Their amounts never reach the draft (issue #27). The
+  lines they feed say `NOT READ` in their provenance source (Computation) and the draft form shows an
+  "Income is missing from this draft" warning (`src/income_forms.py`). The amount stays zero and the
+  case is **not** stopped.
+- 1099-R: escalates `FORM_1099R_BOX_2B` (box 2b cannot be read; a volunteer checks it).
+- Any other kind: escalates `OUT_OF_SCOPE`.
+- A W-2 whose reading needs a visual check: escalates `EXTRACTION_REVIEW` (below).
 
 ### Rules policy citations
 
@@ -58,9 +85,9 @@ This is part of `eligibility`, **not** a separate top-level state field.
   (a real section of `docs/policy.md`).
 - Do not add duplicate rule/citation pairs. An empty list is valid if no policy
   rule has been applied yet (for example, an early incomplete-input return).
-- The Review Agent consumes `eligibility["rule_citations"]` to check that each
-  applied rule is grounded in the supplied policy. Missing, invalid, or
-  nonexistent references should be reported as review findings.
+- The Review Agent is meant to check `eligibility["rule_citations"]` against `docs/policy.md` and report
+  missing, invalid, or nonexistent references as findings. **Not built yet**: Review does not read
+  the citations today.
 - Dollar-amount provenance (`ProvenanceRecord`) is a separate requirement and
   is **not** replaced by policy citations.
 
@@ -106,14 +133,15 @@ Set a flag; do not stop or work around it. The orchestrator performs the interru
 ```
 
 Conditions: `OUT_OF_SCOPE`, `SOURCE_CONFLICT`, `FORM_1099R_BOX_2B`, `TAX_ADVICE_REQUEST`,
-`FILING_STATUS_AMBIGUITY`, `EXPLOITATION_SIGNS`, and `ANSWER_UNCERTAIN` (constants in `src/state.py`). The orchestrator
+`FILING_STATUS_AMBIGUITY`, `EXPLOITATION_SIGNS`, `ANSWER_UNCERTAIN` and `EXTRACTION_REVIEW` (constants in `src/state.py`). The orchestrator
 adds `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED` and `ELIGIBILITY_UNDECIDED` itself.
 When a flag is pending the orchestrator routes to the `human` node, which calls `interrupt()`
 and pauses the thread. The call returns `result["__interrupt__"][0].value` =
 `{case_id, condition, reason, raised_by, options, note_required_for_continue, resolution_fields,
 also_pending}` (plus `error` if the previous answer was rejected).
 A volunteer answers on the same `thread_id` with
-`graph.invoke(Command(resume={"decision": ..., "note": ..., "resolution": {...}}), config)`
+`graph.invoke(Command(resume={"decision": ..., "note": ..., "resolution": {...}, "reviewer": "<name>"}), config)`
+(`reviewer` is optional; it names the volunteer in `human_decisions` and the audit log)
 (the value must be a dict; `Command(resume=None)` crashes inside LangGraph).
 
 | Condition | Allowed decisions |
@@ -122,6 +150,7 @@ A volunteer answers on the same `thread_id` with
 | `LOOP_GUARD`, `REVIEW_BOUND_EXCEEDED`, `ELIGIBILITY_UNDECIDED` (raised by the orchestrator) | `stop` only |
 | `SOURCE_CONFLICT`, `FILING_STATUS_AMBIGUITY`, `TAX_ADVICE_REQUEST` | `continue` or `stop` |
 | `ANSWER_UNCERTAIN` | `continue` (with a valid corrected fact) or `stop` |
+| `EXTRACTION_REVIEW` (raised by Extraction) | `continue` (an accepted review of that document) or `stop` (rejects the reading) |
 
 - `continue` **requires a non-empty `note`**; it is stored in `human_decisions` (the audit record).
 - `continue` may carry a `resolution`: `FILING_STATUS_AMBIGUITY` takes `{"filing_status": <single |
@@ -131,10 +160,16 @@ A volunteer answers on the same `thread_id` with
   answer (valid values are defined in `docs/answer-names.md`). The resolution is written to `facts` as
   `{"value": ..., "source": "human:<CONDITION>"}`, so read it from `facts` like any other fact.
   `TAX_ADVICE_REQUEST` takes none: put the question in the note for the volunteer.
+  `EXTRACTION_REVIEW` takes `{"document_id": <the document in the payload>, "review": {"action": "accept", ...}}`;
+  the gate checks the review with the `p3_verify_w2` tool and writes the verified record to `extracted`
+  (not to `facts`). Details: `docs/P3_INTEGRATION.md`.
   **Rules must honor it:** if `facts["filing_status"]` exists (source `human:...`), use it instead of
-  deriving a status; otherwise the volunteer's answer never reaches the draft. (Known gap: the Rules agent on
-  `main` reads only `filing_status_claim` today; see `tests/test_scenarios.py`, marked expected-failure.)
+  deriving a status. The gate clears `eligibility` on `continue` for `FILING_STATUS_AMBIGUITY` and
+  `ANSWER_UNCERTAIN`, so the router runs Rules again with the new fact (without this the case stopped
+  again as `ELIGIBILITY_UNDECIDED`; `tests/test_status_reruns_rules.py`).
 - `stop` ends the case with `status == "halted_by_human"`; the note is optional.
+- A call ends with one of: `awaiting_user` (Intake asked a question), `awaiting_human` (interrupt),
+  `complete` (draft ready, nothing filed), `halted_by_human`, or `halted_by_error` (see Tools).
 - An invalid answer does not raise: the call returns another interrupt whose payload has an `error`
   string. Show it and let the volunteer answer again.
 - UI rule: while a thread is interrupted, show the taxpayer a neutral waiting message (not the
@@ -211,6 +246,19 @@ cannot guarantee that the orchestrator pauses; the pending escalation is require
 - Filing-status questions that need human judgment for reasons other than an
   explicit applicable `"not_sure"` still use `FILING_STATUS_AMBIGUITY`.
 
+## Tools and how they run
+- Call tools only with `tools.call(name, **kwargs)`; the allow-list is `tools` in `POLICY` (`access.py`).
+- Computation and Review use the six/four `tax_math` tools. They run over MCP (`src/mcp_client.py`,
+  `src/tax_math_mcp.py`), in a separate process. Extraction's `p3_extract_w2` runs in the agent's own
+  process. Every trace record lists `tool_transports` (`mcp` or `local`); a `local` transport for a
+  tax tool is a red flag (it happens only with `SILVERFILE_TOOL_TRANSPORT=local`, for tests).
+- If the tax-tool server cannot be reached, the run **stops cleanly**: `status == "halted_by_error"`,
+  `done == True`, nothing computed or filed. The trace records the error type only (never the message,
+  which can hold paths), and the audit log gets a `halted_by_error` entry. Do not catch
+  `McpUnavailable` in an agent; do not fall back to computing locally.
+- Real model calls: record their actual usage; the runner then logs real token counts
+  (`token_source`) instead of the estimate.
+
 ## Parallelism, the review loop, and the loop guard
 - **Extraction runs in parallel**, one worker per document, each receiving exactly one document
   (`view["documents"]` has one entry). Return `extracted` containing only that document's record,
@@ -231,7 +279,7 @@ cannot guarantee that the orchestrator pauses; the pending escalation is require
   (stop-only). So always make progress: set your output fields, or escalate.
 
 ## Replacing a stub with a real agent
-1. Edit only `src/agents/<your_agent>.py`. Keep `run(view, tools) -> dict`. Do not rename the module or touch `src/agents/__init__.py`.
+1. Edit only `src/agents/<your_agent>.py`. Keep `run(view, tools) -> dict`. Do not rename the module or touch `src/agents/__init__.py`. (All six agents are real now except the default Intake: `AGENTS["intake"]` is still the stub, so scenario tests do not start a 24-question interview. `live_agents()` gives the set with the real Intake; the chat page uses it.)
 2. Read only from `view`; write only the fields in your table row. If you need another field, open a PR that changes `POLICY` in `access.py` and `SilverState` in `state.py`, and tag Person 1. Do not work around it.
 3. Register deterministic tools in `TOOLS` (`access.py`) and add their names to your agent's `tools` in `POLICY`.
 4. Return your handoff request and, when a trigger applies, the escalation flag.
