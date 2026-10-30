@@ -174,3 +174,16 @@ def test_an_upload_a_live_case_still_points_at_survives_the_stale_sweep(site):
 
     assert purge_stale_uploads(site) == 0 and upload.exists()
     assert purge_case("case-b", site)["removed"]["uploads"] == 0 and upload.exists()
+
+
+def test_a_path_like_image_ref_removes_nothing_and_does_not_fail_the_purge(site):
+    victim = site.runtime / "victim.png"  # what "../victim" points at from runtime/uploads
+    victim.write_bytes(b"not an upload")
+    with SqliteSaver.from_conn_string(str(site.checkpoints)) as saver:
+        graph = build_graph(saver, trace_dir=site.trace_dirs[0])
+        case = clean_case("case-d")
+        case["documents"] = [{**case["documents"][0], "id": "doc-d", "image_ref": "../victim"}]
+        graph.invoke(case, cfg("case-d"))
+
+    assert purge_case("case-d", site)["removed"]["uploads"] == 0
+    assert victim.exists()
