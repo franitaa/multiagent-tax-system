@@ -358,6 +358,31 @@ def _document_kinds(extracted: dict[str, Any]) -> set[str]:
         for record in extracted.values()
         if isinstance(record, dict) and record.get("kind")
     }
+    
+# In-scope document kinds and their corresponding Intake answers.
+# Punctuation and letter case are removed from a document kind before lookup.
+DOCUMENT_ANSWER_FACTS = {
+    "w2": "has_w2",
+    "ssa1099": "has_ssa_1099",
+    "1099r": "has_1099_r",
+    "1099int": "has_1099_int",
+    "1099div": "has_1099_div",
+}
+
+def _find_document_answer_conflict(
+    facts: dict[str, Any], extracted: dict[str, Any]
+) -> tuple[str, str] | None:
+    """Detect an explicit 'no' answer contradicted by an uploaded in-scope form.
+
+    Missing or 'not_sure' answers are not contradictions. A human correction
+    in facts (for example, source='human:SOURCE_CONFLICT') is read normally.
+    """
+    for kind in sorted(_document_kinds(extracted)):
+        normalized_kind = "".join(char for char in kind if char.isalnum())
+        fact_name = DOCUMENT_ANSWER_FACTS.get(normalized_kind)
+        if fact_name and _is_no(_fact_value(facts, fact_name)):
+            return fact_name, kind
+    return None
 
 # -----------------------------------------------------------------------------
 # Rule/citation evidence for the Review agent
@@ -672,7 +697,20 @@ def run(view: dict[str, Any], tools: Any) -> dict[str, Any]:
                 "; ".join(detected_out_of_scope),
                 eligibility,
             )
-        
+
+     # If Intake says an in-scope form was not received but the form is uploaded,
+    # the discrepancy requires a volunteer decision before computation.
+    conflict = _find_document_answer_conflict(facts, extracted)
+    if conflict is not None:
+        fact_name, form_kind = conflict
+        _record_rule(eligibility, "Document-answer source conflict", "3.5")
+        return _make_escalation(
+            SOURCE_CONFLICT,
+            f"{fact_name} is no, but {form_kind} was uploaded; volunteer clarification required.",
+            eligibility,
+            fact=fact_name,
+        )
+
     _record_rule(eligibility, "Supported tax scope screening", "3.1")
 
     return {
