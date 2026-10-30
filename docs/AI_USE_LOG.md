@@ -105,6 +105,188 @@ or checked themselves. This feeds the AI-use disclosure paragraph (docs/AI_DISCL
   status), then sent the messages to Matthew and Francesca.
 - Chose a shorter, simpler PR description and opened PR #9 myself.
 
+## Supriya Patil — Tue Oct 27, 2026
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on my branch `feature/intake-review-fixes`
+(PR #16, merged Oct 29). Review work was done in temporary copies of the repo, never on
+teammates' branches.
+
+**What the AI helped with**
+- *Acting on Francesca's review of my guardrails.* She pointed out that the pressure check
+  (escalation condition 6, `EXPLOITATION_SIGNS`) used exact phrases, so realistic wording
+  was missed: "he is making me do this", "my son keeps my refund", "she told me not to tell
+  anyone". The AI rewrote the check in `src/agents/intake_agent.py` as patterns (who
+  *keeps / takes / controls* *my* refund or money; being *forced*; being told *not to tell
+  anyone* or *what to say*; fear of a named person; "put me in a home"; someone changing the
+  person's bank details or holding their passwords or ID; and scams aimed at older people
+  such as "pay the IRS with gift cards" and "wire money").
+- *Growing the adversarial test set* (`tests/test_guardrails.py`, card GRD-3) from 20 to
+  53 messages that must raise the right alarm, and from 15 to 38 innocent messages that must
+  not ("my daughter is making me lunch", "the bank keeps my statements", "my wife is scared
+  of dogs", "I have no choice but to wear glasses"). Each alarm is also checked to carry
+  only a generic reason, never the person's own words.
+- *A "3 tries" rule:* if Intake cannot read an answer three times in a row, it says "Let's
+  not worry about this one", notes the question for a volunteer and moves on, so an older
+  person is never stuck in a loop. Two tests check it, including that the count starts
+  again for each question.
+- *Dark mode:* Shruti saw dark buttons on a white page on her Mac. The AI added
+  `.streamlit/config.toml` (always the light theme) and a CSS safety net in the chat page,
+  plus a test that the light theme is set.
+- *Team review before the 3 pm meeting:* it merged teammates' branches with main in a
+  temporary copy, ran all tests, and listed what was blocking whom; it also drafted my
+  meeting notes in plain words.
+
+**What I decided or checked myself**
+- Asked for more pressure phrasings after reading the first list, and approved the calm,
+  non-accusing reply ("Thank you for telling me. Before we go on, I'm going to ask a
+  volunteer to look at this with you.").
+- Asked whether a new PR was needed; kept the work in PR #16 once I understood that new
+  commits on the same branch join the open PR.
+- Raised on Matthew's Rules PR (#14, tagging Francesca) that a "not sure" answer about
+  blindness gave zero boxes and never reached a volunteer, and suggested counting the age
+  box anyway. This later became the `ANSWER_UNCERTAIN` alarm.
+- Asked to understand, in plain words, how the Intake agent works and whether it meets the
+  brief, before the meeting.
+
+**How the AI's work was verified**
+- The whole team suite before each commit (549 passing at the end).
+- The innocent-message list exists to catch false alarms from the broader patterns; every
+  new pattern had to pass it.
+
+**Where the AI got it wrong (and how it was caught)**
+- Its first pressure check missed realistic phrasings; this was found by a teammate's
+  review, not by the AI, which is why the adversarial list was extended.
+
+## Supriya Patil — Wed Oct 28, 2026
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code. All review work in temporary copies
+(git worktrees) in a scratch folder, so my branch and teammates' branches were not touched.
+
+**What the AI helped with**
+- *Reviewing the team's open pull requests* (#15 JiWon, #17–#20 Sahana, #21–#22 Matthew):
+  it combined each one with main and with my PR #16 in a temporary copy, set up a separate
+  Python 3.11 environment for the PRs that needed it, and ran every test. Findings:
+  - main was broken (19 failing tests) because Matthew's new `tests/test_rules.py` had been
+    pushed to main without the matching `rules.py`, which was still in PR #21;
+  - "not sure" about blindness was sent as a *handoff request* to a human, which the
+    orchestrator ignores, so no volunteer was ever asked (checked by running Rules and
+    reading the router);
+  - Sahana's PRs had added the draft form to my chat page, and the combined code passed
+    (828 tests); a full taxpayer conversation reached "finished" with a draft;
+  - JiWon's PR #15 and Sahana's PRs clashed in four files, including my test file.
+- *Which agents use a language model:* it searched every branch; only Extraction (JiWon)
+  uses one, to read W-2 images. It then checked the assignment text: no rule requires a
+  model in every agent (only §4.5 mentions "model-calling agents").
+- *A question to the professor:* drafted, then shortened, an email asking whether
+  rule-based agents are acceptable if each choice is explained.
+- *Class discussion notes:* my role line for the group spreadsheet, answers to the
+  professor's eight questions from our project, and a one-page ethics and guardrails brief,
+  as an editable Word file.
+- *API keys:* checked how `.env` and `.env.example` are handled (the real `.env` is
+  git-ignored and kept out of the Docker image) and what the brief asks (§5.1 lists
+  `.env.example`; graders need run instructions).
+
+**What I decided or checked myself**
+- Sent the review messages to Matthew, Sahana and JiWon after reading them, and decided to
+  raise the real-numbers question at the 3 pm meeting rather than earlier.
+- Asked for the professor email to be generic (on behalf of the team) and concise.
+- Chose the class question I would lead ("general rules, or letting the chips fall?"),
+  after the group split the question with Person 1; asked for a simple everyday example
+  to explain that we had built similar things under different names.
+
+**How the AI's work was verified**
+- Every review claim was backed by a test run or by reading the code it named; claims it
+  could not check (GitHub comments in our private repo) were stated as such.
+
+**Where the AI got it wrong (and how it was caught)**
+- One of its search commands was garbled by the Windows Git shell and returned errors; it
+  re-ran it correctly before drawing any conclusion.
+
+## Supriya Patil — Thu Oct 29, 2026
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on my branches `feature/chat-draft-form`
+(PR #28, merged), `feature/saved-sessions` (PR #34), `feature/volunteer-dashboard` (draft
+PR #35) and `docs/ai-log-supriya-oct27-29` (this log). Headless Chrome was used to take
+screenshots of the pages.
+
+**What the AI helped with**
+- *PR #28 (draft form on the finished chat page):* added the change Sahana had prepared,
+  so the two tests waiting on me in #24 passed. After #24 was merged, it checked GitHub's
+  own trial merge to confirm that moving the PR's base to main would change only my two
+  files (GitHub's page still showed an old "54 commits" count), and guided me through the
+  merge.
+- *Python 3.11:* the team moved to 3.11, so it rebuilt my local environment, keeping the old
+  one under a descriptive backup name and checking that it can never be uploaded.
+- *Saved sessions (PR #34):* the chat page now uses JiWon's SQLite checkpointer (the team's
+  shared file, which Sahana's retention tool also cleans), so a case ID still works after
+  the app restarts. A test answers two questions, "restarts" the app and continues.
+- *Chat page changes I asked for (PR #34):* each question shown only once (no repeated chat
+  history; screen readers no longer read it twice); month names only; a typing box labelled
+  "MM-DD-YYYY, for example: 03-04-1950" that also accepts 03/04/1950 and 03041950, read
+  month-first because the label says so, and still read back to the person ("Just to check:
+  you were born on March 4, 1950?"). It also updated my report section to match.
+- *Volunteer dashboard (draft PR #35):* every case with its status in words; what each case
+  needs, including quiet requests that do not pause the chat ("asked to talk to a
+  volunteer", "not sure" answers); summary card, donut charts (with the numbers also as
+  text for screen readers), filter buttons and search; one case's alarm, the taxpayer's own
+  words, answers (SSNs masked), draft form and audit-log history with its tamper check.
+  Resolving goes through Francesca's human gate unchanged (only the allowed choices, a
+  note, the volunteer's name, written to Sahana's audit log; opening a case is recorded as
+  "viewed"). A "Check again" button on the taxpayer's waiting screen.
+- *One start page* (`src/ui/silverfile_home.py`): "I'm a taxpayer" or "I'm a Kushim
+  volunteer" in one app, so both pages always share the saved sessions (two Docker
+  containers would not). README updated with the command and an end-to-end walk-through.
+- *Visual design:* a common look for all pages, then screenshots in a real browser (normal
+  width, small screens, and a computer in dark mode). Icons were switched from emoji to the
+  icon font shipped with the app, so they look the same on Windows, Mac and phones, and
+  Streamlit's "Deploy" developer button was hidden.
+- *Checking every "call a human" point* across all six agents: all go through one human
+  gate, so all reach the dashboard; but no agent yet raises "an answer does not match a
+  document" (one of the six required conditions), which I reported to the team.
+- *Reviewing JiWon's API-key PR (#32):* the README still told graders to type the key in a
+  box that had been removed, and Docker passes the key in a way the new code no longer read.
+
+**What I decided or checked myself**
+- Answered the team's question in #24: the taxpayer may see and download the draft,
+  matching Sahana's version. Merged PR #28 myself.
+- Found these problems in my own testing and chose the fixes: the question shown twice
+  (chose "one question per screen" after seeing it live); "2 - February" looking like
+  2 February; no example in the date box (chose MM-DD-YYYY with dashes); a white button
+  with invisible text; pages that looked too plain; the dashboard design (I supplied a
+  reference image); that the look must be the same on Apple computers.
+- Tested saved sessions myself: closed the page and had the app restarted, then continued
+  with my case ID.
+- Checked that nobody had started a dashboard, told the group before building it, and
+  asked for it as a draft PR so teammates could give feedback before merging.
+- Decided the next steps: a volunteer passcode so taxpayers cannot open the dashboard; a
+  limited AI helper only for answers the rules cannot read (always read back to the person,
+  rules stay in charge); better replies to "why does it matter?"; and catching "I was, but
+  he died" as a spouse who died during the year.
+
+**How the AI's work was verified**
+- The full team suite before every commit (1,018 passing at the end; the only 3 failures
+  are Review tests that Shruti's PR #30 fixes, checked by combining all open PRs: 1,099
+  passing, 0 failing).
+- New tests for each change: logic tests for the dashboard, and page tests that click
+  through as a volunteer (open a case, resolve it, check the audit log). The "question shown
+  once" test was checked to fail on the old page, so it really tests the change.
+- Screenshots in a real browser, because tests cannot see colours or layout.
+
+**Where the AI got it wrong (and how it was caught)**
+- Saved sessions first failed with "Cannot operate on a closed database" (the saver closed
+  itself too early); caught by the page tests and fixed in my code, without changing JiWon's.
+- Both pages used the same memory slot (`case_id`), so opening a case in the dashboard
+  would have switched the taxpayer's session; caught while combining the pages, now covered
+  by a test.
+- Its new blue button style was weaker than an existing white-button rule, so the text was
+  invisible; I spotted it in the browser. The same bug on the dashboard's Refresh button
+  was then found by the screenshots.
+- It twice wrote a test line that checked nothing or clicked an arbitrary button; it
+  noticed and rewrote them before committing.
+- It credited a teammate in a commit message with a made-up email address; it corrected
+  the message before pushing.
+
+**Limits I am aware of**
+- The dashboard has no login yet (a passcode is next on my list).
+- I could not test on a real Mac; dark mode, fonts and icons are now controlled by the app.
+
 ## Person 5 (Computation, provenance, security)
 **Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on my branch `p5-integrated`.
 
