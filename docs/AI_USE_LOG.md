@@ -240,7 +240,7 @@ and the branches it fed into.
 
 **What the AI helped with**
 - Helped me understand the project and the work I needed to do as Person 5 (Computation, provenance and security).
-- Generated code for my Person 5 part.
+- Started the first versions of `provenance.py`, `tax_math.py`, the Computation agent (`src/agents/computation.py`) and the tests for them. Claude Code continued and changed them afterwards.
 
 **What I decided or checked myself**
 - After Oct 25 I switched to Claude Code, which made the changes described in the entries above.
