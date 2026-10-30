@@ -26,6 +26,18 @@ What it does:
     session stopped on Tuesday continues on Friday, even if the app restarted in between.
     It is the team's shared file, runtime/team_checkpoints.sqlite (not in git), which
     Sahana's retention tool also cleans up. Real-looking SSNs never reach it.
+  - W-2 photo (P1 of the team's to-do list): `make_app_service()` builds JiWon's shared W-2
+    service (src/p3/shared_service.py) on the saved sessions; the chat page and the volunteer
+    dashboard use its graph, so a W-2 reading can be read and approved on the same case.
+    After "yes" to the W-2 question, `waiting_for_w2()` makes the next screen ask only for the
+    photo, until it is added or the taxpayer presses "I don't have it now" (agreed with
+    Francesca and JiWon); `show_w2_upload()` lets another W-2 be added until the questions end
+    (JiWon's rule: no upload after that). `add_w2()` adds a W-2 photo confirmed as not a real
+    tax form; the photo is read when the questions end.
+    Which AI reads it: the key in .env (OpenAI first, then Anthropic), read from the file only,
+    never put in state or traces (`photo_reader()`). No key: the page says a volunteer will help.
+  - If reading the photo fails (no internet, a rejected key), the case is not lost: `screen()`
+    says READING_FAILED and `try_again()` carries on from where it stopped.
 
 What is still missing:
   - Nothing deletes old sessions on a timer: run Sahana's `python -m scripts.purge_cases
@@ -36,16 +48,22 @@ import re
 import secrets
 from contextlib import ExitStack
 
+from dotenv import dotenv_values
+
 from silverfile_extraction.checkpointer import sqlite_checkpointer
+from silverfile_extraction.privacy import SafeInputError
+from silverfile_extraction.vision import VisionReader
 from src.agents import intake_agent, live_agents
 from src.draft_form import render_draft_html
 from src.graph import build_graph
+from src.p3.shared_service import make_shared_service
 
 # What the page should show
 ASKING = "asking"  # a question is waiting for the taxpayer's answer
 WAITING_FOR_VOLUNTEER = "waiting_for_volunteer"
 FINISHED = "finished"
 STOPPED = "stopped"
+READING_FAILED = "reading_failed"  # the case stopped part-way (e.g. the W-2 photo could not be read)
 
 _CASE_ID = re.compile(r"^SF-\d{3}-\d{3}$")
 
@@ -78,6 +96,33 @@ def open_saved_sessions(path=None):
 def make_graph(checkpointer=None, trace_dir="traces"):
     """The SilverFile graph with the real Intake. Without a checkpointer, sessions live in memory."""
     return build_graph(checkpointer, trace_dir=trace_dir, agents=live_agents())
+
+
+ENV_FILE = ".env"  # API keys live only in this file (never in the repo, state or traces)
+RUNTIME = "runtime"  # where JiWon's service keeps confirmed W-2 photos (not in git)
+# (provider, key name, model name) in the order they are tried
+_PROVIDERS = (("openai", "OPENAI_API_KEY", "OPENAI_MODEL"), ("anthropic", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"))
+
+
+def photo_reader(env_file=None):
+    """JiWon's VisionReader for the first provider with a key in .env, or None when there is no
+    usable key (the page then says a volunteer will help). The key is read from the file only."""
+    values = dotenv_values(env_file or ENV_FILE, interpolate=False)
+    for provider, key_name, model_name in _PROVIDERS:
+        key = (values.get(key_name) or "").strip()
+        if key:
+            try:
+                return VisionReader(key, (values.get(model_name) or "").strip() or None, provider=provider)
+            except SafeInputError:  # e.g. a Claude key under OPENAI_API_KEY
+                return None
+    return None
+
+
+def make_app_service(trace_dir="traces", reader=None, saved_sessions=None):
+    """JiWon's shared W-2 service on the saved sessions. Use its `.graph` for every chat and
+    dashboard call, so the W-2 tools are there when a photo is read or approved."""
+    return make_shared_service(saved_sessions or open_saved_sessions(), runtime=RUNTIME,
+                               reader=reader if reader is not None else photo_reader(), trace_dir=trace_dir)
 
 
 def _config(case_id: str) -> dict:
@@ -113,6 +158,8 @@ def screen(graph, case_id: str) -> str:
         return WAITING_FOR_VOLUNTEER
     if values.get("status") in ("halted_by_human", "halted_by_error"):  # the taxpayer text is neutral for both
         return STOPPED
+    if snapshot.next:  # a step raised an error part-way (e.g. reading the W-2); nothing is lost
+        return READING_FAILED
     if values.get("done") or values.get("intake_complete"):
         return FINISHED
     return ASKING
@@ -210,3 +257,50 @@ def date_problem(month_option: str | None, day: int | None, year: int | None) ->
 def change(graph, case_id: str, question_text: str) -> None:
     """A "Change" button: Intake jumps straight back to that question."""
     send(graph, case_id, f"{intake_agent.CHANGE_PREFIX}{question_text}")
+
+
+# ---- W-2 photo ---------------------------------------------------------------------------------
+
+W2_CONFIRM_FIRST = "Please tick the box to confirm this is not a real tax form."
+W2_NOT_ADDED = ("Sorry, we couldn't add that photo. Please check it is a JPG or PNG picture of the W-2 "
+                "and try again, or carry on and a volunteer will help.")
+
+
+def show_w2_upload(graph, case_id: str) -> bool:
+    """Offer the W-2 upload: the taxpayer said "yes" to the W-2 question and the questions are
+    not over (JiWon's service refuses a photo after that)."""
+    has_w2 = _facts(graph, case_id).get("has_w2") or {}
+    return screen(graph, case_id) == ASKING and has_w2.get("value") == "yes"
+
+
+def waiting_for_w2(graph, case_id: str, later: bool = False) -> bool:
+    """Right after "yes" to the W-2 question, the next screen asks only for the photo: the other
+    questions wait until a photo is added or the taxpayer presses "I don't have it now" (`later`).
+    Agreed with Francesca and JiWon: holding here, not at the last answer, because which question
+    is last is not known in advance (skipped questions come back at the end)."""
+    return show_w2_upload(graph, case_id) and not later and w2_photos(graph, case_id) == 0
+
+
+def w2_photos(graph, case_id: str) -> int:
+    """How many W-2 photos this case has."""
+    documents = graph.get_state(_config(case_id)).values.get("documents") or []
+    return sum(1 for d in documents if d.get("kind") == "W-2" and d.get("image_ref"))
+
+
+def add_w2(service, case_id: str, data: bytes | None, confirmed: bool) -> str | None:
+    """Add a W-2 photo to the case. Returns a message for the taxpayer if it was not added, or None.
+    The photo is read when the questions end, not now."""
+    if not confirmed:
+        return W2_CONFIRM_FIRST
+    if not data:
+        return W2_NOT_ADDED
+    try:
+        service.submit(case_id, data, synthetic_confirmed=True)
+    except (SafeInputError, OSError, ValueError):
+        return W2_NOT_ADDED
+    return None
+
+
+def try_again(graph, case_id: str) -> None:
+    """Carry on from the step that failed (e.g. reading the W-2 photo); answers are kept."""
+    graph.invoke(None, _config(case_id))

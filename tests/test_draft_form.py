@@ -4,6 +4,7 @@ import pathlib
 import re
 import tempfile
 from html.parser import HTMLParser
+from types import SimpleNamespace
 
 import pytest
 from langgraph.types import Command
@@ -260,15 +261,16 @@ def chat_page(graph, case_id):
 
     from src.ui import chat_session
 
-    original = chat_session.make_graph
-    chat_session.make_graph = lambda *a, **k: graph
+    # The page uses the app's shared service (src/ui/app_service.py); hand it this graph, no photo reader.
+    original = chat_session.make_app_service
+    chat_session.make_app_service = lambda *a, **k: SimpleNamespace(graph=graph, reader=None)
     st.cache_resource.clear()
     try:
         at = AppTest.from_file(str(_CHAT_PAGE), default_timeout=60)
         at.session_state["case_id"] = case_id
         return at.run()
     finally:
-        chat_session.make_graph = original
+        chat_session.make_app_service = original
         st.cache_resource.clear()
 
 
