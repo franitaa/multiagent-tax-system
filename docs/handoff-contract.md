@@ -62,7 +62,9 @@ Extraction reads W-2s only. For anything else it still writes a record, so nothi
   "Income is missing from this draft" warning (`src/income_forms.py`). The amount stays zero. The case
   pauses once for a volunteer (`INCOME_NOT_READ`) before Computation, and goes on only if the volunteer
   continues with a note. The same pause covers a W-2 or 1099-R the taxpayer said they have (`has_w2`,
-  `has_1099_r`) but never uploaded: without it that case finished with wages of $0.
+  `has_1099_r`) but never uploaded: without it that case finished with wages of $0. A W-2's amounts come
+  only from the uploaded image: there is no typed-wages fact, so typing wages does not clear the pause
+  (the three unread forms can be cleared by typed amounts once Intake asks them, #27 step 2).
 - 1099-R: escalates `FORM_1099R_BOX_2B` (box 2b cannot be read; a volunteer checks it).
 - Any other kind: escalates `OUT_OF_SCOPE`.
 - A W-2 whose reading needs a visual check: escalates `EXTRACTION_REVIEW` (below).
