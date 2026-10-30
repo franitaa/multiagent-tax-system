@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # so "src." import
 
 from src import state as S  # noqa: E402
 from src.ui import dashboard_data as dash  # noqa: E402
+from src.ui import app_service  # noqa: E402
 
 st.set_page_config(page_title="Kushim - Volunteer dashboard", page_icon=None, layout="wide")
 
@@ -135,10 +136,9 @@ BADGE = {dash.NEEDS_VOLUNTEER: "needs", dash.ANSWERING: "answering", dash.DRAFT_
 DECISION_WORDS = {"continue": "Continue: the taxpayer carries on", "stop": "Stop the case"}
 
 
-@st.cache_resource
 def get_graph():
-    """One graph for the app, reading the same saved-sessions file as the chat page."""
-    return dash.open_graph()
+    """The app's one graph, shared with the chat page (src/ui/app_service.py), with the W-2 tools."""
+    return app_service.get_service().graph
 
 
 def badge(status: str) -> str:

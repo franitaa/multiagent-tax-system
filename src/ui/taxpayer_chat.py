@@ -39,9 +39,16 @@ What it does:
 
   - Sessions are saved on disk (JiWon's SQLite checkpointer), so the case ID still works
     after the app restarts.
+  - "Your W-2 form": after "yes" to the W-2 question, a box to add a photo of a made-up test
+    W-2 (tick "I confirm this is a made-up test W-2" first), any time before the last answer;
+    more than one W-2 can be added. The photo is read when the questions end ("We are reading
+    your W-2 now"), then a volunteer checks the amounts. No AI key in .env: the box says a
+    volunteer will help instead. If reading fails, a "Try again" screen; answers are kept.
+  - Uses the app's one shared service and graph (src/ui/app_service.py), like the dashboard.
 
 What is still missing:
   - The volunteer side (resolving a pause) lives in the Kushim dashboard, not here.
+  - The volunteer approves the W-2 reading on JiWon's W-2 page, not yet in the dashboard.
 
 All logic is in src/ui/chat_session.py; this file only draws the page.
 """
@@ -54,6 +61,7 @@ import streamlit.components.v1 as components
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # so "src." imports work
 
+from src.ui import app_service  # noqa: E402
 from src.ui import chat_session as chat  # noqa: E402
 
 st.set_page_config(page_title="SilverFile - Tax questions", page_icon=None, layout="centered")
@@ -153,10 +161,30 @@ FINISHED_TEXT = (
 STOPPED_TEXT = "Thank you. A volunteer will be in touch with you about the next steps."
 
 
-@st.cache_resource
-def get_graph():
-    """One graph for the whole app; sessions are saved on disk, so they survive a restart."""
-    return chat.make_graph(chat.open_saved_sessions())
+READING_TEXT = "Thank you. We are reading your W-2 now. This can take up to a minute."
+READING_FAILED_TEXT = ("Sorry, we couldn't read your W-2 photo just now. Your answers are saved. Please press "
+                       "Try again. If it still doesn't work, you can close this page and come back later with "
+                       "your case ID, and a volunteer will help.")
+
+
+def get_service():
+    """The app's one W-2 service and graph, shared with the volunteer dashboard; sessions are
+    saved on disk, so they survive a restart."""
+    return app_service.get_service()
+
+
+def send(graph, case_id: str, text: str) -> None:
+    """Send an answer. When a W-2 photo is waiting, the last answer reads it, so say so while it
+    runs. If reading fails, the page shows the "Try again" screen instead of an error."""
+    try:
+        if chat.w2_photos(graph, case_id):
+            with st.spinner(READING_TEXT):
+                chat.send(graph, case_id, text)
+        else:
+            chat.send(graph, case_id, text)
+    except Exception:
+        if chat.screen(graph, case_id) != chat.READING_FAILED:
+            raise  # not a reading problem: show it, do not hide it
 
 
 def bubble(role: str, text: str, live: bool = False) -> None:
@@ -231,7 +259,7 @@ def date_form(graph, case_id: str) -> None:
             answer = chat.date_answer(month, day, year)
             problem = chat.date_problem(month, day, year)  # e.g. April 31: never sent
             if answer and not problem:
-                chat.send(graph, case_id, answer)
+                send(graph, case_id, answer)
                 st.rerun()
             st.error(problem or "Please fill in the month, the day and the year.")
 
@@ -256,6 +284,41 @@ def progress_list(graph, case_id: str) -> None:
                     unsafe_allow_html=True)
 
 
+def w2_box(service, case_id: str) -> None:
+    """After "yes" to the W-2 question: add a photo of a made-up W-2, any time before the last
+    answer. It is read when the questions end."""
+    graph = service.graph
+    with st.container(key="tp-w2"):
+        card_top("upload_file", "Your W-2 form")
+        if service.reader is None:
+            st.write("Reading photos is not set up on this computer. That's all right: carry on with the "
+                     "questions, and a volunteer will look at your W-2 with you.")
+            return
+        added = chat.w2_photos(graph, case_id)
+        if added:
+            st.success("Thank you. Your W-2 photo is added. We will read it when you finish the questions."
+                       if added == 1 else f"Thank you. Your {added} W-2 photos are added. We will read them "
+                       "when you finish the questions.")
+        else:
+            st.write("You said you got a W-2. Please add a photo or scan of it here, so we can read the "
+                     "amounts for you. You can do this now, or any time before the last question.")
+        with st.expander("Add another W-2", expanded=False) if added else st.container():
+            st.markdown("**This is a class project: please use a made-up test W-2 only. "
+                        "Never upload a real tax form.**")
+            with st.form("w2", clear_on_submit=True):
+                confirmed = st.checkbox("I confirm this is a made-up test W-2, not a real one.")
+                photo = st.file_uploader("Choose the photo of your W-2 (JPG or PNG)", type=["jpg", "jpeg", "png"])
+                if st.form_submit_button("Add my W-2", icon=":material/upload:"):
+                    problem = chat.add_w2(service, case_id, photo.getvalue() if photo else None, confirmed)
+                    if problem:
+                        st.error(problem)
+                    else:
+                        st.rerun()
+        if not added:
+            st.caption("Don't have it with you? That's fine. Carry on with the questions. "
+                       "A volunteer will help you with the W-2 later.")
+
+
 QUICK = [("Go back", "go back", ":material/undo:"),
          ("Skip for now", "skip for now", ":material/skip_next:"),
          ("I'm not sure", "I'm not sure", ":material/help:"),
@@ -263,7 +326,8 @@ QUICK = [("Go back", "go back", ":material/undo:"),
          ("Talk to a volunteer", "Can I talk to a real person?", ":material/support_agent:")]
 
 
-def chat_screen(graph, case_id: str) -> None:
+def chat_screen(service, case_id: str) -> None:
+    graph = service.graph
     st.markdown(f'<div class="hero"><h1>SilverFile</h1><span class="chip">Your case ID: {html.escape(case_id)}</span></div>',
                 unsafe_allow_html=True)
     if st.session_state.get("is_new"):
@@ -290,6 +354,19 @@ def chat_screen(graph, case_id: str) -> None:
             if st.button("Check again", icon=":material/refresh:"):  # after the volunteer decides
                 st.rerun()
         return
+    if screen == chat.READING_FAILED:
+        with st.container(key="tp-waiting"):
+            card_top("sync_problem", "We couldn't read your W-2 just now", "amber")
+            st.warning(READING_FAILED_TEXT)
+            if st.button("Try again", type="primary", icon=":material/refresh:"):
+                try:
+                    with st.spinner(READING_TEXT):
+                        chat.try_again(graph, case_id)
+                except Exception:
+                    if chat.screen(graph, case_id) != chat.READING_FAILED:
+                        raise
+                st.rerun()
+        return
     if screen in (chat.FINISHED, chat.STOPPED):
         with st.container(key="tp-finished"):
             card_top("celebration" if screen == chat.FINISHED else "handshake", "Thank you", "green")
@@ -301,6 +378,10 @@ def chat_screen(graph, case_id: str) -> None:
             else:
                 st.info(STOPPED_TEXT)
         return
+
+    if chat.show_w2_upload(graph, case_id):
+        w2_box(service, case_id)
+        st.write("")
 
     with st.container(key="tp-question"):
         if latest:
@@ -322,7 +403,7 @@ def chat_screen(graph, case_id: str) -> None:
             label = "Or type the date here as MM-DD-YYYY, for example: 03-04-1950" if asking_date else "Type your answer here"
             answer = st.text_input(label)
             if st.form_submit_button("Send my answer", type="primary", icon=":material/send:") and answer.strip():
-                chat.send(graph, case_id, chat.typed_date(answer) if asking_date else answer)
+                send(graph, case_id, chat.typed_date(answer) if asking_date else answer)
                 st.rerun()
 
     st.write("")
@@ -331,7 +412,7 @@ def chat_screen(graph, case_id: str) -> None:
         columns = st.columns(2)
         for i, (label, text, icon) in enumerate(QUICK):
             if columns[i % 2].button(label, icon=icon):
-                chat.send(graph, case_id, text)
+                send(graph, case_id, text)
                 st.rerun()
 
     rows = chat.answers(graph, case_id)
@@ -362,8 +443,8 @@ def chat_screen(graph, case_id: str) -> None:
         st.rerun()
 
 
-graph = get_graph()
+service = get_service()
 if "case_id" in st.session_state:
-    chat_screen(graph, st.session_state.case_id)
+    chat_screen(service, st.session_state.case_id)
 else:
-    start_screen(graph)
+    start_screen(service.graph)

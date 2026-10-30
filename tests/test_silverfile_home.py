@@ -16,6 +16,7 @@ HOME = str(Path(__file__).resolve().parents[1] / "src" / "ui" / "silverfile_home
 def saved(tmp_path, monkeypatch):
     monkeypatch.setattr(chat, "SAVED_SESSIONS_FILE", str(tmp_path / "sessions.sqlite"))
     monkeypatch.setattr(dash, "TRACE_DIR", str(tmp_path))
+    monkeypatch.setattr(chat, "ENV_FILE", str(tmp_path / "no.env"))  # never the real API key
     st.cache_resource.clear()
 
 

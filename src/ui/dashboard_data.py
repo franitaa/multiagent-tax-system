@@ -102,9 +102,15 @@ EVENT_WORDS = {
 }
 
 
+def open_service():
+    """JiWon's shared W-2 service on the chat's saved sessions (src/ui/app_service.py keeps one
+    for the whole app)."""
+    return chat.make_app_service(trace_dir=TRACE_DIR)
+
+
 def open_graph():
-    """The same graph and saved-sessions file as the taxpayer chat page."""
-    return chat.make_graph(chat.open_saved_sessions(), trace_dir=TRACE_DIR)
+    """The same graph and saved-sessions file as the taxpayer chat page, with the W-2 tools."""
+    return open_service().graph
 
 
 def _audit() -> AuditLog:
