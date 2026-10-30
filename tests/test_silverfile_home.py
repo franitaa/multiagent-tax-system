@@ -41,3 +41,12 @@ def test_taxpayer_and_volunteer_pages_share_the_same_cases():
     assert not page.exception
     assert any(f"<b>{case_id}</b>" in m.value for m in page.markdown)  # the chat's case is listed
     assert page.session_state.case_id == case_id  # the dashboard did not change the chat's session
+
+
+def test_telemetry_is_a_hidden_page_not_linked_from_the_start_page():
+    page = AppTest.from_file(HOME, default_timeout=30).run()
+    assert [link.label for link in page.get("page_link")] == ["Start or continue my questions",
+                                                              "Open the volunteer dashboard"]
+    page.switch_page(str(Path(HOME).parent / "telemetry_dashboard.py")).run()
+    assert not page.exception
+    assert any("SilverFile telemetry" in t.value for t in page.title)
