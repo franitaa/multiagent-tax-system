@@ -9,14 +9,16 @@ Resume value: {"decision": "continue" | "stop", "note": str, "resolution": {...}
 
   stop      always allowed. The case ends with status "halted_by_human". Note optional.
   continue  allowed only for SOURCE_CONFLICT, FILING_STATUS_AMBIGUITY, TAX_ADVICE_REQUEST,
-            ANSWER_UNCERTAIN, and only with a non-empty note (it is part of the audit record). A human cannot
+            ANSWER_UNCERTAIN, EXTRACTION_REVIEW, and only with a non-empty note (it is part of the audit record). A human cannot
             take responsibility for out-of-scope work, so OUT_OF_SCOPE, FORM_1099R_BOX_2B,
             EXPLOITATION_SIGNS (and the orchestrator's own LOOP_GUARD,
             REVIEW_BOUND_EXCEEDED and ELIGIBILITY_UNDECIDED) accept "stop" only.
   resolution  optional resolving values, stored as facts with source "human:<CONDITION>":
             SOURCE_CONFLICT: {fact_name: value}; FILING_STATUS_AMBIGUITY: {"filing_status": ...};
             ANSWER_UNCERTAIN: {<the fact Rules named>: a valid answer}, required, and "not_sure"
-            is not one. Rules decides again afterwards (the gate clears `eligibility`).
+            is not one. EXTRACTION_REVIEW: {"document_id", "review"}, checked with p3_verify_w2 and
+            written to `extracted`. After a `continue` for FILING_STATUS_AMBIGUITY or ANSWER_UNCERTAIN
+            Rules decides again (the gate clears `eligibility`).
 
 An invalid answer does not raise: the gate interrupts again with the same payload plus an
 "error" message, so the UI shows the message and the volunteer answers again. (Raising would

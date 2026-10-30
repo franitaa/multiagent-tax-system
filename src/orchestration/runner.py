@@ -23,7 +23,8 @@ from src.orchestration.access import POLICY, AccessViolation, ToolBox
 from src.orchestration.context import view_for
 from src.orchestration.tokens import TOKEN_SOURCE, estimate_tokens
 from src.orchestration.validate import check_update
-from src.state import COMPLETE, HALTED_BY_HUMAN
+from src.mcp_client import McpUnavailable
+from src.state import COMPLETE, HALTED_BY_ERROR, HALTED_BY_HUMAN
 
 
 class Runner:
@@ -51,6 +52,8 @@ class Runner:
                                     "interrupted": True, "interrupted_on": condition})
             self.audit.record(thread_id, "paused_for_volunteer", f"system:{name}", condition=condition)
             raise
+        except McpUnavailable as exc:
+            return self._halt_on_error(thread_id, name, ctx, exc)
 
         if update.get("handoff_request"):
             update["handoff_request"] = {**update["handoff_request"], "from": name}
@@ -64,6 +67,16 @@ class Runner:
         update = self._redact_free_text(update)
         self._audit_update(thread_id, name, update)
         return update
+
+    def _halt_on_error(self, thread_id: str, name: str, ctx: tuple, exc: Exception) -> dict:
+        """A tool the case needs cannot be reached (the tax-tool server). Stop the case cleanly: the
+        agent's partial work is discarded, nothing is computed or filed, and the caller gets a status
+        instead of a traceback. Only the error type is recorded, never its message (it can hold paths)."""
+        kind = type(exc).__name__
+        handoff = {"from": name, "to": "orchestrator", "reason": f"halted: {kind}"}
+        self._write(thread_id, {**self._record(*ctx, {}, []), "handoff": handoff, "error": kind})
+        self.audit.record(thread_id, "halted_by_error", f"system:{name}", error=kind)
+        return {"status": HALTED_BY_ERROR, "done": True}
 
     def _audit_flagged_documents(self, thread_id: str, name: str, view: dict) -> None:
         """One audit entry per flagged document per case, however many agents read it."""

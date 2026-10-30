@@ -1,12 +1,15 @@
 """Context strategy: scoped views, the Intake window, the rolling summary, the on/off flag."""
+import ast
 import json
+import re
+from pathlib import Path
 
 import pytest
 
 from src import state as S
 from src.graph import build_graph
 from src.orchestration.context import (
-    MAX_INTAKE_MESSAGES, decision_inputs, summarise, view_for,
+    MAX_INTAKE_MESSAGES, RULES_FACTS, decision_inputs, summarise, view_for,
 )
 from src.scenarios import (
     clean_case, long_answer, long_document, long_session_agents, run_long_session, user,
@@ -46,6 +49,42 @@ def test_intake_sees_a_window_of_chat_plus_facts_and_summary_not_documents():
 def test_rules_sees_facts_and_typed_records_but_no_chat_or_raw_documents():
     view = view_for("rules", full_state())
     assert set(view) == {"facts", "extracted", "session_summary", "escalation", "human_decisions"}
+
+
+def test_rules_does_not_see_names_dependents_or_the_volunteer_notes():
+    state = full_state()
+    state["facts"].update({
+        "taxpayer_name": {"value": "Pat Taxpayer", "source": "user"},
+        "spouse_name": {"value": "Sam Taxpayer", "source": "user"},
+        "dependents": {"value": [{"name": "Kim", "relationship": "child", "ssn": "900-12-3456"}],
+                       "source": "user"},
+        "volunteer_notes": {"value": ["said: my son keeps my refund"], "source": "intake"},
+        "helper_description": {"value": "my nephew", "source": "user"},
+        "married_dec31": {"value": "no", "source": "user"},
+    })
+    facts = view_for("rules", state)["facts"]
+    assert "married_dec31" in facts and "age" in facts and "filing_status_claim" in facts
+    assert not {"taxpayer_name", "spouse_name", "dependents", "volunteer_notes",
+                "helper_description", "wages_claim", "has_dependent"} & set(facts)
+
+
+def test_every_fact_rules_reads_is_in_its_view():
+    """Guard: a fact name Rules reads but RULES_FACTS lacks would make Rules silently see nothing
+    and decide on a missing answer. Collect every string in rules.py that is an Intake answer name
+    (docs/answer-names.md) or one of the legacy names Rules still accepts."""
+    root = Path(__file__).resolve().parents[1]
+    intake_names = set(re.findall(r"^\| `([a-z_0-9]+)`", (root / "docs/answer-names.md").read_text(), re.M))
+    intake_names -= {"source"}  # a column heading, not an answer
+    strings = {n.value for n in ast.walk(ast.parse((root / "src/agents/rules.py").read_text()))
+               if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+    read = strings & (intake_names | {"age", "spouse_age", "filing_status_claim"})
+    assert read, "the scan found nothing: the test itself is broken"
+    assert read <= RULES_FACTS, f"Rules reads {sorted(read - RULES_FACTS)} but its view hides them"
+
+
+def test_rules_view_never_includes_personal_or_free_text_answers():
+    assert not RULES_FACTS & {"taxpayer_name", "spouse_name", "dependents", "dependents_complete",
+                              "volunteer_notes", "helper_description", "intake_progress"}
 
 
 def test_computation_sees_numbers_and_filing_status_not_chat_or_free_text():

@@ -12,6 +12,8 @@ What it does:
     log. This matters in Docker: two separate containers would each have their own files,
     and the dashboard would not see the chat's cases.
   - The page menu is hidden, so a taxpayer is not shown a link to the volunteer pages.
+  - A hidden telemetry page (read-only: counts, times, alerts) is served at /telemetry, with no link or card
+    on the start page, so one container shows the traces the chat writes (src/ui/telemetry_dashboard.py).
 
 What is still missing:
   - No login: anyone who opens the start page can choose "volunteer" (classroom demo).
@@ -109,4 +111,7 @@ TAXPAYER = st.Page(str(HERE / "taxpayer_chat.py"), title="SilverFile - Tax quest
 VOLUNTEER = st.Page(str(HERE / "volunteer_dashboard.py"), title="Kushim - Volunteer dashboard",
                     url_path="volunteer")
 
-st.navigation([START, TAXPAYER, VOLUNTEER], position="hidden").run()
+TELEMETRY = st.Page(str(HERE / "telemetry_dashboard.py"), title="SilverFile - Telemetry",
+                    url_path="telemetry")  # staff only, by address; not linked from the start page
+
+st.navigation([START, TAXPAYER, VOLUNTEER, TELEMETRY], position="hidden").run()

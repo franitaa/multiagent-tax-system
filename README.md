@@ -19,6 +19,7 @@ docker run --rm silverfile                                    # a clean case to 
 docker run --rm silverfile pytest -q                          # all tests, inside the container
 docker run --rm -p 8501:8501 silverfile streamlit run src/ui/silverfile_home.py
                                                               # start page: http://localhost:8501
+                                                              # telemetry (staff, not linked): http://localhost:8501/telemetry
 ```
 
 The start page offers **"I'm a taxpayer"** (the chat) and **"I'm a Kushim volunteer"** (the dashboard:
@@ -93,7 +94,7 @@ Python 3.11 or newer (CI tests 3.11).
 python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/pytest                                              # all tests, offline and fast
-.venv/bin/streamlit run src/ui/silverfile_home.py             # taxpayer chat + volunteer dashboard
+.venv/bin/streamlit run src/ui/silverfile_home.py             # taxpayer chat + volunteer dashboard + /telemetry
 ```
 
 To see a human-in-the-loop event end to end: on the start page choose **I'm a taxpayer**, start a
@@ -116,12 +117,26 @@ Scenarios (all offline; each writes a trace to `traces/`):
 A trace line (`traces/<thread_id>.jsonl`) records the agent, the handoff (from, to, reason), the state
 fields read and written, duration, and estimated input/output tokens. It stores field names, never values.
 
+**Telemetry dashboard** (read-only, staff only, no login): shows from those traces and the audit log whether
+the system is behaving: cases by outcome, time and tokens per agent, escalations and how long a volunteer took,
+review send-backs, safety alerts, and the audit tamper check. It writes nothing and shows no answers, amounts or
+document text.
+
+```
+SILVERFILE_TRACE_DIR=traces .venv/bin/streamlit run src/ui/telemetry_dashboard.py --server.port 8503
+```
+In Docker use the start page instead (one container, so it sees the traces the chat writes):
+http://localhost:8501/telemetry. There is no login: anyone who has the address can open it. The trace folder is
+fixed to `SILVERFILE_TRACE_DIR` (set `SILVERFILE_TELEMETRY_ANY_FOLDER=1` to edit it in the sidebar when debugging).
+Spec: [docs/telemetry-dashboard-spec.md](docs/telemetry-dashboard-spec.md).
+
 ## Layout
 | Path | What |
 |---|---|
 | `src/state.py` | The shared state contract (fields, reducers, escalation conditions) |
 | `src/graph.py` | The hub-and-spoke graph |
 | `src/orchestration/` | Router, orchestrator, loop guard, human gate, runner/tracing, access policy, context views |
+| `src/telemetry.py`, `src/ui/telemetry_dashboard.py` | Read-only telemetry over `traces/` and the audit log, and its page |
 | `src/agents/` | The five agents (some are still stubs) |
 | `tests/` | Tests, including the decision table and `test_merge_order.py` |
 | `docs/` | [Contract](docs/handoff-contract.md), [decision record](docs/decisions/001-context-strategy.md), [metrics](docs/metrics.md), [Intake/Rules fact names](docs/intake-rules-contract.md), [status](docs/STATUS.md) |
