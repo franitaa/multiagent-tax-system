@@ -1,6 +1,6 @@
 # Status: orchestration (Person 1)
 
-Updated 2026-10-29, after PRs #21 to #35 landed on `main`. All six agents exist; the graph, the human gate and the
+Updated 2026-10-30, after PRs #21 to #36 landed on `main`. All six agents exist; the graph, the human gate and the
 review loop run end to end. Tests: about 1,100 pass; the remaining expected failures are the three pending evals.
 
 ## Done
@@ -16,8 +16,8 @@ review loop run end to end. Tests: about 1,100 pass; the remaining expected fail
   trace and audit entry, no traceback).
 - **Integrated by the team:** Intake (real, wired into the chat page), Extraction (W-2 vision, `EXTRACTION_REVIEW`),
   Rules (reads Intake's names, maps filing status at its output, raises `ANSWER_UNCERTAIN`), Computation over MCP with
-  provenance, Review/Audit (#30), CI and Docker, evals (`python -m evals.runner`), draft form, volunteer and taxpayer
-  pages.
+  provenance, Review/Audit (#30), CI and Docker, evals (`python -m evals.runner`), draft form, taxpayer chat with sessions
+  saved on disk (#34), volunteer dashboard (#35), and API keys read only from `.env` (#32).
 - **Docs:** `docs/handoff-contract.md` is current (Review, skipped documents, tools and transport, `EXTRACTION_REVIEW`,
   `reviewer`, `halted_by_error`); `docs/intake-rules-contract.md` records what Rules now does.
 
@@ -25,23 +25,26 @@ review loop run end to end. Tests: about 1,100 pass; the remaining expected fail
 - **#27, income forms that are not read (decision needed).** SSA-1099, 1099-INT and 1099-DIV are skipped by Extraction,
   so their amounts never reach the draft. Today: the lines say `NOT READ` and the draft form warns (#33); Review still
   passes the case, and it completes. Options: a Review finding that holds the case for a volunteer (recommended for now),
-  JiWon's router block (#32, no way for a volunteer to unblock it), or the real fix (Intake asks the amounts, or
+  JiWon's earlier idea of blocking the draft in the router (dropped when #32 was narrowed; it had no way for a volunteer to
+  unblock it), or the real fix (Intake asks the amounts, or
   Extraction reads the forms).
 - **Intake as the default:** `AGENTS["intake"]` is still the stub; only the chat page uses the real one (`live_agents()`).
   Two evals stay pending for it (tax advice, exploitation signs), plus `interest-conflict` (nothing compares answers with
   document amounts). Owner: Supriya, with a decision from orchestration.
 - **Review does not check `rule_citations` yet** (planned; `docs/handoff-contract.md`).
 - **Persistence:** chat sessions are saved in `runtime/team_checkpoints.sqlite` (#34), unencrypted, and nothing deletes old
-  cases on a timer: schedule `python -m scripts.purge_cases --expired`. JiWon's `p3-integrated` branch (#32) reworks the same
-  files and needs to be split and rebased.
-- **Volunteer page (#35):** no login, the volunteer's name is free text; cannot resolve `EXTRACTION_REVIEW` yet.
+  cases on a timer: schedule `python -m scripts.purge_cases --expired`. JiWon's chat and W-2 upload integration and the
+  document gate were split out of #32 and are not merged; they come back as separate PRs, for review.
+- **Volunteer dashboard (#35):** no login, so a taxpayer can reach it from the start page; the volunteer's name is not verified;
+  it cannot resolve `EXTRACTION_REVIEW` (it says where to go). A staff passcode is a team decision.
 - **For the instructor:** the assignment's context section talks about "10 invoices", which does not match a tax project.
   We treat it as "a long session or a batch of many documents". Is that acceptable?
 
 ## Next (orchestration)
-- Telemetry dashboard (bonus, read-only, over `traces/` and the audit log; not an agent). Spec first.
+- Telemetry dashboard (bonus, read-only, over `traces/` and the audit log; not an agent): built, PR #38; spec in
+  `docs/telemetry-dashboard-spec.md`.
 - Review the #27 decision once the team has chosen, and the Review hold if it is chosen.
-- Final review of #32 after JiWon splits it.
+- Review JiWon's document-gate and chat/W-2 upload changes when they come back as separate PRs.
 
 ## Process
 Two early Rules commits went straight to `main` without a PR. Suggest branch protection requiring PRs.
