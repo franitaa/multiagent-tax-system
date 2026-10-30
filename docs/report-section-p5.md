@@ -51,9 +51,11 @@ boundary that every agent call passes through.
 Hand-calculated expected values for each tool including boundary cases, an end-to-end return,
 tool-order checks, a graph run showing provenance survives state updates, escalation tests, and
 tests that traces, the form and chat messages never show or hold a real-looking SSN, and a check
-that fails if the Computation agent does arithmetic itself. Full suite on `p5/typed-income-amounts`
-(Windows, Python 3.13), Oct 30, 2026: 1111 passing, 3 expected failures (xfail). Earlier on Oct 28
-the count was 835 passing and 2 expected failures, before PR #30, #33 and this work merged.
+that fails if the Computation agent does arithmetic itself. Full suite on `p5/issue-41-typed-amounts`
+(Windows, Python 3.13, based on `main` at PR #39), Oct 30, 2026: 1203 passing, 3 expected failures
+(xfail), and 9 failing tests in the chat page, home page and volunteer dashboard page tests. The same
+9 fail on `main` without this work, so they are not caused by it. Earlier, on Oct 28, the count was
+835 passing and 2 expected failures, before PR #30 and #33 and this work merged.
 
 ## Accessibility and dignity (P5's part)
 Unsolicited real-looking SSNs are removed (in the chat page and again where messages enter the
@@ -63,4 +65,5 @@ and keyboard-operable details.
 
 ## Contribution
 Person 5: provenance schema and helpers, tax-math tools and tests, Computation agent, draft form,
-fake-SSN validation, PII redaction, document security, MCP tool server.
+fake-SSN validation, PII redaction, document security, MCP tool server, audit log, case retention,
+the unread income-form warning and typed amounts for those forms (issue #27).
