@@ -40,7 +40,7 @@ For tax year 2025 the base standard deductions in the assignment are: Single/MFS
 
 Do not use the ordinary 1040-SR Standard Deduction Chart without additional review when someone can claim the taxpayer or an applicable spouse as a dependent, when a separately filing spouse itemizes, or when the taxpayer is a dual-status alien. These conditions are escalation points in the assignment.
 
-**How each case is handled:** Rules escalates the first two from their answers (`can_be_claimed_as_dependent` / `spouse_can_be_claimed`, and `spouse_itemizing`). Dual status is not asked directly; it is caught through the residency answer `us_resident_all_year` (Intake Q23): "no" makes the return out of scope (§3.1) and "not_sure" asks a volunteer to clarify it before anything is computed, so the chart is never applied to a taxpayer who moved to or from the US during the year. Known limitation: a taxpayer who lived in the US all year but changed tax residency status is not detected.
+**How each case is handled:** Rules escalates the first two from their answers (`can_be_claimed_as_dependent` / `spouse_can_be_claimed`, and `spouse_itemizing`). The assignment names dual status as the third (Assignment 7 §3.2, Rule 2) but does not define it, and Intake does not ask about it directly. What the system does is the residency check: `us_resident_all_year` (Intake Q23) "no" makes the return out of scope (§3.1), and "not_sure" asks a volunteer to clarify it before anything is computed. Known limitation: a taxpayer who answers "yes" to Q23 but was a dual-status alien for another reason (for example a change of tax residency status) is not detected.
 
 **References:** Assignment 7 §3.2, Rule 2; 2025 Form 1040-SR Standard Deduction Chart, page 4.
 
