@@ -15,10 +15,6 @@ src.agents.rules.run(), including pending ANSWER_UNCERTAIN escalation and
 human-supplied fact resolution. It does NOT simulate the real LangGraph
 interrupt/resume mechanism, which needs a separate orchestrator test.
 
-The 1099-NEC test is marked xfail(strict=True) because the supplied
-rules(7).py does not screen an extracted 1099-NEC document unless an Intake
-scope-screening fact identifies it. Remove xfail once that gap is fixed.
-
 Run from the repository root:
     python -m pytest tests/test_rules.py -v
 """
@@ -758,3 +754,85 @@ def test_previous_pending_answer_uncertain_is_preserved_for_human():
     result = evaluate(single_facts(), escalation=pending)
     assert result["escalation"] == pending
     assert result["handoff_request"]["to"] == "human"
+
+# 12. Document-answer conflicts (SOURCE_CONFLICT) ---------------------------
+
+IN_SCOPE_FORMS = [
+    ("W-2", "has_w2"),
+    ("SSA-1099", "has_ssa_1099"),
+    ("1099-R", "has_1099_r"),
+    ("1099-INT", "has_1099_int"),
+    ("1099-DIV", "has_1099_div"),
+]
+
+
+def uploaded(kind):
+    """One extracted in-scope document of this kind (no 1099-R box 2b)."""
+    return {"doc-1": {"kind": kind, "fields": {}}}
+
+
+@pytest.mark.parametrize(("kind", "fact_name"), IN_SCOPE_FORMS)
+def test_no_answer_with_uploaded_form_raises_source_conflict(kind, fact_name):
+    result = evaluate(
+        single_facts(**{fact_name: fact("no")}), extracted=uploaded(kind)
+    )
+    require_escalation(result, S.SOURCE_CONFLICT)
+    assert result["escalation"]["fact"] == fact_name
+    assert fact_name in result["escalation"]["reason"]
+    require_rule(result, "Document-answer source conflict", "3.5")
+
+
+@pytest.mark.parametrize(("kind", "fact_name"), IN_SCOPE_FORMS)
+def test_yes_answer_with_uploaded_form_is_not_a_conflict(kind, fact_name):
+    result = evaluate(
+        single_facts(**{fact_name: fact("yes")}), extracted=uploaded(kind)
+    )
+    assert result["handoff_request"]["to"] == "computation"
+    assert not (result.get("escalation") or {}).get("pending")
+
+
+@pytest.mark.parametrize("answer", ["not_sure", None])
+def test_unsure_or_missing_answer_with_uploaded_form_is_not_a_conflict(answer):
+    facts = single_facts()
+    if answer is not None:
+        facts["has_1099_int"] = fact(answer)
+    result = evaluate(facts, extracted=uploaded("1099-INT"))
+    assert result["handoff_request"]["to"] == "computation"
+
+
+def test_no_answer_without_an_upload_is_not_a_conflict():
+    result = evaluate(single_facts(has_1099_int=fact("no")))
+    assert result["handoff_request"]["to"] == "computation"
+
+
+@pytest.mark.parametrize("kind", ["1099INT", "1099_int", " 1099-int "])
+def test_document_kind_spelling_is_normalized(kind):
+    result = evaluate(
+        single_facts(has_1099_int=fact("no")), extracted=uploaded(kind)
+    )
+    require_escalation(result, S.SOURCE_CONFLICT)
+
+
+def test_volunteer_correction_resolves_the_conflict():
+    """The interest-conflict eval: the volunteer sets has_1099_int to yes."""
+    result = evaluate(
+        single_facts(has_1099_int=fact("yes", "human:SOURCE_CONFLICT")),
+        extracted=uploaded("1099-INT"),
+        human_decisions=[{"condition": S.SOURCE_CONFLICT, "decision": "continue"}],
+    )
+    assert result["handoff_request"]["to"] == "computation"
+
+
+def test_out_of_scope_wins_over_a_source_conflict():
+    """Scope screening runs first: an unsupported case is not asked about a conflict."""
+    result = evaluate(
+        single_facts(has_1099_int=fact("no"), digital_assets=fact("yes")),
+        extracted=uploaded("1099-INT"),
+    )
+    require_escalation(result, S.OUT_OF_SCOPE)
+
+
+def test_source_conflict_citation_exists_in_policy_md():
+    text = POLICY_PATH.read_text(encoding="utf-8")
+    sections = set(re.findall(r"^##\s+(\d+\.\d+)\b", text, flags=re.M))
+    assert "3.5" in sections, "Add a '## 3.5' section to docs/policy.md"
