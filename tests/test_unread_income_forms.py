@@ -2,6 +2,7 @@
 a complete draft. Computation says so in the source of the lines the form feeds, and the draft form
 warns at the top of the page. Nothing is invented: the amount stays zero, nothing is escalated."""
 import pytest
+from langgraph.types import Command
 
 from src.agents import computation
 from src.income_forms import unread_forms
@@ -144,7 +145,11 @@ def test_the_warning_uses_fixed_names_never_document_text():
 def test_a_real_run_with_an_ssa_1099_writes_a_draft_that_warns(tmp_path):
     case = clean_case()
     case["documents"] = [document("doc-1", "W-2"), document("doc-2", "SSA-1099")]
-    state = build_graph(trace_dir=tmp_path).invoke(case, cfg("unread-ssa"))
+    graph = build_graph(trace_dir=tmp_path)
+    paused = graph.invoke(case, cfg("unread-ssa"))
+    assert paused["__interrupt__"][0].value["condition"] == "INCOME_NOT_READ"  # a volunteer must acknowledge it
+    state = graph.invoke(Command(resume={"decision": "continue", "note": "amount added by hand (test)"}),
+                         cfg("unread-ssa"))
     assert state["status"] == "complete" and "__interrupt__" not in state
     assert NOT_READ in state["computed"]["line_6a"]["source"]
     page = write_draft_form(state, tmp_path / "out", "unread-ssa").read_text(encoding="utf-8")

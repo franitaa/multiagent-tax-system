@@ -102,6 +102,12 @@ def test_full_session_finishes(graph):
     chat.start(graph, case_id)
     for answer in FULL_ANSWERS:
         chat.send(graph, case_id, answer)
+    # The taxpayer said they have a W-2, but the chat has no upload step yet, so the case waits for a
+    # volunteer (INCOME_NOT_READ) instead of finishing with wages of $0. A volunteer who continues,
+    # with a note, lets it finish.
+    assert chat.screen(graph, case_id) == chat.WAITING_FOR_VOLUNTEER
+    graph.invoke(Command(resume={"decision": "continue", "note": "W-2 amounts added by hand (test)"}),
+                 {"configurable": {"thread_id": case_id}})
     assert chat.screen(graph, case_id) == chat.FINISHED
 
 

@@ -22,12 +22,11 @@ review loop run end to end. Tests: about 1,100 pass; the remaining expected fail
   `reviewer`, `halted_by_error`); `docs/intake-rules-contract.md` records what Rules now does.
 
 ## Open
-- **#27, income forms that are not read (decision needed).** SSA-1099, 1099-INT and 1099-DIV are skipped by Extraction,
-  so their amounts never reach the draft. Today: the lines say `NOT READ` and the draft form warns (#33); Review still
-  passes the case, and it completes. Options: a Review finding that holds the case for a volunteer (recommended for now),
-  JiWon's earlier idea of blocking the draft in the router (dropped when #32 was narrowed; it had no way for a volunteer to
-  unblock it), or the real fix (Intake asks the amounts, or
-  Extraction reads the forms).
+- **#27, income forms that are not read.** SSA-1099, 1099-INT and 1099-DIV are skipped by Extraction, so their amounts
+  never reach the draft. Safety net (built): the lines say `NOT READ`, the draft form warns (#33), and the orchestrator
+  pauses the case once for a volunteer (`INCOME_NOT_READ`) before Computation, also when a declared W-2 or 1099-R was never
+  uploaded. The real fix is still open: Intake asks the amounts (typed, `direct user input`) and Computation uses them.
+  Until then every such case needs a volunteer, and the chat has no upload step, so a chat case with a W-2 pauses.
 - **Intake as the default:** `AGENTS["intake"]` is still the stub; only the chat page uses the real one (`live_agents()`).
   Two evals stay pending for it (tax advice, exploitation signs), plus `interest-conflict` (nothing compares answers with
   document amounts). Owner: Supriya, with a decision from orchestration.

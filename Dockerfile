@@ -3,10 +3,12 @@
 #   docker build -t silverfile .
 #   docker run --rm silverfile                     # clean demo case, prints the route
 #   docker run --rm silverfile pytest -q           # the full test suite
-#   docker run --rm -p 8501:8501 silverfile streamlit run src/ui/taxpayer_chat.py
-#                                                  # taxpayer chat page: http://localhost:8501
+#   docker compose up --build                      # the whole app, saved cases kept (docker-compose.yml)
 #
-# Secrets are never baked in: pass them at run time with --env-file .env.
+# Saved cases (runtime/) and traces plus the audit log (traces/) belong in volumes, so they survive a
+# new container: -v silverfile-runtime:/app/runtime -v silverfile-traces:/app/traces
+# Secrets are never baked in. The W-2 page reads the .env file itself (not environment variables),
+# so mount it: -v "$PWD/.env:/app/.env:ro"
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -28,6 +30,9 @@ RUN pip install -r requirements.txt
 
 COPY --chown=silverfile:silverfile . .
 USER silverfile
+# Create the folders the volumes are mounted on, as the app user: a new Docker volume copies the
+# owner of the folder it is mounted on, so without this it belongs to root and saving a case fails.
+RUN mkdir -p runtime traces/audit
 
 EXPOSE 8501
 CMD ["python", "-m", "scripts.run_scenarios", "clean"]
