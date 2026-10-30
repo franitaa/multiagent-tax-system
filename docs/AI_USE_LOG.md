@@ -655,43 +655,93 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 - Adapter tests do not prove that the chat UI, routing, and dashboard work together correctly.
 - Vision results require human verification. Model-assisted identifier screening does not guarantee that real identifiers are blocked before transmission.
 
-## Person 6 (Shruti Goel) — Oct 26 to Oct 30, 2026 (Review/Audit, CI, Docker, evals)
-**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/review-agent`, `p6/ci`,
-`p6/docker`, `p6/evals`, `p6/evals-real-intake`, `p6/docker-volumes`, `p6/review-into-46`,
-`p6/compose-drop-w2-page`, `p6/review-citations`, `p6/demo-click-through` and `p6/ai-log`.
+## Shruti Goel (Person 6) — Mon Oct 26, 2026 (Review/Audit agent, first CI)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/review-agent` and `p6/ci`.
 
 **What the AI helped with**
-- Mon Oct 26: explained the repository and the brief's Review requirement; wrote the Review/Audit
-  agent (`src/agents/review.py`) and its tests, the tax-math tool registration and Review's access
-  policy, and the line/box labels in `docs/handoff-contract.md`. Wrote the first CI workflow (#12).
-- Tue Oct 27: Review checked against Sahana's real Computation (blank lines, text amounts, numeric
-  facts only); the Docker image, `.dockerignore` and README section (#13); CI actions on Node 24.
-- Wed Oct 28: read teammates' PRs (#11, #15, #24, #25) for what they changed in other people's files
-  and drafted my comments and team messages; wrote the prompt Sahana used to split her own changes out
-  of #11 into a P5-only PR (#24).
-- Thu Oct 29: the eval cases and runner, and the instructions for eval cases 1 and 2 (#26); prepared the
-  Review PR on a test copy of `main` + #24 (#30) and found which failing tests were whose.
-- Fri Oct 30: the #41 Docker run-through and its fixes (#47); the real-Intake eval cases (#48); found
-  that typed-in amounts failed Review while checking #46, and wrote the Review fix, merged into #46
-  through #54; tested #52, #55 and #56 with the evals in scratch merges; found that #55's red check was
-  GitHub testing against an old `main`; removed the old W-2 workbench from Docker Compose and added CI
-  checks for the chat W-2 flow and for purging a case's photo (#60); added Review's check of Rules'
-  policy citations against `docs/policy.md`, with a guard test that every cited section exists (#65);
-  rewrote `demo/eval_case_1.md` and `eval_case_2.md` as click-by-click steps in the real app (#66);
-  resolved this log's merge conflict with #64; checked `main` against the assignment's deliverables
-  list; drafted my report section (kept outside the repository, as the team decided).
+- Explained the repository and the brief's Review requirement (independently falsify the return).
+- Wrote the Review/Audit agent (`src/agents/review.py`) and its tests, the tax-math tool registration
+  and Review's access policy, and the line/box labels in `docs/handoff-contract.md`.
+- Wrote the first GitHub Actions workflow (#12).
 
 **What I decided or checked myself**
 - Not to change Sahana's Computation stub while Review was being built: Review's own tests got their
   own consistent Computation instead, and the stub was left failing until her code landed.
-- Which data Review sees: only numeric facts plus Rules' decisions (agreed with Francesca), with no
-  extra slice of yes/no answers.
-- To build and run Docker locally before pushing (I installed Docker Desktop), and to keep each PR to
-  my own files; changes in teammates' files were asked for, or made only with their permission (the
-  eligibility-invariant test, with Francesca's OK).
+- Asked for the line and box labels to be written into the existing team contract, not a new file.
+
+**How the AI's work was verified**
+- The full test suite before every commit; Review's tests against a correct reference return built
+  with `tax_math`.
+
+## Shruti Goel (Person 6) — Tue Oct 27, 2026 (Review against the real Computation, Docker)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/review-agent` and `p6/docker`.
+
+**What the AI helped with**
+- Checked Review against Sahana's real Computation and fixed what was too strict (blank lines, text
+  amounts, the filing-status names, spouse boxes on a joint return only).
+- The Docker image, `.dockerignore` and the README's Docker section (#13); CI actions moved to Node 24.
+
+**What I decided or checked myself**
+- Which data Review sees: only numeric facts plus Rules' decisions, agreed with Francesca.
+- To build and run Docker locally before pushing (I installed Docker Desktop for it).
+
+**How the AI's work was verified**
+- Docker built and run on my laptop (the clean case, the tests inside the container, the chat page),
+  then the same steps in CI's `docker` job.
+
+## Shruti Goel (Person 6) — Wed Oct 28, 2026 (reviewing teammates' PRs)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code; review work only, in temporary copies of the repository.
+
+**What the AI helped with**
+- Read teammates' PRs (#11, #15, #24, #25) for what they changed in other people's files, and drafted
+  my comments and team messages.
+- Wrote the prompt Sahana used to split her own changes out of #11 into a P5-only PR (#24).
+
+**What I decided or checked myself**
+- That each PR should contain only its owner's work; Sahana's could keep the two lines her tests
+  needed (`access.py` tool registration, `mcp==2.3.0`), and everything else was asked of its owner.
+
+**How the AI's work was verified**
+- Where a comment quoted test results, the PR was merged with `main` in a scratch copy and the tests
+  were run first.
+
+## Shruti Goel (Person 6) — Thu Oct 29, 2026 (eval cases, the Review PR)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/evals` and `p6/review-agent`.
+
+**What the AI helped with**
+- The end-to-end eval cases and runner, run in CI, and the first instructions for eval cases 1 and 2
+  (#26). CI moved to Python 3.11 only.
+- Prepared the Review PR (#30) on a test copy of `main` + #24, and worked out which failing tests were
+  whose.
+
+**What I decided or checked myself**
+- Checked the eval cases against the assignment's §5.2 and asked for the demo instructions.
 - Questioned the AI's first Review graph test for the 1099-NEC case, which made Rules miss the document
   on purpose; it was replaced by a test of an out-of-scope line that only Review can see.
-- Checked the eval cases against the assignment's §5.2 and asked for the demo instructions.
+- Changed Francesca's eligibility-invariant test only with her permission.
+
+**How the AI's work was verified**
+- The evals against teammates' PRs in scratch merges (they found the filing-status name mismatch and
+  Rules not running again after a volunteer's decision, both fixed by their owners).
+
+## Shruti Goel (Person 6) — Fri Oct 30, 2026 (Docker volumes, evals, typed amounts, citations, demo)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/docker-volumes`, `p6/evals-real-intake`, `p6/review-into-46`,
+`p6/compose-drop-w2-page`, `p6/review-citations`, `p6/demo-click-through` and `p6/ai-log`.
+
+**What the AI helped with**
+- The #41 Docker run-through and its fixes (#47); the real-Intake eval cases (#48).
+- Found that typed-in amounts failed Review while checking #46, and wrote the Review fix, merged into
+  #46 through #54.
+- Tested #52, #55 and #56 with the evals in scratch merges; found that #55's red check was GitHub
+  testing against an old `main`.
+- Took the old W-2 workbench out of Docker Compose and added CI checks for the chat W-2 flow and for
+  purging a case's photo (#60).
+- Review's check of Rules' policy citations against `docs/policy.md`, with a guard test (#65).
+- Rewrote `demo/eval_case_1.md` and `eval_case_2.md` as click-by-click steps in the real app (#66).
+- Resolved this log's merge conflict with #64; checked `main` against the assignment's deliverables
+  list; drafted my report section (kept outside the repository, as the team decided).
+
+**What I decided or checked myself**
 - Merged `main` into #55's branch myself so its CI tested it with #52; closed my duplicate #58 once
   Matthew's #57 covered Sahana's review.
 - To build the `rule_citations` check rather than list it as a limitation, and to add the retention
@@ -701,14 +751,12 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 - Approved every push and PR; nothing was pushed to `main` directly.
 
 **How the AI's work was verified**
-- The full test suite before every commit; the evals on every branch and against teammates' PRs in
-  scratch merges.
 - Docker run locally for each change (build, every page, a case shared between pages, a restart), then
   the same steps in CI's `compose` job.
 - New Review tests were run against the earlier Review to confirm they fail there.
-- On `main` at #64 (Oct 30): 1353 passed; evals 15 pass, 0 fail, 0 pending.
 - The demo steps were checked by running both journeys through the chat and dashboard code with
   Ji's offline reader. I did not use an API key, so a run with the real AI reader was not checked by me.
+- On `main` at #64 (Oct 30): 1353 passed; evals 15 pass, 0 fail, 0 pending.
 
 **Limits I am aware of**
 - The evals use stand-ins for Intake's answers and Extraction's boxes in most cases. The full chat
