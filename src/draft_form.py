@@ -13,6 +13,7 @@ from html import escape
 from pathlib import Path
 
 from security import is_fake_ssn, redact_pii
+from src.income_forms import unread_forms
 
 SECTIONS = (
     ("Income", (
@@ -90,6 +91,7 @@ STYLE = (
     "summary:focus{outline:3px solid #0645ad;outline-offset:2px}"
     "details p,details ul{text-align:left;margin:.2rem 0}"
     ".banner{background:#fff3cd;border:1px solid #d6b656;padding:.6rem}"
+    ".warn{background:#fde8e8;border:2px solid #9b1c1c;padding:.6rem;margin:.8rem 0}"
     ".ok{color:#0b5d1e;font-weight:bold}.bad{color:#9b1c1c;font-weight:bold}"
     "button{font-size:1rem;padding:.4rem .8rem;margin:0 .4rem .6rem 0}"
     "@media print{button{display:none}body{font-size:1rem;margin:0}}"
@@ -219,12 +221,30 @@ def _decisions(decisions) -> str:
             + rows + "</table>")
 
 
+def _missing_income(facts, extracted) -> str:
+    """A warning for in-scope forms whose amounts were not read (issue #27), so a draft that is
+    missing income never looks complete. Form names and line numbers come from a fixed list in
+    Computation, never from document text."""
+    forms = unread_forms(facts or {}, extracted or {}, read_text=True)
+    if not forms:
+        return ""
+    items = "".join(
+        f"<li>{escape(f['form'])}: feeds line{'s' if len(f['lines']) != 1 else ''} "
+        f"{escape(', '.join(line.removeprefix('line_') for line in f['lines']))}</li>" for f in forms)
+    return ("<div class='warn' role='alert'><p><b>Income is missing from this draft.</b> The amounts on "
+            "the forms below were not read, so they are not included and the totals may be too low. "
+            "A volunteer needs to add them before anyone relies on this draft.</p>"
+            f"<ul>{items}</ul></div>")
+
+
 def render_draft_html(computed: dict, facts: dict | None = None, eligibility: dict | None = None, *,
                       review: dict | None = None, review_history: list | None = None,
-                      decisions: list | None = None, case_id: str | None = None) -> str:
+                      decisions: list | None = None, case_id: str | None = None,
+                      extracted: dict | None = None) -> str:
     """Return a standalone HTML page. A line without a complete provenance record raises
     ValueError, so an unsourced amount can never be displayed. Everything but `computed` is
-    optional context for the reviewer."""
+    optional context for the reviewer. Pass `extracted` so forms whose amounts were not read are
+    flagged at the top of the page."""
     _check(computed)
     status, by = _status(facts, eligibility)
     body = []
@@ -246,6 +266,7 @@ def render_draft_html(computed: dict, facts: dict | None = None, eligibility: di
         f"<h1>Form 1040-SR, tax year 2025{case}</h1>"
         "<p class='banner'><b>DRAFT, not filed.</b> Prepared for human review. "
         "Click any amount to see how it was produced.</p>"
+        f"{_missing_income(facts, extracted)}"
         "<div><button type='button' id='open-all'>Show all sources</button>"
         "<button type='button' id='close-all'>Hide all sources</button>"
         "<button type='button' id='print'>Print</button></div>"
@@ -268,7 +289,7 @@ def write_draft_form(state: dict, directory="output", name: str | None = None, a
     html = render_draft_html(
         computed, state.get("facts"), state.get("eligibility"), review=state.get("review"),
         review_history=state.get("review_history"), decisions=state.get("human_decisions"),
-        case_id=case_id)
+        case_id=case_id, extracted=state.get("extracted"))
     path = Path(directory) / f"{case_id}_1040sr.html"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(html, encoding="utf-8")

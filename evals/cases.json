@@ -49,7 +49,6 @@
     {
       "id": "eval-case-1-line-amounts",
       "title": "Eval case 1: line 1a and line 25a come from the W-2 boxes",
-      "pending": "Needs the real Computation agent (#24); the placeholder always writes line_1a = 1000.",
       "messages": [
         "Hi, I need help with my 2025 return.",
         "I was born in March 1955, I am single and I have one W-2."

@@ -15,7 +15,7 @@ from src.draft_form import render_draft_html, write_draft_form
 from src.graph import build_graph
 from src.orchestration.access import ToolBox
 from src.scenarios import clean_case, spouse_died_case
-from tests.helpers import cfg
+from tests.helpers import cfg, text_amount_extraction
 
 _CHAT_PAGE = __import__('pathlib').Path(__file__).resolve().parents[1] / 'src' / 'ui' / 'taxpayer_chat.py'
 
@@ -189,7 +189,8 @@ def test_volunteer_notes_are_redacted():
 
 
 def test_the_form_shows_the_review_send_back_that_fixed_the_draft(tmp_path):
-    state = build_graph(trace_dir=tmp_path).invoke(clean_case(), cfg("form-review"))
+    graph = build_graph(trace_dir=tmp_path, agents={"extraction": text_amount_extraction})
+    state = graph.invoke(clean_case(), cfg("form-review"))
     page = render_draft_html(state["computed"], state["facts"], state["eligibility"], review=state["review"],
                              review_history=state["review_history"], decisions=state.get("human_decisions"))
     assert "<span class='ok'>Passed</span> after 1 send-back round to Computation" in page
