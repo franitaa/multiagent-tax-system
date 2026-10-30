@@ -130,6 +130,14 @@ http://localhost:8501/telemetry. There is no login: anyone who has the address c
 fixed to `SILVERFILE_TRACE_DIR` (set `SILVERFILE_TELEMETRY_ANY_FOLDER=1` to edit it in the sidebar when debugging).
 Spec: [docs/telemetry-dashboard-spec.md](docs/telemetry-dashboard-spec.md).
 
+**Check a real W-2 reading through the chat** (one paid call; fictional fixtures only; key from `.env`):
+
+```
+.venv/bin/python -m scripts.verify_chat_extraction --provider anthropic     # or --provider openai
+```
+It runs the interview on the real graph, uploads `data/fixtures/w2_01.jpg`, and checks the boxes and the draft lines
+against `data/fixtures/expected.json`, in a temporary folder. Its steps are the ones the chat's upload box must follow.
+
 ## Layout
 | Path | What |
 |---|---|
