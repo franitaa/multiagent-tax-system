@@ -20,13 +20,18 @@ status makes it use the status in `eligibility`. The first pass stays strict: a 
 not used until Review has flagged it. Findings it cannot act on are ignored; the loop bound
 then hands the case to a human.
 
+Forms that were not read (issue #27): Extraction reads only the W-2, so an SSA-1099, 1099-INT or
+1099-DIV leaves no amounts behind. Computation does not turn that into a quiet zero: the lines the
+form feeds say in their source that the form was not read, and `unread_forms` lets the draft form
+warn. It never invents an amount, and it does not stop the case (that routing is Orchestration's).
+
 Defensive escalations (Rules should catch these first): a taxpayer who can be claimed as a
 dependent, or a separately filing spouse who itemizes (the Standard Deduction Chart does not
 apply), a 1099-R whose taxable amount is not determined, and out-of-scope 1099 types.
 """
-import re
-
 from provenance import make_direct_input_provenance, make_provenance
+from src.income_forms import (DOC_LINES, answered_yes, as_number, document_amounts, document_kind,
+                              fact_value, record_field, text_amount, unread_forms)
 from src.state import FORM_1099R_BOX_2B, OUT_OF_SCOPE
 
 # Rules uses short codes; the tax tools use full names.
@@ -39,79 +44,11 @@ STATUS_NAMES = {
 }
 FULL_NAMES = set(STATUS_NAMES.values())
 
-# line -> [(document kind, extracted field)]. Kinds are normalised (see _kind). The field names
-# are Computation's assumptions about Extraction's output; see docs/provenance.md.
-DOC_LINES = {
-    "line_1a": [("w2", "box_1")],
-    "line_2a": [("1099int", "box_8")],
-    "line_2b": [("1099int", "box_1")],
-    "line_3a": [("1099div", "box_1b")],
-    "line_3b": [("1099div", "box_1a")],
-    "line_4a": [("1099r-ira", "box_1")],
-    "line_4b": [("1099r-ira", "box_2a")],
-    "line_5a": [("1099r-pension", "box_1")],
-    "line_5b": [("1099r-pension", "box_2a")],
-    "line_6a": [("ssa1099", "box_5")],
-    "line_25a": [("w2", "box_2")],
-    "line_25b": [("1099int", "box_4"), ("1099div", "box_4"), ("1099r-ira", "box_4"),
-                 ("1099r-pension", "box_4"), ("ssa1099", "box_6")],
-}
 OUT_OF_SCOPE_KINDS = ("1099nec", "1099misc", "1099b", "1099k")
-
-
-def _fact(facts, name, default=None):
-    item = facts.get(name)
-    return item.get("value", default) if isinstance(item, dict) else default
-
 
 def _entered_by(facts, name):
     source = (facts.get(name) or {}).get("source", "user")
     return "taxpayer (via Intake)" if source in ("user", "direct user input") else str(source)
-
-
-def _raw(record, field):
-    item = (record.get("fields") or {}).get(field)
-    return item.get("value") if isinstance(item, dict) else item
-
-
-def _kind(record):
-    """Normalised document kind. A 1099-R is split into IRA vs pension by its IRA/SEP/SIMPLE
-    checkbox (extracted field `ira_sep_simple`)."""
-    kind = "".join(c for c in str(record.get("kind", "")).lower() if c.isalnum())
-    if kind == "1099r":
-        return "1099r-ira" if _raw(record, "ira_sep_simple") else "1099r-pension"
-    return kind
-
-
-def _number(item):
-    value = item.get("value") if isinstance(item, dict) else item
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-
-_TEXT_AMOUNT = re.compile(r"\s*\$?\s*(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*")
-
-
-def _text_amount(value):
-    """A plain amount written as text ("20000.00", "$20,000.00", "1,234") as a number, else
-    None. Strict on purpose: anything else (words, signs, ranges) is not read."""
-    match = _TEXT_AMOUNT.fullmatch(value) if isinstance(value, str) else None
-    return float(match.group(1).replace(",", "") + (match.group(2) or "")) if match else None
-
-
-def _doc_amounts(extracted, specs, read_text=False):
-    """(label, value, doc_id) for each extracted document field named in `specs`. Text amounts
-    are only read when `read_text` (a send-back from Review asked for it)."""
-    found = []
-    for doc_id, record in sorted(extracted.items()):
-        for kind, field in specs:
-            if _kind(record) == kind:
-                raw = _raw(record, field)
-                value = _number(raw)
-                if value is None and read_text:
-                    value = _text_amount(raw)
-                if value is not None:
-                    found.append((f"{doc_id}.{field}", value, doc_id))
-    return found
 
 
 def _repairs(view):
@@ -141,8 +78,8 @@ def _status(view, prefer_eligibility=False):
             and STATUS_NAMES.get(str(decided).strip().lower(), decided) in FULL_NAMES):
         raw = decided
     else:
-        raw = (_fact(facts, "filing_status") or decided
-               or _fact(facts, "filing_status_claim") or _intake_status(facts))
+        raw = (fact_value(facts, "filing_status") or decided
+               or fact_value(facts, "filing_status_claim") or _intake_status(facts))
     name = STATUS_NAMES.get(str(raw).strip().lower(), str(raw).strip().lower())
     if name not in FULL_NAMES:
         raise ValueError("Computation needs a valid filing status; Rules/Intake must supply it")
@@ -152,8 +89,8 @@ def _status(view, prefer_eligibility=False):
 def _intake_status(facts):
     """TEMPORARY fallback until Rules writes eligibility["filing_status"] from the real Intake
     answers (docs/answer-names.md). Only unambiguous plain answers; otherwise None."""
-    married, joint = _fact(facts, "married_dec31"), _fact(facts, "file_jointly")
-    if married == "no" and _fact(facts, "household_situation") == "single":
+    married, joint = fact_value(facts, "married_dec31"), fact_value(facts, "file_jointly")
+    if married == "no" and fact_value(facts, "household_situation") == "single":
         return "single"
     if married == "yes" and joint in ("yes", "no"):
         return "mfj" if joint == "yes" else "mfs"
@@ -162,15 +99,11 @@ def _intake_status(facts):
 
 def _is_65(facts, age_name, birth_name):
     """65 or older at the end of 2025 = born before January 2, 1961 (the Rules cutoff)."""
-    age = _fact(facts, age_name)
+    age = fact_value(facts, age_name)
     if age is not None:
         return age >= 65
-    birth = str(_fact(facts, birth_name) or "")
+    birth = str(fact_value(facts, birth_name) or "")
     return birth[:4].isdigit() and birth[:10] < "1961-01-02"
-
-
-def _yes(facts, *names):
-    return any(_fact(facts, n) in (True, "yes") for n in names)
 
 
 def _escalate(condition, reason):
@@ -190,15 +123,15 @@ def _must_escalate(view, status):
         return None if condition in resolved else _escalate(condition, reason)
 
     for record in extracted.values():
-        if _kind(record).startswith("1099r"):
-            taxable = _raw(record, "box_2a")  # present as text counts: "determined" is not "a number"
-            if _raw(record, "box_2b") or (_number(taxable) is None and _text_amount(taxable) is None):
+        if document_kind(record).startswith("1099r"):
+            taxable = record_field(record, "box_2a")  # present as text counts: "determined" is not "a number"
+            if record_field(record, "box_2b") or (as_number(taxable) is None and text_amount(taxable) is None):
                 return raise_once(FORM_1099R_BOX_2B, "1099-R taxable amount not determined")
-        if any(_kind(record).startswith(k) for k in OUT_OF_SCOPE_KINDS):
+        if any(document_kind(record).startswith(k) for k in OUT_OF_SCOPE_KINDS):
             return raise_once(OUT_OF_SCOPE, "out-of-scope tax document")
-    if _yes(facts, "can_be_claimed_as_dependent"):
+    if answered_yes(facts, "can_be_claimed_as_dependent"):
         return raise_once(OUT_OF_SCOPE, "Standard Deduction Chart does not apply: can be claimed as a dependent")
-    if status == "married_filing_separately" and _yes(facts, "spouse_itemizing"):
+    if status == "married_filing_separately" and answered_yes(facts, "spouse_itemizing"):
         return raise_once(OUT_OF_SCOPE, "Standard Deduction Chart does not apply: spouse itemizes")
     return None
 
@@ -211,6 +144,7 @@ def run(view, tools):
     if escalation:
         return escalation
     computed = {}
+    unread = unread_forms(facts, extracted, read_text)
 
     def call(tool, **kwargs):
         return tools.call(tool, **kwargs)
@@ -221,7 +155,7 @@ def run(view, tools):
 
     def direct(line, fact_name):
         """Direct user input for `line`, or None when the taxpayer gave no amount."""
-        value = _number(facts.get(fact_name))
+        value = as_number(facts.get(fact_name))
         if value is None:
             return None
         return add(line, make_direct_input_provenance(
@@ -234,18 +168,24 @@ def run(view, tools):
         return add(line, record)
 
     def from_documents(line):
-        """Line total from documents. One document keeps its own source; several are summed."""
-        amounts = _doc_amounts(extracted, DOC_LINES[line], read_text)
+        """Line total from documents. One document keeps its own source; several are summed. A line
+        fed by a form that was not read says so in its source, rather than passing as a plain zero."""
+        amounts = document_amounts(extracted, DOC_LINES[line], read_text)
+        missing = [u["form"] for u in unread if line in u["lines"]]
+        note = (f"; NOT READ: {', '.join(missing)} amounts were not captured, so this line may be "
+                "understated") if missing else ""
         if len(amounts) == 1:
             label, value, doc_id = amounts[0]
-            raw = _raw(extracted[doc_id], label.split(".", 1)[1])
-            note = f" (text {raw!r} read as a number after a review finding)" if isinstance(raw, str) else ""
+            raw = record_field(extracted[doc_id], label.split(".", 1)[1])
+            text = f" (text {raw!r} read as a number after a review finding)" if isinstance(raw, str) else ""
             return add(line, make_provenance(
-                value, f"{line} = value read from document field {label}{note}", {label: value},
-                f"Document {doc_id} (Document Extraction)", "document_extraction"))
-        return total(line, {label: v for label, v, _ in amounts},
-                     "Documents: " + ", ".join(sorted({d for _, _, d in amounts}))
-                     if amounts else "No matching documents; amount is zero")
+                value, f"{line} = value read from document field {label}{text}", {label: value},
+                f"Document {doc_id} (Document Extraction){note}", "document_extraction"))
+        if amounts:
+            source = "Documents: " + ", ".join(sorted({d for _, _, d in amounts}))
+        else:
+            source = "No amount read; shown as zero" if missing else "No matching documents; amount is zero"
+        return total(line, {label: v for label, v, _ in amounts}, f"{source}{note}")
 
     # --- income lines (documents), totals (a) and taxable (b)
     wages = total("line_1z", {"line_1a": from_documents("line_1a")},
@@ -300,9 +240,9 @@ def run(view, tools):
                                else _is_65(facts, "spouse_age", "spouse_birth_date"))
     std = add("line_12e", call(
         "calculate_standard_deduction", filing_status=status,
-        age_65_or_older=senior_self, blind=_yes(facts, "blind", "taxpayer_blind"),
+        age_65_or_older=senior_self, blind=answered_yes(facts, "blind", "taxpayer_blind"),
         spouse_age_65_or_older=spouse_senior,
-        spouse_blind=joint and _yes(facts, "spouse_blind")))
+        spouse_blind=joint and answered_yes(facts, "spouse_blind")))
     # the tool needs MAGI that is not negative, and a count of qualifying people; both come from tools
     magi = call("subtract_amounts", start=agi, subtract={}, label="magi_for_senior_deduction",
                 start_name="line_11a")["value"]
