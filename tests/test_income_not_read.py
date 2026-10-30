@@ -228,3 +228,36 @@ def test_a_form_that_turns_up_after_the_pause_pauses_the_case_again(tmp_path):
     assert "SSA-1099" in pending(again)["reason"] and "W-2" not in pending(again)["reason"]
     final = resume(graph, decision="continue", note="SSA-1099 handled by hand")
     assert "__interrupt__" not in final and final["status"] == S.COMPLETE
+
+
+# ---- the draft form also warns for a declared W-2 or 1099-R that was never added ----------------
+# (found in the demo rehearsal: after "I don't have it now" the draft showed wages of $0 with no warning)
+
+
+def test_the_missing_income_list_names_the_forms_and_their_lines():
+    from src.income_forms import missing_income_forms
+
+    facts = {"has_w2": {"value": "yes"}, "has_1099_r": {"value": "yes"}}
+    assert missing_income_forms(facts, {}) == [
+        {"form": "W-2", "lines": ["line_1a", "line_25a"]},
+        {"form": "1099-R", "lines": ["line_4a", "line_4b", "line_5a", "line_5b", "line_25b"]}]
+    assert [f["form"] for f in missing_income_forms(facts, {})] == forms_without_amounts(facts, {})
+
+
+def test_a_w2_never_added_leaves_a_draft_that_warns_after_continue(tmp_path):
+    from src.draft_form import write_draft_form
+
+    graph, result = start(tmp_path, documents=[], has_w2="yes")
+    assert pending(result)["condition"] == S.INCOME_NOT_READ
+    final = resume(graph, decision="continue", note="taxpayer will bring the W-2 later")
+    assert final["status"] == S.COMPLETE and final["computed"]["line_1a"]["value"] == 0
+    page = write_draft_form(final, tmp_path / "out", "t").read_text(encoding="utf-8")
+    assert "Income is missing from this draft" in page and "W-2: feeds lines 1a, 25a" in page
+
+
+def test_a_w2_that_was_added_leaves_no_warning(tmp_path):
+    from src.draft_form import write_draft_form
+
+    graph, result = start(tmp_path, documents=[document("doc-1", "W-2")], has_w2="yes")
+    page = write_draft_form(result, tmp_path / "out", "t").read_text(encoding="utf-8")
+    assert "Income is missing" not in page
