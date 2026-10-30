@@ -433,6 +433,112 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 **Limits I am aware of**
 - Documentation only this session: no code changed, so `SOURCE_CONFLICT` is still to do.
 
+
+## Ji Won Park — October 26, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for setup troubleshooting, explanations, and testing guidance.
+
+**What the AI helped with**
+
+- Explained how to run the project on Windows using VS Code and a Python virtual environment.
+- Helped troubleshoot dependencies and explained the Tesseract requirement for image extraction.
+- Explained case IDs, checkpointing, and how to test saved answers and resumed sessions.
+
+**What I decided or checked myself**
+
+- Ran the checkpoint pause/resume and intake-answer save/resume examples.
+- Checked that the case ID, summary, and next-question position were retained.
+
+**How the AI's work was verified**
+
+- Checked the command outputs and ran the unit suite: 60 tests were reported, with 12 skipped.
+
+**Limits I am aware of**
+
+- The skipped image and integration tests did not verify actual W-2 image extraction.
+
+
+## Ji Won Park — October 27, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for reviewing test failures and explaining shared graph state.
+
+**What the AI helped with**
+
+- Reviewed a failing extraction integration test and its saved state.
+- Explained the difference between an empty `computed` dictionary and a missing `computed` field.
+
+**What I decided or checked myself**
+
+- Ran the tests and inspected the failure output.
+- Checked that the case was awaiting human extraction review and contained no calculated amounts.
+
+**How the AI's work was verified**
+
+- The test output showed 242 passed tests, one failure, and five passed subtests.
+- The failure concerned an assertion about the presence of the `computed` key.
+
+**Limits I am aware of**
+
+- Diagnosing this assertion did not verify the complete extraction, review, and restart workflow.
+
+
+## Ji Won Park — October 29, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for Python changes, documentation, debugging, and Git guidance.
+
+**What the AI helped with**
+
+- Suggested changes to read API keys from `.env` and remove the sidebar key input.
+- Helped update configuration instructions for OpenAI and Anthropic.
+- Drafted an initial connection between chat sessions and W-2 storage.
+- Helped diagnose indentation and UI-test failures.
+
+**What I decided or checked myself**
+
+- Applied the changes in VS Code, ran tests, and committed changes through my working branch.
+- Kept actual API keys out of the committed configuration template.
+
+**How the AI's work was verified**
+
+- After corrections, the local suite reported 760 passed tests and five passed subtests.
+- Submitted the changes for teammate review.
+
+**Limits I am aware of**
+
+- Local tests did not prove compatibility with newer team changes.
+- The initial integration changed shared chat and routing files too broadly. Teammate feedback led to separating those changes from the API-key PR.
+
+
+## Ji Won Park — October 30, 2026 (Document Extraction & Agent Memory)
+
+**Tool:** ChatGPT (OpenAI), used for code review, test design, integration explanations, and documentation.
+
+**What the AI helped with**
+
+- Helped narrow PR #32 to API-key handling and related setup instructions.
+- Drafted the P3 shared-service adapter and tests for using the chat's existing case ID and checkpointer.
+- Explained how to preserve intake answers and existing documents when adding W-2 uploads.
+- Helped prepare integration instructions and the Extraction and memory report sections.
+
+**What I decided or checked myself**
+
+- Followed teammate feedback to separate shared integration work from the API-key PR.
+- Tested a synthetic W-2 through the standalone workbench using my OpenAI key.
+- Ran the adapter and full test suites before pushing changes.
+- Confirmed that extraction would remain W-2 only and coordinated chat UI integration with the Intake owner.
+
+**How the AI's work was verified**
+
+- The API-key branch reported 1,100 passed tests, three expected failures, and five passed subtests after incorporating main.
+- The adapter tests reported nine passed tests and five passed subtests, including preservation of saved answers and documents after reopening the database.
+- The full suite after adding the adapter reported 1,145 passed tests, three expected failures, and ten passed subtests.
+- Teammate review identified further integration requirements before PR #39 was merged.
+
+**Limits I am aware of**
+
+- My successful OpenAI test used the standalone workbench, not the complete chat upload flow. I had not personally verified a live Anthropic call.
+- Adapter tests do not prove that the chat UI, routing, and dashboard work together correctly.
+- Vision results require human verification. Model-assisted identifier screening does not guarantee that real identifiers are blocked before transmission.
 ## Person 5 (Sahana) — Wed Oct 28, 2026 (security and Computation integration)
 **Tool:** Claude Code (Claude Sonnet 5.5) in the terminal, on branch `p5/oct27-followups`
 and the branches it fed into.
