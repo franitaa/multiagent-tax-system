@@ -50,7 +50,10 @@ once a human has resolved the condition.
 - Limits: regex redaction is a defensive filter, not a guarantee. Embedded instructions are
   labelled as data; the Extraction agent must not treat document text as instructions.
   Escalation reasons and volunteer notes are redacted by the runner before they reach state.
-- Dual-status aliens (section 3.2 rule 2) are not detected here; Rules/Intake must escalate.
+- Dual-status aliens (section 3.2 rule 2) are not detected here, and not anywhere yet: Intake does
+  not ask whether the taxpayer was a dual-status alien and Rules does not check it, so the standard
+  deduction chart is applied anyway. Known limitation; it needs an Intake question and a Rules
+  escalation.
 
 ## Known limitations
 - Line 16 uses the 2025 ordinary rate schedules only (brackets checked against Rev. Proc.

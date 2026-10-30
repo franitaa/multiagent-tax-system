@@ -40,6 +40,8 @@ For tax year 2025 the base standard deductions in the assignment are: Single/MFS
 
 Do not use the ordinary 1040-SR Standard Deduction Chart without additional review when someone can claim the taxpayer or an applicable spouse as a dependent, when a separately filing spouse itemizes, or when the taxpayer is a dual-status alien. These conditions are escalation points in the assignment.
 
+**Not implemented yet:** the dual-status alien case. Rules escalates the first two (the `can_be_claimed_as_dependent` / `spouse_can_be_claimed` and `spouse_itemizing` answers), but Intake does not ask about dual status, so Rules cannot detect it and the chart is applied. This is a known limitation.
+
 **References:** Assignment 7 §3.2, Rule 2; 2025 Form 1040-SR Standard Deduction Chart, page 4.
 
 ## 2.5 Schedule 1-A enhanced senior deduction
