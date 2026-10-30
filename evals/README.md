@@ -39,14 +39,18 @@ on every push, and `tests/test_evals.py` runs them under pytest too.
 - `resume`: the volunteer's answer to each interrupt, in order (same format as the human gate).
 - `pending` (optional): why the case cannot pass yet, and whose work it waits for.
 
-Stand-ins let the cases test Rules, Computation, Review and the orchestrator on known inputs
-while Intake and Extraction are still placeholders. `python -m evals.runner --real-agents`
-ignores them.
+- `real_intake` (optional): `true` runs the case with the real Intake (the chat's interview)
+  instead of a stand-in, and sends `messages` one per turn, as a person types them. For what only
+  Intake can notice: a request for tax advice, signs of pressure or exploitation.
+
+Stand-ins let the cases test Rules, Computation, Review and the orchestrator on known inputs.
+`python -m evals.runner --real-agents` runs every case with the real agents and no stand-ins.
 
 ## What `expect` can check
 | Key | Checks |
 |---|---|
 | `interrupts` | The escalations a human saw, in order (`[]` = none). |
+| `raised_by` | Which agent raised each of those escalations, e.g. `["intake"]`. |
 | `status` | Final status: `complete` or `halted_by_human`. |
 | `route_starts_with` | The first hops of the route, e.g. `["intake", "extraction", "rules"]`. |
 | `eligibility` | Exact values in Rules' `eligibility` (filing status, boxes, ...). |
