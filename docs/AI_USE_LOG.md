@@ -222,7 +222,7 @@ and `p5/redact-messages-at-boundary`.
 - Real pause/resume behavior, volunteer resolution storage, and final draft propagation require integration tests with the actual orchestrator, human gate, and Computation agent.
 - I still need to verify the final branch's full test run and record any remaining integration issues before submission; AI-generated files are not automatically committed or pushed to GitHub.
 
-## Matthew — Sat Oct 31, 2026 (contract confirmation and AI log, demo day)
+## Matthew — Fri Oct 30, 2026 (contract confirmation and AI log, demo day)
 **Tool:** Claude (Claude Opus 5.5) in the Claude in Chrome side panel. It read the repository
 through my logged-in GitHub browser session and edited files in the GitHub web editor.
 

@@ -5,7 +5,7 @@ names and value shapes are the source of truth (`docs/answer-names.md`). Rules a
 Everything below comes from running the real Intake and the real Rules together in our graph, and
 from a pattern search of `src/agents/rules.py`.
 
-> **Status (2026-10-31): CONFIRMED by Matthew (Rules)** against the current `src/agents/rules.py`.
+> **Status (2026-10-30): CONFIRMED by Matthew (Rules)** against the current `src/agents/rules.py`.
 > Supriya (Intake): confirmation pending, to be given on the pull request for this change.
 > **The reference for what Intake writes is Supriya's shared list of answer names,
 > [`docs/answer-names.md`](answer-names.md)** (merged to `main` in #8). If that list and this table
@@ -109,7 +109,7 @@ Rules also screens extracted documents: a 1099-NEC is out of scope even if Intak
 
 **Status:** Rules now raises `OUT_OF_SCOPE` for a `"yes"` screening answer, with a reason that names the item
 (`tests/test_e2e_intake.py::test_an_out_of_scope_screening_answer_escalates_as_out_of_scope`, 5 cases), and
-an uncertain answer is not continued past (eval `sold-property-not-sure`). **Decision (Matthew and Supriya, 2026-10-31): a `not_sure` screening answer is
+an uncertain answer is not continued past (eval `sold-property-not-sure`). **Decision (Matthew and Supriya, 2026-10-30): a `not_sure` screening answer is
 escalated to a volunteer (`OUT_OF_SCOPE`), not re-asked by Intake.** The fact list above is from running the real Intake.
 
 ## Done means (all of these pass on `main`; the markers are gone)
