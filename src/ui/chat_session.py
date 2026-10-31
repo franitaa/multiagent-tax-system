@@ -37,7 +37,10 @@ What it does:
     Which AI reads it: the key in .env (OpenAI first, then Anthropic), read from the file only,
     never put in state or traces (`photo_reader()`). No key: the page says a volunteer will help.
   - If reading the photo fails (no internet, a rejected key), the case is not lost: `screen()`
-    says READING_FAILED and `try_again()` carries on from where it stopped.
+    says READING_FAILED and `try_again()` carries on from where it stopped. While the photo is
+    being read, `screen()` says READING (not a failure; `running()` marks the case, and an extra
+    click or a second tab is ignored), and the cause of a real failure is logged
+    (`note_reading_failure()`: error type and a short message, never a key).
 
 What is still missing:
   - Nothing deletes old sessions on a timer: run Sahana's `python -m scripts.purge_cases
@@ -152,15 +155,20 @@ _RUNNING_LOCK = threading.Lock()
 
 @contextmanager
 def running(case_id: str):
-    """Mark a case as running while the graph works on it. Reading a W-2 photo takes several seconds;
-    a page run in that time must show "we are reading", not "we couldn't read"."""
+    """Claim a case while the graph works on it; yields False if another run already has it, so a
+    second click or tab cannot start a second run (the check and the claim are one step). Reading a
+    W-2 photo takes several seconds; a page run in that time must show "we are reading", not
+    "we couldn't read"."""
     with _RUNNING_LOCK:
-        _RUNNING.add(case_id)
+        claimed = case_id not in _RUNNING
+        if claimed:
+            _RUNNING.add(case_id)
     try:
-        yield
+        yield claimed
     finally:
-        with _RUNNING_LOCK:
-            _RUNNING.discard(case_id)
+        if claimed:
+            with _RUNNING_LOCK:
+                _RUNNING.discard(case_id)
 
 
 def is_running(case_id: str) -> bool:
@@ -173,8 +181,9 @@ def send(graph, case_id: str, text: str) -> None:
     previous answer is still being worked on (an extra click)."""
     if not text.strip() or screen(graph, case_id) != ASKING:
         return
-    with running(case_id):
-        graph.invoke({"messages": [{"role": "user", "content": clean_message(text)}]}, _config(case_id))
+    with running(case_id) as claimed:
+        if claimed:
+            graph.invoke({"messages": [{"role": "user", "content": clean_message(text)}]}, _config(case_id))
 
 
 def screen(graph, case_id: str) -> str:
@@ -337,7 +346,6 @@ def note_reading_failure(problem: Exception) -> None:
 
 def try_again(graph, case_id: str) -> None:
     """Carry on from the step that failed (e.g. reading the W-2 photo); answers are kept."""
-    if is_running(case_id):  # an extra click while it is already running
-        return
-    with running(case_id):
-        graph.invoke(None, _config(case_id))
+    with running(case_id) as claimed:  # an extra click while it is already running is ignored
+        if claimed:
+            graph.invoke(None, _config(case_id))

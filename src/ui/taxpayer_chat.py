@@ -45,7 +45,9 @@ What it does:
     More than one W-2 can be added ("Add another W-2"). "I don't have it now" leads to a
     volunteer later (INCOME_NOT_READ). The photo is read when the questions end ("We are reading
     your W-2 now"), then a volunteer checks the amounts. No AI key in .env: the box says a
-    volunteer will help instead. If reading fails, a "Try again" screen; answers are kept.
+    volunteer will help instead. While the photo is being read the page shows "We are reading
+    your W-2" (READING, refreshed until done); if reading really fails, a "Try again" screen
+    (answers are kept) and the cause goes to the app log.
   - Uses the app's one shared service and graph (src/ui/app_service.py), like the dashboard.
 
 What is still missing:

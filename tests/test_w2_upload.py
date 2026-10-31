@@ -273,3 +273,17 @@ def test_a_failed_reading_is_still_shown_as_failed_once_it_has_stopped(tmp_path,
         for answer in remaining:
             chat.send(graph, CASE, answer)
     assert not chat.is_running(CASE) and chat.screen(graph, CASE) == chat.READING_FAILED
+
+
+def test_a_second_run_cannot_claim_a_case_that_is_already_running(service):
+    graph = service.graph
+    chat.start(graph, CASE)
+    before = len(chat.transcript(graph, CASE))
+    with chat.running(CASE) as first:
+        assert first is True
+        chat.send(graph, CASE, "Pat Tester")  # a second tab, in the first moment of a run: ignored
+        with chat.running(CASE) as second:
+            assert second is False
+    assert len(chat.transcript(graph, CASE)) == before and not chat.is_running(CASE)
+    chat.send(graph, CASE, "Pat Tester")  # once the case is free, the answer goes through
+    assert len(chat.transcript(graph, CASE)) > before
