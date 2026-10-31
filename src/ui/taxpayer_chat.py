@@ -45,7 +45,9 @@ What it does:
     More than one W-2 can be added ("Add another W-2"). "I don't have it now" leads to a
     volunteer later (INCOME_NOT_READ). The photo is read when the questions end ("We are reading
     your W-2 now"), then a volunteer checks the amounts. No AI key in .env: the box says a
-    volunteer will help instead. If reading fails, a "Try again" screen; answers are kept.
+    volunteer will help instead. While the photo is being read the page shows "We are reading
+    your W-2" (READING, refreshed until done); if reading really fails, a "Try again" screen
+    (answers are kept) and the cause goes to the app log.
   - Uses the app's one shared service and graph (src/ui/app_service.py), like the dashboard.
 
 What is still missing:
@@ -54,6 +56,7 @@ What is still missing:
 All logic is in src/ui/chat_session.py; this file only draws the page.
 """
 import html
+import time
 import sys
 from pathlib import Path
 
@@ -183,9 +186,10 @@ def send(graph, case_id: str, text: str) -> None:
                 chat.send(graph, case_id, text)
         else:
             chat.send(graph, case_id, text)
-    except Exception:
+    except Exception as problem:
         if chat.screen(graph, case_id) != chat.READING_FAILED:
             raise  # not a reading problem: show it, do not hide it
+        chat.note_reading_failure(problem)
 
 
 def bubble(role: str, text: str, live: bool = False) -> None:
@@ -377,6 +381,12 @@ def chat_screen(service, case_id: str) -> None:
             if st.button("Check again", icon=":material/refresh:"):  # after the volunteer decides
                 st.rerun()
         return
+    if screen == chat.READING:  # another run of the page is reading the photo right now
+        with st.container(key="tp-waiting"):
+            card_top("hourglass_top", "We are reading your W-2", "amber")
+            st.info(READING_TEXT)
+        time.sleep(3)
+        st.rerun()  # until it is done, then the page shows the next screen
     if screen == chat.READING_FAILED:
         with st.container(key="tp-waiting"):
             card_top("sync_problem", "We couldn't read your W-2 just now", "amber")
@@ -385,9 +395,10 @@ def chat_screen(service, case_id: str) -> None:
                 try:
                     with st.spinner(READING_TEXT):
                         chat.try_again(graph, case_id)
-                except Exception:
+                except Exception as problem:
                     if chat.screen(graph, case_id) != chat.READING_FAILED:
                         raise
+                    chat.note_reading_failure(problem)
                 st.rerun()
         return
     if screen in (chat.FINISHED, chat.STOPPED):

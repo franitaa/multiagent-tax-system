@@ -13,7 +13,7 @@ from html import escape
 from pathlib import Path
 
 from security import is_fake_ssn, redact_pii
-from src.income_forms import unread_forms
+from src.income_forms import missing_income_forms
 
 SECTIONS = (
     ("Income", (
@@ -51,6 +51,7 @@ SECTIONS = (
     ("Payments", (
         ("line_25a", "25a", "Federal tax withheld from Form(s) W-2"),
         ("line_25b", "25b", "Federal tax withheld from Form(s) 1099"),
+        ("line_25c", "25c", "Federal tax withheld from other forms"),
         ("line_25d", "25d", "Total federal tax withheld"),
         ("line_26", "26", "Estimated tax payments"),
         ("line_31", "31", "Amount from Schedule 3 (other payments)"),
@@ -222,17 +223,17 @@ def _decisions(decisions) -> str:
 
 
 def _missing_income(facts, extracted) -> str:
-    """A warning for in-scope forms whose amounts were not read (issue #27), so a draft that is
-    missing income never looks complete. Form names and line numbers come from a fixed list in
-    Computation, never from document text."""
-    forms = unread_forms(facts or {}, extracted or {}, read_text=True)
+    """A warning for in-scope forms whose amounts were not read, or never added (a W-2 or 1099-R the
+    taxpayer has but did not upload), so a draft that is missing income never looks complete (issue
+    #27). Form names and line numbers come from a fixed list, never from document text."""
+    forms = missing_income_forms(facts or {}, extracted or {})
     if not forms:
         return ""
     items = "".join(
         f"<li>{escape(f['form'])}: feeds line{'s' if len(f['lines']) != 1 else ''} "
         f"{escape(', '.join(line.removeprefix('line_') for line in f['lines']))}</li>" for f in forms)
     return ("<div class='warn' role='alert'><p><b>Income is missing from this draft.</b> The amounts on "
-            "the forms below were not read, so they are not included and the totals may be too low. "
+            "the forms below were not read or not added, so they are not included and the totals may be too low. "
             "A volunteer needs to add them before anyone relies on this draft.</p>"
             f"<ul>{items}</ul></div>")
 

@@ -88,9 +88,17 @@ This is the list of questions the Intake agent asks, and the names it uses to sa
 |---|---|---|---|
 | Q13 | "Did you get a W-2 form from a job this year?" | yes / no / not sure | always |
 | Q14 | "Did you get a Social Security benefits statement, called an SSA-1099?" | yes / no / not sure | always |
+| Q14a | "On your SSA-1099, what is the amount in box 5, your net benefits for 2025?" | amount / not sure | Q14 = yes |
+| Q14b | "On your SSA-1099, what is the amount in box 6, the federal income tax withheld? If the box is empty, type 0." | amount / not sure | Q14a is a number |
 | Q15 | "Did you get a form for money paid out of a pension or retirement account, called a 1099-R?" | yes / no / not sure | always |
 | Q16 | "Did you get a form showing bank interest, called a 1099-INT?" | yes / no / not sure | always |
+| Q16a | "On your 1099-INT, what is the amount in box 1, the interest income?" | amount / not sure | Q16 = yes |
+| Q16b | "On your 1099-INT, what is the amount in box 8, the tax-exempt interest? If the box is empty, type 0." | amount / not sure | Q16a is a number |
+| Q16c | "On your 1099-INT, what is the amount in box 4, the federal income tax withheld? If the box is empty, type 0." | amount / not sure | Q16a is a number |
 | Q17 | "Did you get a form showing dividends, called a 1099-DIV?" | yes / no / not sure | always |
+| Q17f | "On your 1099-DIV, what is the amount in box 1a, the total ordinary dividends?" | amount / not sure | Q17 = yes |
+| Q17g | "On your 1099-DIV, what is the amount in box 1b, the qualified dividends? If the box is empty, type 0." | amount / not sure | Q17f is a number |
+| Q17h | "On your 1099-DIV, what is the amount in box 4, the federal income tax withheld? If the box is empty, type 0." | amount / not sure | Q17f is a number |
 | Q17a | "Did you get any other tax forms for 2025, such as a 1099-NEC, 1099-MISC or 1099-B?" | yes / no / not sure | always |
 | Q17b | "During 2025, did you sell any stocks, funds or property?" | yes / no / not sure | always |
 | Q17c | "During 2025, did you earn money from your own business, freelance work, or renting out property?" | yes / no / not sure | always |

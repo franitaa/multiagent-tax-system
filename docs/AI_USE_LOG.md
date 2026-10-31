@@ -655,6 +655,127 @@ through my logged-in GitHub browser session and edited files in the GitHub web e
 - Adapter tests do not prove that the chat UI, routing, and dashboard work together correctly.
 - Vision results require human verification. Model-assisted identifier screening does not guarantee that real identifiers are blocked before transmission.
 
+## Francesca Rondinella (Person 1, orchestration) — Sat Oct 25, 2026 (graph, runner, human gate, context strategy)
+**Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `orchestration-setup` and `orchestration-phase3`.
+
+**What the AI generated**
+- Wrote the first versions of `src/state.py`, `src/graph.py`, the runner with JSONL tracing, the stub agents and the
+  agent contract (`docs/handoff-contract.md`), from the rules in `CLAUDE.md`.
+- Escalation routing and the human gate (`interrupt` and `Command(resume=...)`), including stop-only conditions,
+  a required note for "continue", and queued flags.
+- Parallel extraction with order-independent merging, the bounded review loop and the loop guard.
+- The context strategy: narrowed views per agent, the Intake chat window, a rolling summary, the
+  `--no-context-strategy` flag, `scripts/` measurement and `docs/decisions/001-context-strategy.md`.
+- Commit messages; git commands after I approved each step.
+
+**What I decided or checked myself**
+- The architecture (hub-and-spoke; the Orchestrator never extracts, computes or talks to the user) and the six-agent rule.
+- Which conditions are continuable and which are stop-only.
+- That other people's agents stay stubs and I do not write their tax or intake logic.
+
+**How the AI's work was verified**
+- `pytest` before each commit, as `CLAUDE.md` requires, and the demo cases run through the real graph.
+
+**Limits I am aware of**
+- The first context numbers in `docs/metrics.md` come from stub agents, so they show the mechanism, not real costs.
+
+## Francesca Rondinella (Person 1, orchestration) — Mon Oct 26, 2026 (Intake and Rules integration findings)
+**Tool:** Claude Code (Claude Sonnet 5.5) in VS Code.
+
+**What the AI generated**
+- Reviewed the Intake and Rules branches against the contract and wrote end-to-end and contract tests with the
+  real Intake and the real Rules.
+- Found that Rules and Intake used different fact names and value shapes (for example `bool("no")` is `True`),
+  and documented it in `docs/intake-rules-contract.md`.
+- Added `ELIGIBILITY_UNDECIDED`: a case no longer ends "complete" without a filing status and an eligibility verdict.
+- Updated `docs/STATUS.md`, the README run instructions and the graph diagram.
+
+**What I decided or checked myself**
+- That the mapping stays marked unconfirmed until its owners (Matthew and Supriya) confirm it.
+- That the missing escalation for out-of-scope screening answers is tracked, not fixed by me.
+
+**How the AI's work was verified**
+- Tests run before each commit; the new tests were written to fail on the old behavior.
+
+**Limits I am aware of**
+- The contract was my reading of the code, not an agreement. It was confirmed only later (#49).
+
+## Francesca Rondinella (Person 1, orchestration) — Wed Oct 28, 2026 (integration of the real agents)
+**Tool:** Claude Code (Claude Sonnet 5.5) in VS Code.
+
+**What the AI generated**
+- Removed the expected-failure markers that Matthew's Rules now satisfied, and updated two of my own tests to the integrated behavior.
+- `live_agents()` (one definition of the real agent set) and a narrower Rules view of facts.
+- A tax-tool server that cannot start now ends the case as `halted_by_error` (no traceback, an audit entry).
+- The filing-status vocabulary contract test; `.gitignore` for case data, audit logs and env files.
+
+**What I decided or checked myself**
+- That a failure to start the tools halts the case instead of falling back silently.
+- That Rules sees only the facts it reads (recorded in a decision, enforced by a test).
+
+**How the AI's work was verified**
+- Full `pytest` run before each commit; metrics regenerated from the integrated graph.
+
+**Limits I am aware of**
+- Two status vocabularies still existed at the end of the day; a failing volunteer filing-status test said so.
+
+## Francesca Rondinella (Person 1, orchestration) — Thu Oct 29, 2026 (ANSWER_UNCERTAIN, Python 3.11, telemetry spec)
+**Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `p1/phase5-integration`, `p1/status-reruns-rules`
+and `p1/telemetry-dashboard`.
+
+**What the AI generated**
+- `ANSWER_UNCERTAIN` as a registered, continuable condition; after a volunteer's answer the gate clears `eligibility`
+  so Rules decides again. The same fix for a volunteer's filing status (#29).
+- Moved the project to Python 3.11 (CI, `requires-python`, the lock file, `mcp==2.3.0`).
+- Extraction no longer waves through a document it cannot read; a known-gap test now points at issue #27.
+- The docs pass (handoff contract, STATUS, Intake-to-Rules contract).
+- The telemetry dashboard: its spec, the read-only module `src/telemetry.py` over `traces/` and the audit log, and the page.
+- Reviewed teammates' pull requests (#30 and others): read the diff, ran the tests on a temporary copy with `main` merged.
+
+**What I decided or checked myself**
+- Telemetry is a bonus and not an agent: read-only, no change to the graph (decisions are in the spec).
+- Python 3.11 only, so that CI and the team run the same version.
+
+**How the AI's work was verified**
+- Tests before each commit; each new test was checked to fail without its fix.
+
+**Limits I am aware of**
+- A first test for #29 passed without the fix (wrong scenario); it was rewritten to mirror the eval and then failed without the fix.
+
+## Francesca Rondinella (Person 1, orchestration) — Fri Oct 30, 2026 (INCOME_NOT_READ, review round, team to-do list)
+**Tool:** Claude Code (Claude Sonnet 5.5) in VS Code, on branches `p1/income-not-read`, `p1/verify-chat-extraction`,
+`p1/shared-service-docs`, `p1/direct-input-label` and others; pull requests and comments through the `gh` CLI.
+
+**What the AI generated**
+- `INCOME_NOT_READ` (#40, issue #27): the orchestrator pauses a case once when an income form has no amount; a
+  volunteer can continue only with a note, or stop. Router rule, human gate, dashboard words, docs and 27 tests.
+- Fixes to JiWon's #39 after review, `scripts/verify_chat_extraction.py` (one real W-2 reading through the chat)
+  and the integration notes in `src/p3/shared_service.py` (#42, #45).
+- Found a bug on `main`: a typed estimated payment or adjustment failed Review because the helper labelled it
+  "User-provided value" instead of "direct user input". One-line fix and three tests (#51).
+- Reviewed #32, #35, #36, #38, #39, #43, #44, #46, #47, #48, #49, #55 and #56 by merging each with `main` in a
+  temporary copy and running the tests; wrote the review comments.
+- Put Supriya's request on #49 into code: a `not_sure` scope-screening answer raises `ANSWER_UNCERTAIN` so a volunteer
+  confirms yes or no (`rules.py`, `human.py`, 34 new tests). Changes on #55 (the five `has_*` names in `RULES_FACTS`,
+  `SOURCE_CONFLICT` re-runs Rules), pushed to the teammates' branches with their agreement.
+- Resolved merge conflicts, drafted the team to-do list (issue #41), the merge order and the upload-flow proposal.
+
+**What I decided or checked myself**
+- Approved every comment, pull request and push before it was posted; asked for tags instead of names, and for the
+  to-do list in Markdown to edit on GitHub.
+- Chose the merge order, which review changes to accept, and that the router raises `INCOME_NOT_READ` instead of waiting on Review.
+- Decided with Supriya and JiWon that the chat asks for the W-2 photo right after "yes", not at the last answer.
+
+**How the AI's work was verified**
+- Full `pytest` before each commit (1,304 passed, 1 expected failure on the last run) and the evals (15 of 15 pass, none pending).
+- New tests were broken on purpose six ways for #40, and the #51 tests fail without the fix.
+
+**Limits I am aware of**
+- A first `sed` on macOS left conflict markers in a merge commit; it was rebuilt before pushing.
+- I once told the team a merge conflict existed between #52 and #55; it did not, and the comment was corrected.
+- The model stated a re-run of a failed CI job would help; a fresh push was needed. Stale "push" CI runs can show red while the "pull_request" run passes.
+- Several features (typed SSA/INT/DIV amounts, `SOURCE_CONFLICT`) do not change a real run until Intake asks the amounts.
+
 ## Shruti Goel (Person 6) — Mon Oct 26, 2026 (Review/Audit agent, first CI)
 **Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/review-agent` and `p6/ci`.
 

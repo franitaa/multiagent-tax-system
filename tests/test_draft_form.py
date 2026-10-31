@@ -22,7 +22,7 @@ _CHAT_PAGE = __import__('pathlib').Path(__file__).resolve().parents[1] / 'src' /
 
 # Every line in section 3.1 that Computation derives or reads.
 SPEC_LINES = ["1z", "2a", "2b", "3a", "3b", "4a", "4b", "5a", "5b", "6a", "6b", "9", "10", "11a",
-              "12e", "13b", "14", "15", "16", "24", "25a", "25b", "25d", "26", "33", "34", "37"]
+              "12e", "13b", "14", "15", "16", "24", "25a", "25b", "25c", "25d", "26", "33", "34", "37"]
 
 
 def rich_view():

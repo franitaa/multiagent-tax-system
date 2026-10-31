@@ -37,16 +37,21 @@ What it does:
     Which AI reads it: the key in .env (OpenAI first, then Anthropic), read from the file only,
     never put in state or traces (`photo_reader()`). No key: the page says a volunteer will help.
   - If reading the photo fails (no internet, a rejected key), the case is not lost: `screen()`
-    says READING_FAILED and `try_again()` carries on from where it stopped.
+    says READING_FAILED and `try_again()` carries on from where it stopped. While the photo is
+    being read, `screen()` says READING (not a failure; `running()` marks the case, and an extra
+    click or a second tab is ignored), and the cause of a real failure is logged
+    (`note_reading_failure()`: error type and a short message, never a key).
 
 What is still missing:
   - Nothing deletes old sessions on a timer: run Sahana's `python -m scripts.purge_cases
     --expired` on a schedule.
 """
 import calendar
+import logging
 import re
 import secrets
-from contextlib import ExitStack
+import threading
+from contextlib import ExitStack, contextmanager
 
 from dotenv import dotenv_values
 
@@ -64,6 +69,7 @@ WAITING_FOR_VOLUNTEER = "waiting_for_volunteer"
 FINISHED = "finished"
 STOPPED = "stopped"
 READING_FAILED = "reading_failed"  # the case stopped part-way (e.g. the W-2 photo could not be read)
+READING = "reading"  # a step is running right now (e.g. the W-2 photo is being read): not a failure
 
 _CASE_ID = re.compile(r"^SF-\d{3}-\d{3}$")
 
@@ -143,11 +149,41 @@ def clean_message(text: str) -> str:
     return intake_agent.redact_ssn(text.strip())
 
 
+_RUNNING: set[str] = set()  # cases whose graph is running in this app right now
+_RUNNING_LOCK = threading.Lock()
+
+
+@contextmanager
+def running(case_id: str):
+    """Claim a case while the graph works on it; yields False if another run already has it, so a
+    second click or tab cannot start a second run (the check and the claim are one step). Reading a
+    W-2 photo takes several seconds; a page run in that time must show "we are reading", not
+    "we couldn't read"."""
+    with _RUNNING_LOCK:
+        claimed = case_id not in _RUNNING
+        if claimed:
+            _RUNNING.add(case_id)
+    try:
+        yield claimed
+    finally:
+        if claimed:
+            with _RUNNING_LOCK:
+                _RUNNING.discard(case_id)
+
+
+def is_running(case_id: str) -> bool:
+    with _RUNNING_LOCK:
+        return case_id in _RUNNING
+
+
 def send(graph, case_id: str, text: str) -> None:
-    """Send one taxpayer message. Ignored while a volunteer is needed or the case is over."""
+    """Send one taxpayer message. Ignored while a volunteer is needed, the case is over, or the
+    previous answer is still being worked on (an extra click)."""
     if not text.strip() or screen(graph, case_id) != ASKING:
         return
-    graph.invoke({"messages": [{"role": "user", "content": clean_message(text)}]}, _config(case_id))
+    with running(case_id) as claimed:
+        if claimed:
+            graph.invoke({"messages": [{"role": "user", "content": clean_message(text)}]}, _config(case_id))
 
 
 def screen(graph, case_id: str) -> str:
@@ -158,8 +194,8 @@ def screen(graph, case_id: str) -> str:
         return WAITING_FOR_VOLUNTEER
     if values.get("status") in ("halted_by_human", "halted_by_error"):  # the taxpayer text is neutral for both
         return STOPPED
-    if snapshot.next:  # a step raised an error part-way (e.g. reading the W-2); nothing is lost
-        return READING_FAILED
+    if snapshot.next:  # a step is running, or raised an error part-way (e.g. reading the W-2); nothing is lost
+        return READING if is_running(case_id) else READING_FAILED
     if values.get("done") or values.get("intake_complete"):
         return FINISHED
     return ASKING
@@ -301,6 +337,15 @@ def add_w2(service, case_id: str, data: bytes | None, confirmed: bool) -> str | 
     return None
 
 
+def note_reading_failure(problem: Exception) -> None:
+    """The taxpayer sees the friendly "Try again" screen; the cause goes to the app's log (type and a
+    short message only: no traceback with local values, and a key is never in an error message)."""
+    logging.getLogger("silverfile.chat").warning("W-2 reading failed: %s: %s", type(problem).__name__,
+                                                 " ".join(str(problem).split())[:300])
+
+
 def try_again(graph, case_id: str) -> None:
     """Carry on from the step that failed (e.g. reading the W-2 photo); answers are kept."""
-    graph.invoke(None, _config(case_id))
+    with running(case_id) as claimed:  # an extra click while it is already running is ignored
+        if claimed:
+            graph.invoke(None, _config(case_id))
