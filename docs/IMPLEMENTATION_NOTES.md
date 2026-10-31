@@ -23,28 +23,67 @@ How SilverFile is built, the decisions behind it, and what it does not do. For r
 
 ## 2. Design patterns
 The code mostly uses LangGraph's own building blocks (`StateGraph`, reducers, `Send`, `interrupt`,
-`Command`). Named, they are:
+`Command`) and plain functions. Named, the patterns are:
 
+**Multi-agent and control flow**
 | Pattern | Where | Why |
 |---|---|---|
-| Mediator (supervisor) | The orchestrator; agents never call each other | One place decides the next hop, logs handoffs and stops loops |
-| Proxy / interceptor | `runner.py` around every agent | Scoping, permissions and tracing cannot be skipped by an agent |
-| Decision table (first match wins) | `route()` | Each rule is readable and unit-tested (`tests/test_decision_table.py`) |
-| Circuit breaker | Loop guard and the review bound | A stuck case goes to a human instead of running forever |
-| Memento | The checkpointer | A case can wait for a volunteer and resume later |
-| Command | `Command(resume=...)` | The volunteer's decision is a value the graph resumes with |
-| Reducer (order-independent fold) | `src/state.py` | Parallel workers can finish in any order |
-| Evaluator–optimizer | Review → Computation → Review | An independent check sends findings back for a revision |
-| Map-reduce | Parallel extraction | One worker per document, merged by the reducer |
-| Least privilege | `access.py` `POLICY` and the `ToolBox` | An agent can only read, write and call what its allow-list names |
-| Strategy | Context on/off; tax tools over MCP or in-process; OpenAI or Anthropic for the W-2 reading | Same interface, swappable behaviour |
-| Dependency injection | `build_graph(agents=..., checkpointer=..., tool_registry=...)` | Tests swap in fakes (e.g. the offline W-2 reader) |
-| Value object | `ProvenanceRecord` | Every amount carries its receipt |
-| Pipeline of checks | Review: scope, provenance, sources, recompute, totals, contradictions, completeness, citations | Each check is a small function; adding one does not touch the others |
+| Mediator (supervisor, hub-and-spoke) | The orchestrator; agents never call each other | One place decides the next hop, logs handoffs and stops loops |
+| Decision table / chain of responsibility | `route()` in `router.py`: rules checked in order, first match wins | Each rule is readable and unit-tested (`tests/test_decision_table.py`) |
+| Functional core, imperative shell | `route()`, `apply_guard()` and `summarise()` are pure functions; the orchestrator node applies their result | The routing logic is tested without a graph |
+| Evaluator–optimizer (critic and revise) | Review fails → findings in `pending_revision` → Computation revises → Review again | An independent check sends work back instead of passing a wrong draft |
+| Map-reduce (fan-out, fan-in) | One extraction worker per document with `Send`, merged by reducers | Documents are read in parallel |
+| Circuit breaker | `guard.py` (`LOOP_GUARD`) and the review bound (`REVIEW_BOUND_EXCEEDED`) | A stuck case goes to a human instead of running forever |
+| Human-in-the-loop gate | `human.py`: `interrupt()`, then `Command(resume=...)` | A volunteer decides the escalation cases |
+| Command | The volunteer's decision `{"decision", "note", "resolution", "reviewer"}` | The decision is a value the graph resumes with and the audit log records |
+| Memento | The SQLite checkpointer | A case can wait for a volunteer and resume days later |
+| Idempotent replay | `interrupt()` is the first statement of the human node | LangGraph re-runs the node from the top on resume, so nothing before it may have side effects |
+| Fail-safe stop | `Runner._halt_on_error`: a tax-tool server that cannot start ends the case as `halted_by_error` | Nothing is computed from a missing tool; the case stops with a trace and an audit entry |
 
-Not used, on purpose: agent class hierarchies (every agent is a plain `run(view, tools) -> dict`,
-which LangGraph nodes need anyway), objects in state (state must stay plain data so the checkpointer
-can save it), and an event bus (the trace file is the only consumer).
+**State and data**
+| Pattern | Where | Why |
+|---|---|---|
+| Reducer (order-independent fold) | `merge_extracted`, `merge_escalation`, `merge_request`, `append_list` in `src/state.py` | Parallel workers give the same state in any arrival order (`tests/test_merge_order.py`) |
+| Priority queue | `merge_escalation`: the most severe flag is active, the rest wait in `queued`, sorted by `ESCALATION_PRIORITY` | No escalation is lost when two are raised at once |
+| Optimistic concurrency (versioning) | `revision` in `merge_extracted`; `StaleRevisionError` in `silverfile_extraction/case_memory.py` | An old copy of a case cannot overwrite a newer one |
+| Value object | `ProvenanceRecord` (`value, formula, inputs, source, tool`) | Every amount carries its receipt |
+| Plain data state (DTO) | `SilverState` is a `TypedDict` of JSON-like values | Any checkpointer can save it |
+| Projection (scoped views) | `view_for()`, `routing_view()` in `context.py` | Each agent sees only the fields it needs |
+| Rolling summary | `summarise()` writes `session_summary` after each hop | Agents get a short summary instead of the whole history |
+| Append-only log | `handoff_log`, `human_decisions`, `review_history`; Intake keeps old answers in `history` | Nothing that was decided is overwritten |
+| Hash chain | `src/audit.py`: each entry's hash includes the previous one; `AuditLog.verify()` | An edited or removed entry in the middle is detected |
+
+**Security**
+| Pattern | Where | Why |
+|---|---|---|
+| Proxy / interceptor | `runner.py` around every agent call | Scoping, permissions, redaction and tracing cannot be skipped by an agent |
+| Least privilege (capability object) | `POLICY` in `access.py` and the `ToolBox` | An agent can only read, write and call what its allow-list names |
+| Allow-list | Test SSNs 900–999 only; `RULES_FACTS` for what Rules may see | Anything not listed is refused |
+| Validation at the boundary | `check_update()` in `validate.py`: size, plain data, known handoffs and conditions, no amount without provenance | A misbehaving agent's output never reaches state |
+| Sanitise on entry | The `append_messages` reducer removes real-looking SSNs from every message; the runner redacts free-text notes | Personal data is cleaned once, where it enters |
+| Quarantine of untrusted input | `document_security.py`: document text labelled as data, control characters removed, instruction-like text flagged | A document cannot give the agents instructions |
+| Time-to-live retention | `src/retention.py`, `scripts/purge_cases.py`: idle cases expire after 30 days, stray uploads after 24 hours | Personal data is not kept forever |
+
+**Structure and wiring**
+| Pattern | Where | Why |
+|---|---|---|
+| Uniform interface | Every agent is `run(view, tools) -> dict` | Agents are interchangeable and tested the same way |
+| Registry (plugin) | `AGENTS` and `live_agents()` in `src/agents/__init__.py`; `TOOLS` in `access.py` | Swapping an agent or adding a tool is one entry |
+| Factory function | `build_graph()`, `make_shared_service()`, `live_agents()` | One place builds a correctly wired graph |
+| Dependency injection | `build_graph(agents=..., checkpointer=..., tool_registry=...)`; the injected W-2 reader | Tests swap in fakes (e.g. `FakeReader`) |
+| Strategy | Context on/off (`--no-context-strategy`); tax tools over MCP or in-process (`SILVERFILE_TOOL_TRANSPORT`); OpenAI or Anthropic for the W-2 | Same interface, swappable behaviour |
+| Adapter | `team_record()` in `src/p3/bridge.py` (the extraction record into the team's provenance shape); `McpToolClient` (MCP calls behind the same function names) | Two internal formats meet the team's contract |
+| Remote proxy | `mcp_registry()`: each tax tool is a local callable that calls the MCP server | Computation and Review do not know where the tools run |
+| Singleton (one per process) | `shared_client()` in `mcp_client.py` (lock-guarded); `get_service()` with `st.cache_resource` | One tool server and one service shared by every page |
+| Memoisation | `policy_sections()` in `review.py` (`lru_cache`) | `policy.md` is read once |
+| Mutex / atomic claim | `running()` in `chat_session.py`; locks in the runner, the audit log and the MCP client | A second tab cannot start a second run; parallel workers do not interleave a file |
+| Stub / test double | The one-question Intake stub (offline default); `FakeReader` in the tests | Tests and metrics are short, deterministic and need no key |
+| Read model (query side) | `src/telemetry.py` and `dashboard_data.py` read traces, the audit log and saved state; telemetry never writes | Dashboards cannot change a case except through the human gate |
+| Pipeline of checks (specification) | Review: scope, provenance, direct input, sources, recompute, totals, contradictions, completeness, citations | Each check is a small function returning findings; adding one does not touch the others |
+
+**Not used, on purpose:** agent class hierarchies (a plain `run(view, tools)` is what LangGraph nodes
+need), objects in state (the checkpointer must be able to save it), and an event bus (the trace file
+and the audit log are the only consumers).
 
 ## 3. Implementation decisions
 - **Only Document Extraction calls a model.** It reads the W-2 photo with OpenAI or Anthropic (the key
