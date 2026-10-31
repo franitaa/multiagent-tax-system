@@ -90,7 +90,7 @@ Intake does raise these itself, because it is the only agent that hears the taxp
 account not in the taxpayer's name).
 
 ## Amounts for the forms Extraction does not read (issue #27, step 2)
-Proposed by Computation (Sahana); asked by Intake right after "yes" to the form (questions Q14a-b,
+Agreed by Computation (Sahana) and Intake (Supriya); asked by Intake right after "yes" to the form (questions Q14a-b,
 Q16a-c and Q17f-h in `docs/intake-script.md`). Each is a number, source `"direct user input"`, and is
 read by Computation (`TYPED_AMOUNTS` in `src/income_forms.py`). Once a form has one of these, it counts
 as read.
