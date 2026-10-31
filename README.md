@@ -10,6 +10,21 @@ If you own an agent, read [docs/handoff-contract.md](docs/handoff-contract.md) f
 read and write, the handoff format, how to escalate to a human, and how to replace your stub.
 Project status: [docs/STATUS.md](docs/STATUS.md).
 
+## Team and focus areas
+Who owns each focus area of the assignment, and the agent each person built.
+
+| Person | Agent | Focus area(s) |
+|---|---|---|
+| Francesca Rondinella | Orchestrator (`src/orchestration/`, `src/graph.py`) | Task division and management / Guardrails and ethics |
+| Supriya Patil | Intake (`src/agents/intake_agent.py`), chat and volunteer dashboard | Task division and management / Guardrails and ethics |
+| Matthew Suruadji | Eligibility & Rules (`src/agents/rules.py`) | Inter-agent communication |
+| Sahana Jay | Computation (`src/agents/computation.py`), provenance | Computation and Security |
+| Shruti Goel | Review/Audit (`src/agents/review.py`), CI, Docker, evals | Audit / MLOps / DevOps |
+| Ji Won Park | Document Extraction (`silverfile_extraction/`, `src/p3/`) | Agent memory |
+
+All six focus areas in the brief are covered: agent memory (Ji Won), inter-agent communication (Matthew), task division and
+management (Francesca, Supriya), MLOps/DevOps (Shruti), guardrails and ethics (Francesca, Supriya), security (Sahana).
+
 ## Run with Docker
 No local Python needed. The image is built and checked in CI on every push.
 
@@ -176,7 +191,7 @@ against `data/fixtures/expected.json`, in a temporary folder. Its steps are the 
 | `src/graph.py` | The hub-and-spoke graph |
 | `src/orchestration/` | Router, orchestrator, loop guard, human gate, runner/tracing, access policy, context views |
 | `src/telemetry.py`, `src/ui/telemetry_dashboard.py` | Read-only telemetry over `traces/` and the audit log, and its page |
-| `src/agents/` | The five agents (some are still stubs) |
+| `src/agents/` | Intake, Extraction, Rules, Computation and Review; the sixth agent, the Orchestrator, is `src/orchestration/`. All six are real. |
 | `tests/` | Tests, including the decision table and `test_merge_order.py` |
 | `docs/` | [Contract](docs/handoff-contract.md), [decision record](docs/decisions/001-context-strategy.md), [metrics](docs/metrics.md), [Intake/Rules fact names](docs/intake-rules-contract.md), [status](docs/STATUS.md) |
 
@@ -192,39 +207,26 @@ python -m evals.runner                       # PASS / FAIL / PENDING for every c
 docker run --rm silverfile python -m evals.runner
 ```
 
-## P3 document extraction workbench
-This folder combines the team files supplied in this conversation with P3's W-2 extraction and memory implementation. It is an integration candidate, not a completed six-agent tax product. **The supplied Intake, Computation and Review agents still contain stubs.** A `complete` graph status does not mean a valid return has been prepared.
+## Document extraction (P3)
+Extraction reads W-2 photos only. In the app, the taxpayer adds the photo in the chat and a volunteer checks every
+amount on the dashboard before it is used (`EXTRACTION_REVIEW`); see [demo/eval_case_1.md](demo/eval_case_1.md) for the
+steps. The key is read from `.env` once, when the app starts. Without a key the chat says a volunteer will help.
 
-## Windows / VS Code
+The standalone W-2 workbench (`app.py`, started by `start.py` or `START_WINDOWS.cmd`) is a developer tool for the
+extraction component on its own. It is not part of the app above and is not started by Docker; use it with a new case ID
+and your own key in `.env`. Details: [P3_INTEGRATION.md](docs/P3_INTEGRATION.md), [P3_CHANGED_FILES.md](docs/P3_CHANGED_FILES.md)
+and [VALIDATION.md](docs/VALIDATION.md).
 
-1. Extract into a **new folder**, leaving your existing team checkout untouched.
-2. Open the folder containing `start.py` in VS Code.
-3. Before starting the app, copy `.env.example` to `.env` in the project root. Enter your own `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, leave unused keys blank, and save. Never commit `.env`. Open Terminal → New Terminal and run:
-
-```powershell
-python start.py
-```
-
-Python 3.11+ is required. The launcher installs dependencies into this folder's `.venv`. No Tesseract, Docker, activation command or source-code editing is required.
-
-4. Open http://127.0.0.1:8501.
-5. Select OpenAI or Anthropic in the sidebar, matching the key configured in `.env`. Choose a new case ID. Graders should configure their own API keys in `.env`.
-6. Upload `data/fixtures/w2_01.jpg`, confirm fictional data and click **Read W-2 image**.
-7. Compare the amounts, fill in the reviewer/note, confirm visual verification and save the review.
-8. Restart with the same case ID to inspect persisted results.
-
-The workbench uses the **team graph**, access policies, parallel extraction node, runner and human gate. For this P3 demo only, it supplies fictional age 70 / Single facts and skips Intake. It accepts one new W-2 per case; the underlying team graph supports multiple document workers. Use a new ID for another image.
-
-## What was connected
+### What was connected
 
 - `src/agents/extraction.py` calls a registered P3 tool, rather than returning a hard-coded amount.
-- W-2 images are sent to the selected provider: OpenAI or Anthropic. Deterministic synthetic text fixtures are used for offline tests.
+- W-2 images are sent to OpenAI or Anthropic, whichever key is in `.env` (OpenAI first). Deterministic synthetic text fixtures are used for offline tests.
 - The result uses `extracted[doc_id].fields.box_1` etc., with the team's five provenance fields. Shared field values are numeric; internal extraction records preserve decimal strings and source evidence.
 - The Orchestrator sends `EXTRACTION_REVIEW` to its human gate. Each document must be approved separately. Corrections update the extracted record and preserve the original.
 - The runner records actual provider token usage for image extraction, keeping estimates labelled for other agents.
-- The demo supplies SQLite persistence to the team's graph. P2 can use `src.memory` for checkpointer factories, answer storage and a read-only resume summary.
+- The chat page and the volunteer dashboard share one extraction service and the saved sessions (`src/ui/app_service.py`, `src/p3/shared_service.py`). The W-2 photo is added in the chat and checked on the dashboard.
 
-## Privacy and operational limits
+### Privacy and operational limits
 
 Use **fictional test documents only**. The whole image is normalized and saved locally after your confirmation, then sent to the selected provider, OpenAI or Anthropic. This version retains the confirmed upload to allow retry/restart. Model-based SSN screening occurs after transmission; it is not reliable redaction or a guarantee that all real identifiers are blocked. This differs from the old standalone service, which saved only after model validation. Never upload real tax documents.
 
@@ -232,18 +234,7 @@ API keys are read from the local `.env` file; the sidebar does not accept API ke
 
 Calls may incur charges on the selected provider account. OpenAI requests use `store=False`; this does not guarantee zero provider retention and is not an Anthropic setting. Case IDs are not authentication. Keep this classroom UI on localhost.
 
-Runtime images, databases and traces are under `runtime/` and ignored by Git. Do not commit `.env`, keys, `.venv` or runtime data. This ZIP contains no API key and does not migrate old checkpoints.
+Runtime images, databases and traces are under `runtime/` and ignored by Git. Do not commit `.env`, keys, `.venv` or runtime data.
 
-## Validate before merging
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-For the P3-only unit suite:
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests_p3 -v
-```
-
-See [P3_INTEGRATION.md](docs/P3_INTEGRATION.md), [P3_CHANGED_FILES.md](docs/P3_CHANGED_FILES.md) and [VALIDATION.md](docs/VALIDATION.md). The common graph/security-policy/human-gate changes must be reviewed by P1 before merging into the team branch. 
+### Tests
+`pytest -q` runs everything, including the extraction tests (`tests_p3`, offline, no key).
