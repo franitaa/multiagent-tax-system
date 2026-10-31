@@ -130,6 +130,11 @@ and the audit log are the only consumers).
   and "not sure" pauses it. Someone who answers "yes" but is dual-status for another reason is not
   detected ([policy.md §2.4](policy.md)).
 - **Deceased spouse's age** is not asked, so a joint return counts only the taxpayer's 65+ box.
+- **Intake recognises phrasings by patterns,** so some wordings are only caught at a later question:
+  "My nephew is answering for me" is caught at Q24/Q25 ("Are you answering these questions yourself
+  today?"), and "I was, but he died" at the married question is caught at Q22 ("Did a spouse pass away
+  during 2025?"). Misspelled or off-topic answers ("donno", "why does it matter?") get a polite re-ask;
+  after three tries the question is noted for a volunteer. Nothing unclear is saved as an answer.
 - **No login.** Case IDs are not secrets, volunteer names are not verified, and the dashboard is
   reachable from the start page; keep it on localhost.
 - **Provenance after a volunteer's correction:** a W-2 box a volunteer corrected still shows Document
