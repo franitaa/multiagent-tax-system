@@ -106,17 +106,64 @@ graph TD;
 (solid), and only the orchestrator chooses the next hop (dotted). Also as an image: [docs/graph.png](docs/graph.png).*
 
 ## The six agents
-| Agent | What it does | Never does |
-|---|---|---|
-| **Orchestrator** | Picks every next hop, owns the human gate, ends the case only with a filing status and an eligibility verdict | Extract, compute, or talk to the taxpayer |
-| **Intake** | The only agent that talks to the taxpayer: [24 plain-language questions](docs/intake-script.md), one at a time, with "not sure", go back and skip; asks the SSA-1099, 1099-INT and 1099-DIV amounts; raises alarms for tax-advice requests, a spouse who died, a third party answering, or pressure | Arithmetic, or explain tax rules |
-| **Document Extraction** | Reads W-2 photos with a vision model (OpenAI or Anthropic) into typed records with source evidence; a volunteer checks every W-2 before it is used | Interpret tax rules |
-| **Eligibility & Rules** | 1040-SR eligibility, filing status, line 12d, scope; every decision cites a section of [docs/policy.md](docs/policy.md) | Guess a missing or uncertain answer |
-| **Computation** | Fills lines 1a–37 only through the tax tools served over MCP (`src/tax_math_mcp.py`); every line has a provenance record | Arithmetic of its own |
-| **Review/Audit** | Nine checks: scope, provenance, typed amounts, sources, independent recalculation, totals, contradictions, completeness, citations; errors go back to Computation, an out-of-scope line raises an alarm | Correct the draft itself |
+Only Document Extraction calls a model; the other five are deterministic Python. What each agent reads and writes,
+and the handoff format: [docs/handoff-contract.md](docs/handoff-contract.md).
 
-Only Document Extraction calls a model. Intake, Rules, Computation and Review are deterministic Python. What each
-agent reads and writes, and the handoff format: [docs/handoff-contract.md](docs/handoff-contract.md).
+### Orchestrator (Francesca)
+Picks every next hop and owns the human gate (see "How it works" above). It never extracts, computes or talks to the
+taxpayer, and a case cannot end without a filing status and an eligibility verdict.
+
+### Intake (Supriya)
+The only agent that talks to the taxpayer ([docs/intake-script.md](docs/intake-script.md)).
+- One question at a time, in six parts, in plain language; questions that do not apply are skipped.
+- "I'm not sure", "skip for now" and "talk to a volunteer" are always accepted; "go back" or a correction
+  ("actually I was married") re-asks a question and keeps the old answer in the history.
+- Dates are read back before they are saved; a date that could be read two ways is never guessed.
+- Asks the SSA-1099, 1099-INT and 1099-DIV amounts right after "yes" to the form, saved as `direct user input`.
+- Alarms: a request for tax advice, a spouse who died in 2025, someone else answering, or pressure about money or the
+  refund. Only test SSNs are accepted; a real-looking one is refused and never saved.
+- An answer not understood after 3 tries is noted for a volunteer.
+- The chat page is built for older adults: large text (22px+), strong contrast, big buttons, a progress list with
+  "Change" buttons, and a saved session to come back to.
+
+### Document Extraction (JiWon)
+Reads W-2 photos with a vision model (OpenAI or Anthropic) into typed records with source evidence; a volunteer checks
+every W-2 before it is used. Details in [Document extraction (P3)](#document-extraction-p3) below.
+
+### Eligibility & Rules (Matthew)
+Decides from Intake's answers and the extracted documents, citing a numbered section of
+[docs/policy.md](docs/policy.md) for every decision.
+- 1040-SR eligibility: born before January 2, 1961 (on a joint return, one spouse is enough).
+- Filing status, and the line 12d box count (65 or older, blind, for each spouse).
+- Scope: anything out of scope stops the case for a volunteer; a 1099-R with box 2b checked always stops.
+- A missing or "not sure" answer is never guessed (`ANSWER_UNCERTAIN`); saying "no" to a form that was uploaded
+  raises `SOURCE_CONFLICT`.
+- The fact names it reads from Intake: [docs/intake-rules-contract.md](docs/intake-rules-contract.md).
+
+### Computation (Sahana)
+Fills lines 1a–37 of the draft, in the order the lines depend on each other (income, taxable Social Security,
+AGI, standard and senior deductions, tax, payments, then the refund or amount owed).
+- **No arithmetic of its own:** every number comes from a tax tool served over MCP (`src/tax_math_mcp.py`):
+  standard deduction, senior deduction, taxable Social Security, income tax, sums and differences. The tool list
+  lives once, in `src/tax_tools.py`, and `tests/test_computation_no_arithmetic.py` fails if arithmetic appears.
+- **Provenance on every line** (value, formula, inputs, source, tool); a typed amount says `direct user input` and
+  who entered it. If a form was also read from a document, the document wins, so nothing is counted twice.
+- **No quiet zeros:** a form whose amounts were not read is marked `NOT READ` on its lines and the draft warns.
+- **No silent fallback:** if the tool server cannot start, the case stops as `halted_by_error`.
+- **Defensive escalations** (Rules should catch these first): a 1099-R whose taxable amount is not determined,
+  an out-of-scope 1099, a taxpayer who can be claimed as a dependent, or a separately filing spouse who itemizes.
+- **The draft 1040-SR** (`src/draft_form.py`): every amount expands to its formula, inputs, source and tool, with the
+  filing status and who set it, Review's findings and every volunteer decision. `python -m scripts.render_draft`
+  writes sample drafts to `demo/`.
+
+### Review/Audit (Shruti)
+Tries to prove the draft wrong before a volunteer sees it, and never corrects it itself. Nine checks:
+- **scope** (an out-of-scope item on the draft raises an alarm), **provenance** (every amount has its record),
+  **typed amounts** (each matches the taxpayer's answer), **sources** (each line matches its document);
+- **recalculation** with the same tax tools, independently of Computation, and **totals**;
+- **contradictions**, **completeness**, and **citations** (every `docs/policy.md` section Rules cites must exist).
+
+Any error sends the draft back to Computation with the findings, at most 3 rounds; then a volunteer decides.
 
 ## Human in the loop
 An agent raises a flag; the orchestrator sends the case to the human gate (`src/orchestration/human.py`), a
@@ -133,18 +180,27 @@ graph resumes with `Command(resume=...)`.
 | Signs of exploitation or third-party pressure | Intake | Stop only |
 | Also: an answer "not sure", a W-2 to check, income not read, the loop guard, the review bound | Rules, Extraction, Orchestrator | Depends on the condition |
 
-## Provenance, security and privacy
-- **Provenance:** every amount has `value, formula, inputs, source, tool`; a typed amount says `direct user input`.
-  Click any amount on the draft to see it. [docs/provenance.md](docs/provenance.md).
-- **Security** ([docs/security.md](docs/security.md)): only test SSNs 900–999 (real-looking ones are removed from
-  every message); traces hold field names, never values; document text is treated as data (prompt-injection
-  containment); a hash-chained audit log per case; retention with `python -m scripts.purge_cases --expired`.
+## Provenance, security and privacy (Sahana)
+- **Provenance:** every amount has `value, formula, inputs, source, tool`, and the runner rejects an amount without
+  one. Click any amount on the draft to see it ([docs/provenance.md](docs/provenance.md)).
+- **SSNs:** only test SSNs 900–999. A real-looking one is removed from every message as it enters the state, even if
+  a page forgot to check it.
+- **Traces and notes:** traces hold field names, never values; identifiers (SSN, EIN, email, phone) in escalation reasons
+  and volunteer notes are redacted before they are saved.
+- **Prompt injection:** document text is treated as data. Instruction-like text is flagged for a volunteer, and an
+  agent that obeyed it still cannot write outside its allow-list or add an amount without provenance
+  (`tests/test_prompt_injection.py`).
+- **Audit log:** one append-only, hash-chained log per case (who decided what, never answers or amounts);
+  `AuditLog.verify()` detects an edited or removed entry.
+- **Retention:** a case idle 30 days expires and is deleted with `python -m scripts.purge_cases --expired`
+  (schedule it); `--case <ID>` deletes one case everywhere.
+Details and limits: [docs/security.md](docs/security.md).
 - **Keys:** read only from `.env` (never committed; see `.env.example`); the app does not ask for a key on screen, and
   keys are never placed in state, traces or exported records.
 - **Local only:** the app is served on this computer only (`127.0.0.1`), because the dashboard and `/telemetry` have
   no login. Case IDs are not secrets.
 
-## Memory and context
+## Memory and context (JiWon, Francesca)
 - **Saved sessions:** a SQLite checkpointer (`runtime/team_checkpoints.sqlite`) saves the whole case after every step;
   the case ID is the LangGraph thread ID, so a taxpayer can come back another day.
 - **Context strategy:** each agent gets a scoped view of state, Intake the last 6 messages plus the structured facts,
