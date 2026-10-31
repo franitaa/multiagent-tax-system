@@ -1,5 +1,7 @@
 # SilverFile (multiagent-tax-system)
 
+[![CI](https://github.com/franitaa/multiagent-tax-system/actions/workflows/ci.yml/badge.svg)](https://github.com/franitaa/multiagent-tax-system/actions/workflows/ci.yml)
+
 A multi-agent system, built in LangGraph (Python), that helps prepare a **draft** US Form 1040-SR (tax year 2025)
 for seniors, and keeps a record of where every number came from. A Kushim volunteer checks the draft; nothing is
 ever filed.
@@ -11,8 +13,15 @@ Five business rules are enforced in code, not only in prompts:
 - **Always route the escalation cases to a human** through a LangGraph interrupt ([Human in the loop](#human-in-the-loop)).
 - **Handle only the in-scope return profile.** Anything else escalates. Only test SSNs (900–999) and fictional documents.
 
+**Contents:** [Quick start](#quick-start) · [Team and focus areas](#team-and-focus-areas) ·
+[How it works](#how-it-works) · [The six agents](#the-six-agents) · [Human in the loop](#human-in-the-loop) ·
+[Provenance, security and privacy](#provenance-security-and-privacy) · [Memory and context](#memory-and-context) ·
+[Running it in more detail](#running-it-in-more-detail) · [Tests, evals and CI](#tests-evals-and-ci) ·
+[Layout](#layout) · [Documents](#documents) · [Known limitations](#known-limitations) · [Contributing](#contributing)
+
 ## Quick start
-Python 3.11 or newer, or Docker. Full steps for a grader: [docs/for-graders.md](docs/for-graders.md).
+**You need:** Python 3.11 or newer, or Docker. An OpenAI or Anthropic API key is optional: it is only used to read
+W-2 photos. Full steps for a grader: [docs/for-graders.md](docs/for-graders.md).
 
 ```
 cp .env.example .env              # optional: add an OpenAI or Anthropic key to read W-2 photos
@@ -30,8 +39,8 @@ python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 The start page offers **I'm a taxpayer** (the chat) and **I'm a Kushim volunteer** (the dashboard). The two demo
 cases, click by click: [demo/eval_case_1.md](demo/eval_case_1.md) (a clean run) and
-[demo/eval_case_2.md](demo/eval_case_2.md) (a human-in-the-loop event, resolved). A key is only needed to read W-2
-photos; without one the chat says a volunteer will help.
+[demo/eval_case_2.md](demo/eval_case_2.md) (a human-in-the-loop event, resolved). Without a key, the W-2 step says a
+volunteer will help and the photo is not read.
 
 ## Team and focus areas
 Each person owned one agent and one focus area of the assignment.
@@ -55,11 +64,17 @@ a handoff request, which the orchestrator validates. Every agent call goes throu
 (`src/orchestration/runner.py`) that scopes what the agent can see, enforces its read/write/tool
 allow-lists, and writes a JSONL trace to `traces/`.
 
+**Why hub-and-spoke:** one place decides the next hop, raises escalations, logs every handoff and stops loops, so
+the business rules are enforced once instead of in every agent; and six people could build their agents in parallel
+against one contract ([docs/handoff-contract.md](docs/handoff-contract.md)).
+
 What the graph demonstrates:
 - **Conditional routing:** the next hop is a pure function of state (`src/orchestration/router.py`).
 - **Parallel branch:** extraction fans out one worker per document and merges with an order-independent reducer.
-- **Bounded cycle:** Review sends work back to Computation, at most 3 times by default.
-- **Loop guard:** a pathological handoff loop escalates to a human.
+- **Bounded cycle:** Review sends work back to Computation, at most 3 times by default, then a human decides
+  (`tests/test_review_loop.py`).
+- **Loop guard:** a pathological handoff loop escalates to a human (`src/orchestration/guard.py`; triggered by an
+  agent that never finishes in `tests/test_loop_guard.py`).
 - **Human in the loop:** a LangGraph interrupt for out-of-scope items, unresolved conflicts, 1099-R box 2b,
   tax-advice requests, filing-status ambiguity (such as a spouse who died), and signs of exploitation.
 - **Context management:** each agent gets the smallest view it needs
@@ -188,8 +203,8 @@ Tries to prove the draft wrong before a volunteer sees it, and never corrects it
 
 ## Human in the loop
 An agent raises a flag; the orchestrator sends the case to the human gate (`src/orchestration/human.py`), a
-LangGraph `interrupt()`. A volunteer resolves it on the dashboard with their name and a required note, and the
-graph resumes with `Command(resume=...)`.
+LangGraph `interrupt()`. A volunteer resolves it on the dashboard with their name and a note (required to continue),
+and the graph resumes with `Command(resume=...)`.
 
 | Condition | Raised by | The volunteer may |
 |---|---|---|
@@ -212,7 +227,7 @@ graph resumes with `Command(resume=...)`.
   agent that obeyed it still cannot write outside its allow-list or add an amount without provenance
   (`tests/test_prompt_injection.py`).
 - **Audit log:** one append-only, hash-chained log per case (who decided what, never answers or amounts);
-  `AuditLog.verify()` detects an edited or removed entry.
+  `AuditLog.verify()` detects an entry edited or removed from the middle.
 - **Retention:** a case idle 30 days expires and is deleted with `python -m scripts.purge_cases --expired`
   (schedule it); `--case <ID>` deletes one case everywhere.
 - **Keys:** read only from `.env` (never committed; see `.env.example`); the app does not ask for a key on screen, and
@@ -303,9 +318,14 @@ http://localhost:8501/telemetry. Spec: [docs/telemetry-dashboard-spec.md](docs/t
 | `silverfile_extraction/`, `src/p3/` | W-2 reading, case memory, the shared extraction service |
 | `data/` | `generate_fixtures.py` and the synthetic W-2 fixtures (`fixtures/`, with `expected.json`) |
 | `evals/` | `cases.json` and the runner |
-| `tests/`, `tests_p3/` | Tests |
+| `tax_math.py`, `provenance.py`, `security.py`, `document_security.py` | Tax math, provenance records, SSN and PII handling, document text handling |
+| `computation_agent.py` | A standalone computation coordinator, kept with its test |
+| `app.py`, `start.py`, `START_WINDOWS.cmd` | The standalone W-2 workbench (developer tool, not the app) |
+| `tests/`, `tests_p3/`, root `test_*.py` | Tests |
 | `scripts/` | Scenarios, metrics, diagram, purge, real-reading check |
 | `demo/` | The two demo cases, their W-2 images and sample drafts |
+| `Dockerfile`, `docker-compose.yml` | The image and the Compose app |
+| `.github/workflows/ci.yml` | CI |
 | `docs/` | See below |
 
 ## Documents
@@ -315,7 +335,8 @@ http://localhost:8501/telemetry. Spec: [docs/telemetry-dashboard-spec.md](docs/t
 | [IMPLEMENTATION_NOTES.md](docs/IMPLEMENTATION_NOTES.md) | Where each requirement lives, design patterns, decisions, limitations |
 | [handoff-contract.md](docs/handoff-contract.md) | What each agent reads and writes; the handoff format |
 | [policy.md](docs/policy.md) | The rules corpus Rules cites |
-| [intake-script.md](docs/intake-script.md), [intake-rules-contract.md](docs/intake-rules-contract.md) | Intake's questions; the fact names Rules reads |
+| [intake-script.md](docs/intake-script.md), [answer-names.md](docs/answer-names.md), [intake-rules-contract.md](docs/intake-rules-contract.md) | Intake's questions; the names its answers are saved under; the facts Rules reads |
+| [evals/README.md](evals/README.md) | The eval cases: how to read and add them |
 | [provenance.md](docs/provenance.md), [security.md](docs/security.md) | Provenance records; security and privacy |
 | [decisions/](docs/decisions/), [metrics.md](docs/metrics.md) | Decision records; context measurements |
 | [AI_DISCLOSURE.md](docs/AI_DISCLOSURE.md), [AI_USE_LOG.md](docs/AI_USE_LOG.md) | How AI was used, per person and session |
