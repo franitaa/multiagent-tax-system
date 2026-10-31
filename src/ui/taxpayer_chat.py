@@ -54,6 +54,7 @@ What is still missing:
 All logic is in src/ui/chat_session.py; this file only draws the page.
 """
 import html
+import time
 import sys
 from pathlib import Path
 
@@ -378,6 +379,12 @@ def chat_screen(service, case_id: str) -> None:
             if st.button("Check again", icon=":material/refresh:"):  # after the volunteer decides
                 st.rerun()
         return
+    if screen == chat.READING:  # another run of the page is reading the photo right now
+        with st.container(key="tp-waiting"):
+            card_top("hourglass_top", "We are reading your W-2", "amber")
+            st.info(READING_TEXT)
+        time.sleep(3)
+        st.rerun()  # until it is done, then the page shows the next screen
     if screen == chat.READING_FAILED:
         with st.container(key="tp-waiting"):
             card_top("sync_problem", "We couldn't read your W-2 just now", "amber")

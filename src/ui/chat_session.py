@@ -47,7 +47,8 @@ import calendar
 import logging
 import re
 import secrets
-from contextlib import ExitStack
+import threading
+from contextlib import ExitStack, contextmanager
 
 from dotenv import dotenv_values
 
@@ -65,6 +66,7 @@ WAITING_FOR_VOLUNTEER = "waiting_for_volunteer"
 FINISHED = "finished"
 STOPPED = "stopped"
 READING_FAILED = "reading_failed"  # the case stopped part-way (e.g. the W-2 photo could not be read)
+READING = "reading"  # a step is running right now (e.g. the W-2 photo is being read): not a failure
 
 _CASE_ID = re.compile(r"^SF-\d{3}-\d{3}$")
 
@@ -144,11 +146,35 @@ def clean_message(text: str) -> str:
     return intake_agent.redact_ssn(text.strip())
 
 
+_RUNNING: set[str] = set()  # cases whose graph is running in this app right now
+_RUNNING_LOCK = threading.Lock()
+
+
+@contextmanager
+def running(case_id: str):
+    """Mark a case as running while the graph works on it. Reading a W-2 photo takes several seconds;
+    a page run in that time must show "we are reading", not "we couldn't read"."""
+    with _RUNNING_LOCK:
+        _RUNNING.add(case_id)
+    try:
+        yield
+    finally:
+        with _RUNNING_LOCK:
+            _RUNNING.discard(case_id)
+
+
+def is_running(case_id: str) -> bool:
+    with _RUNNING_LOCK:
+        return case_id in _RUNNING
+
+
 def send(graph, case_id: str, text: str) -> None:
-    """Send one taxpayer message. Ignored while a volunteer is needed or the case is over."""
+    """Send one taxpayer message. Ignored while a volunteer is needed, the case is over, or the
+    previous answer is still being worked on (an extra click)."""
     if not text.strip() or screen(graph, case_id) != ASKING:
         return
-    graph.invoke({"messages": [{"role": "user", "content": clean_message(text)}]}, _config(case_id))
+    with running(case_id):
+        graph.invoke({"messages": [{"role": "user", "content": clean_message(text)}]}, _config(case_id))
 
 
 def screen(graph, case_id: str) -> str:
@@ -159,8 +185,8 @@ def screen(graph, case_id: str) -> str:
         return WAITING_FOR_VOLUNTEER
     if values.get("status") in ("halted_by_human", "halted_by_error"):  # the taxpayer text is neutral for both
         return STOPPED
-    if snapshot.next:  # a step raised an error part-way (e.g. reading the W-2); nothing is lost
-        return READING_FAILED
+    if snapshot.next:  # a step is running, or raised an error part-way (e.g. reading the W-2); nothing is lost
+        return READING if is_running(case_id) else READING_FAILED
     if values.get("done") or values.get("intake_complete"):
         return FINISHED
     return ASKING
@@ -311,4 +337,7 @@ def note_reading_failure(problem: Exception) -> None:
 
 def try_again(graph, case_id: str) -> None:
     """Carry on from the step that failed (e.g. reading the W-2 photo); answers are kept."""
-    graph.invoke(None, _config(case_id))
+    if is_running(case_id):  # an extra click while it is already running
+        return
+    with running(case_id):
+        graph.invoke(None, _config(case_id))

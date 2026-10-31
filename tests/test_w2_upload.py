@@ -216,3 +216,60 @@ def test_a_reading_failure_is_logged_with_its_cause_but_without_a_traceback(capl
     [record] = caplog.records
     assert "SafeInputError" in record.getMessage() and "\n" not in record.getMessage()
     assert len(record.getMessage()) < 400 and record.exc_info is None
+
+
+# ---- reading takes seconds: another page run in that time must not say "we couldn't read" ---------
+# (found in the demo: the screen flashed "We couldn't read your W-2 just now" although the reading worked)
+
+
+class HeldReader(FakeReader):
+    """Waits until the test lets it go, so the test can look at the case while the photo is being read."""
+    def __init__(self):
+        import threading
+        super().__init__()
+        self.started, self.release = threading.Event(), threading.Event()
+        self.starts = 0
+
+    def read(self, png, context):
+        self.starts += 1
+        self.started.set()
+        assert self.release.wait(10)
+        return super().read(png, context)
+
+
+def test_while_the_photo_is_being_read_the_page_says_reading_not_failed(tmp_path, monkeypatch):
+    import threading
+
+    monkeypatch.setattr(chat, "RUNTIME", str(tmp_path / "runtime"))
+    reader = HeldReader()
+    service = chat.make_app_service(trace_dir=tmp_path, reader=reader, saved_sessions=InMemorySaver())
+    graph = service.graph
+    remaining = answer_until_the_w2_question_is_answered(graph)
+    assert chat.add_w2(service, CASE, W2_PHOTO, confirmed=True) is None
+    for answer in remaining[:-1]:
+        chat.send(graph, CASE, answer)
+    last = threading.Thread(target=chat.send, args=(graph, CASE, remaining[-1]))
+    last.start()
+    try:
+        assert reader.started.wait(10)
+        assert chat.screen(graph, CASE) == chat.READING  # a second page run now: not READING_FAILED
+        chat.send(graph, CASE, "no")  # an extra click is ignored, not run twice
+        chat.try_again(graph, CASE)  # so is a "Try again" while it is running
+        assert reader.starts == 1
+    finally:
+        reader.release.set()
+        last.join(10)
+    assert chat.screen(graph, CASE) == chat.WAITING_FOR_VOLUNTEER
+    assert not chat.is_running(CASE)
+
+
+def test_a_failed_reading_is_still_shown_as_failed_once_it_has_stopped(tmp_path, monkeypatch):
+    monkeypatch.setattr(chat, "RUNTIME", str(tmp_path / "runtime"))
+    service = chat.make_app_service(trace_dir=tmp_path, reader=BrokenReader(), saved_sessions=InMemorySaver())
+    graph = service.graph
+    remaining = answer_until_the_w2_question_is_answered(graph)
+    assert chat.add_w2(service, CASE, W2_PHOTO, confirmed=True) is None
+    with pytest.raises(SafeInputError):
+        for answer in remaining:
+            chat.send(graph, CASE, answer)
+    assert not chat.is_running(CASE) and chat.screen(graph, CASE) == chat.READING_FAILED
