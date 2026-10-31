@@ -212,7 +212,7 @@ and the graph resumes with `Command(resume=...)`.
 |---|---|---|
 | Out-of-scope item (Schedule A/C/D/E, 1099-NEC, digital assets, foreign income, amended, prior-year or state returns) | Rules, Extraction, Computation, Review (safety net) | Stop only |
 | An answer contradicts a document (`SOURCE_CONFLICT`) | Rules | Continue with the right value, or stop |
-| 1099-R with box 2b checked | Extraction, Rules, Computation | Stop only |
+| 1099-R with box 2b checked | Extraction, Rules, Computation, Review (safety net) | Stop only |
 | Request for tax advice | Intake | Continue (question noted) or stop |
 | Filing status unclear, e.g. a spouse died in 2025 | Intake, Rules | Continue with a filing status, or stop |
 | Signs of exploitation or third-party pressure | Intake | Stop only |
