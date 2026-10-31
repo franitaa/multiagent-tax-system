@@ -7,7 +7,7 @@
 #
 # Saved cases (runtime/) and traces plus the audit log (traces/) belong in volumes, so they survive a
 # new container: -v silverfile-runtime:/app/runtime -v silverfile-traces:/app/traces
-# Secrets are never baked in. The W-2 page reads the .env file itself (not environment variables),
+# Secrets are never baked in. The app reads the .env file itself (not environment variables),
 # so mount it: -v "$PWD/.env:/app/.env:ro"
 FROM python:3.11-slim
 

@@ -163,8 +163,8 @@ def two_flags():
     return raising(inner, "extraction", S.FILING_STATUS_AMBIGUITY, "TEST", only("doc-2"))
 
 
-def note(decision, text="checked (test)"):
-    return Command(resume={"decision": decision, "note": text})
+def note(decision, text="checked (test)", **extra):
+    return Command(resume={"decision": decision, "note": text, **extra})
 
 
 @pytest.mark.parametrize("delays", [
@@ -184,7 +184,7 @@ def test_two_simultaneous_flags_are_both_shown_to_a_human_in_a_fixed_order(tmp_p
     assert first["condition"] == S.FILING_STATUS_AMBIGUITY  # higher severity, whatever finished first
     assert first["also_pending"] == [S.SOURCE_CONFLICT]
 
-    second = graph.invoke(note("continue"), cfg("two"))["__interrupt__"][0].value
+    second = graph.invoke(note("continue", resolution={"filing_status": "single"}), cfg("two"))["__interrupt__"][0].value
     assert second["condition"] == S.SOURCE_CONFLICT and second["also_pending"] == []
 
     final = graph.invoke(note("continue"), cfg("two"))

@@ -85,6 +85,8 @@ def _validate(answer, condition: str, escalation: dict | None = None) -> tuple[s
         raise ValueError(f"{condition} can only be stopped: a human cannot take responsibility for it")
     if not note:
         raise ValueError("'continue' requires a non-empty note (it goes in the audit record)")
+    if condition == FILING_STATUS_AMBIGUITY and not resolution:
+        raise ValueError(f"FILING_STATUS_AMBIGUITY needs the filing status: resolution {{'filing_status': one of {FILING_STATUSES}}}")
     if resolution:
         if condition == TAX_ADVICE_REQUEST:
             raise ValueError("TAX_ADVICE_REQUEST has nothing to resolve; record the question in the note")

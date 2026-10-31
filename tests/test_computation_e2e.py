@@ -136,7 +136,8 @@ def test_spec_line_ids_a_and_b_pairs_and_withholding_split():
     assert (c["line_5a"]["value"], c["line_5b"]["value"]) == (9000, 8000)
     assert c["line_9"]["value"] == 20000 + 300 + 400 + 4000 + 8000
     assert c["line_25b"]["value"] == 310 and c["line_25d"]["value"] == 1810
-    assert c["line_25d"]["inputs"] == {"line_25a": 1500, "line_25b": 310}
+    assert c["line_25d"]["inputs"] == {"line_25a": 1500, "line_25b": 310, "line_25c": 0}
+    assert c["line_25c"]["value"] == 0 and "No other withholding forms" in c["line_25c"]["source"]
 
 
 def test_tax_exempt_interest_raises_provisional_income_for_6b():

@@ -211,6 +211,22 @@ EXPLANATIONS = {
            "Dividends are payments from companies.",
     "Q18": "Some people send money to the IRS during the year themselves, instead of waiting until "
            "they file. These are called estimated payments.",
+    "Q14a": "Box 5 is near the middle of your SSA-1099. It shows your net Social Security benefits for "
+            "2025. Please type it as a number, for example: 18000.",
+    "Q14b": "Box 6 shows any federal income tax that was taken out of your Social Security payments. "
+            "Many people have nothing there; then please type 0.",
+    "Q16a": "Box 1 of your 1099-INT shows the interest your bank paid you. Please type it as a number, "
+            "for example: 250.",
+    "Q16b": "Box 8 shows interest that is not taxed, for example from some bonds. Most people have "
+            "nothing there; then please type 0.",
+    "Q16c": "Box 4 shows any federal income tax that was taken out of that interest. Usually it is "
+            "empty; then please type 0.",
+    "Q17f": "Box 1a of your 1099-DIV shows all the dividends you were paid. Please type it as a number, "
+            "for example: 400.",
+    "Q17g": "Box 1b shows the part of those dividends that is called \"qualified\". It is never more "
+            "than box 1a. If it is empty, please type 0.",
+    "Q17h": "Box 4 shows any federal income tax that was taken out of your dividends. Usually it is "
+            "empty; then please type 0.",
     "Q19": "Please type the total you sent to the IRS during 2025, as a number. For example: 1200.",
     "Q20": "\"Adjustments\" are certain amounts that some people take off their income on a separate "
            "form called Schedule 1.",
@@ -237,6 +253,16 @@ def _always(facts: dict) -> bool:
 
 def _when(name: str, value: str) -> Callable[[dict], bool]:
     return lambda facts: _value(facts, name) == value
+
+
+def _amount_given(name: str) -> Callable[[dict], bool]:
+    """Asked only once the form's main amount is a number. If the person is not sure of it, the
+    other boxes are not asked either: one typed box would count the whole form as read (#46), and
+    the main amount would go missing without the volunteer pause (INCOME_NOT_READ)."""
+    def check(facts: dict) -> bool:
+        value = (facts.get(name) or {}).get("value")
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return check
 
 
 @dataclass(frozen=True)
@@ -300,10 +326,36 @@ AFTER_DEPENDENTS = [
     Question("Q13", "has_w2", YES_NO, "Did you get a W-2 form from a job this year?"),
     Question("Q14", "has_ssa_1099", YES_NO,
              "Did you get a Social Security benefits statement, called an SSA-1099?"),
+    # The amounts on the forms Extraction does not read (issue #27, step 2): asked only after "yes",
+    # stored as typed amounts (direct user input); Computation puts them on the lines (#46).
+    Question("Q14a", "ssa1099_benefits", AMOUNT,
+             "On your SSA-1099, what is the amount in box 5, your net benefits for 2025?",
+             _when("has_ssa_1099", "yes")),
+    Question("Q14b", "ssa1099_withheld", AMOUNT,
+             "On your SSA-1099, what is the amount in box 6, the federal income tax withheld? If the box is empty, type 0.",
+             _amount_given("ssa1099_benefits")),
     Question("Q15", "has_1099_r", YES_NO,
              "Did you get a form for money paid out of a pension or retirement account, called a 1099-R?"),
     Question("Q16", "has_1099_int", YES_NO, "Did you get a form showing bank interest, called a 1099-INT?"),
+    Question("Q16a", "int1099_taxable", AMOUNT,
+             "On your 1099-INT, what is the amount in box 1, the interest income?",
+             _when("has_1099_int", "yes")),
+    Question("Q16b", "int1099_tax_exempt", AMOUNT,
+             "On your 1099-INT, what is the amount in box 8, the tax-exempt interest? If the box is empty, type 0.",
+             _amount_given("int1099_taxable")),
+    Question("Q16c", "int1099_withheld", AMOUNT,
+             "On your 1099-INT, what is the amount in box 4, the federal income tax withheld? If the box is empty, type 0.",
+             _amount_given("int1099_taxable")),
     Question("Q17", "has_1099_div", YES_NO, "Did you get a form showing dividends, called a 1099-DIV?"),
+    Question("Q17f", "div1099_ordinary", AMOUNT,
+             "On your 1099-DIV, what is the amount in box 1a, the total ordinary dividends?",
+             _when("has_1099_div", "yes")),
+    Question("Q17g", "div1099_qualified", AMOUNT,
+             "On your 1099-DIV, what is the amount in box 1b, the qualified dividends? If the box is empty, type 0.",
+             _amount_given("div1099_ordinary")),
+    Question("Q17h", "div1099_withheld", AMOUNT,
+             "On your 1099-DIV, what is the amount in box 4, the federal income tax withheld? If the box is empty, type 0.",
+             _amount_given("div1099_ordinary")),
     # Out-of-scope screening (assignment section 3.3): Intake only records; Rules decides.
     Question("Q17a", "has_other_tax_forms", YES_NO,
              "Did you get any other tax forms for 2025, such as a 1099-NEC, 1099-MISC or 1099-B?"),
@@ -350,7 +402,8 @@ PARTS = (
     ("Personal information", ("Q0", "Q1", "Q2", "Q2b", "Q2c", "Q3")),
     ("Age and eyesight", ("Q4", "Q5", "Q6", "Q7")),
     ("People who depend on you", ("Q8", "Q9", "Q10", "Q11", "Q12", "Q3a")),
-    ("Your income and tax forms", ("Q13", "Q14", "Q15", "Q16", "Q17", "Q17a", "Q17b", "Q17c", "Q17d", "Q17e")),
+    ("Your income and tax forms", ("Q13", "Q14", "Q14a", "Q14b", "Q15", "Q16", "Q16a", "Q16b", "Q16c", "Q17",
+                                   "Q17f", "Q17g", "Q17h", "Q17a", "Q17b", "Q17c", "Q17d", "Q17e")),
     ("Payments and your refund", ("Q18", "Q19", "Q20", "Q20a", "Q20b", "Q20c")),
     ("A few final checks", ("Q21", "Q21b", "Q22", "Q23", "Q24", "Q25")),
 )

@@ -96,7 +96,7 @@ handed (agents are stubs, no model usage exists); most of the total ratio is raw
 carried in the full state from the first call, so the per-turn growth is the fairer curve-shape
 number; the scoped curve is flatter but not flat.
 
-## Open question for the instructor (TODO)
-The assignment's context section talks about "10 invoices", which does not match a tax project. We
-treat it as "a long session or a batch of many documents" (hence 30 turns and 12 documents). Please
-confirm this reading is acceptable.
+## Assumption about "10 invoices" (not confirmed by the instructor)
+The assignment's context section talks about "10 invoices", which does not match a tax project. We read it as
+"a long session or a batch of many documents" (hence 30 turns and 12 documents). We are not asking; the assumption
+and what depends on it are recorded in `docs/decisions/002-demo-defaults-and-assumptions.md`.
