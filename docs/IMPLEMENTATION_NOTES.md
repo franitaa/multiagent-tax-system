@@ -103,9 +103,10 @@ and the audit log are the only consumers).
   `REVIEW_BOUND_EXCEEDED` and `ELIGIBILITY_UNDECIDED` can only be stopped, so a volunteer cannot push
   an out-of-scope or unsafe return through (`CONTINUABLE` in `human.py`). A continue needs a note, and
   for a filing-status question a filing status.
-- **Real Intake on every entry point a person uses.** The 24-question Intake runs in the chat, the
-  CLI and the evals' `real_intake` mode; the one-question stub stays the offline default for tests
-  and the context metrics ([decision 002](decisions/002-demo-defaults-and-assumptions.md)).
+- **Real Intake on every entry point a person uses.** The 24-question Intake runs in the chat (and
+  the shared service the dashboard uses) and in the evals' `real_intake` mode; the one-question stub
+  stays the offline default for the tests, the command-line demo cases (`scripts.run_scenarios`) and
+  the context metrics ([decision 002](decisions/002-demo-defaults-and-assumptions.md)).
 - **"10 invoices" in the brief** was read as a long session plus many documents: 30 turns and 12
   documents in [metrics.md](metrics.md) (decision 002).
 - **Security** is described in [security.md](security.md): only 900–999 test SSNs, real-looking ones
