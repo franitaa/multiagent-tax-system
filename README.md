@@ -57,6 +57,9 @@ docker run --rm -p 127.0.0.1:8501:8501 \
 - The separate W-2 workbench (`app.py`) is not started: it writes demo answers into the case ID it is
   given. Use it only on its own, with a new case ID.
 
+## For graders
+How to run the whole project, check it, and walk through the two demo cases: [docs/for-graders.md](docs/for-graders.md). One command for each: `python run.py` (the app), `python run.py check` (tests and evals), `python run.py demo` (a case in the terminal). The fresh-clone test: [docs/fresh-clone-test.md](docs/fresh-clone-test.md).
+
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to
 stop; it does not extract, compute, or talk to the user. The other five (Intake, Document Extraction,

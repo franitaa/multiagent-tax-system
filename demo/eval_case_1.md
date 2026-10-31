@@ -8,7 +8,7 @@ photo; the system produces a draft 1040-SR with the source of every amount. Noth
 | What | Value |
 |---|---|
 | Taxpayer | Pat Tester, born March 4, 1950, single, not blind, no dependents |
-| Document | W-2 photo [`data/fixtures/w2_01.jpg`](../data/fixtures/w2_01.jpg) |
+| Document | W-2 photo [`data/fixtures/w2_01.jpg`](../data/fixtures/w2_01.jpg) (the same image: [`demo/w2_image_1.jpg`](w2_image_1.jpg)) |
 | W-2 box 1 (wages) / box 2 (federal tax withheld) | $30,000.00 / $2,000.00 ([`expected.json`](../data/fixtures/expected.json)) |
 | Everything else | "no" (no other forms, no out-of-scope income, no estimated payments) |
 
