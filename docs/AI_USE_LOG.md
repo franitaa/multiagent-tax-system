@@ -847,7 +847,8 @@ and `p1/telemetry-dashboard`.
 
 ## Shruti Goel (Person 6) — Fri Oct 30, 2026 (Docker volumes, evals, typed amounts, citations, demo)
 **Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/docker-volumes`, `p6/evals-real-intake`, `p6/review-into-46`,
-`p6/compose-drop-w2-page`, `p6/review-citations`, `p6/demo-click-through` and `p6/ai-log`.
+`p6/compose-drop-w2-page`, `p6/review-citations`, `p6/demo-click-through`, `p6/line-25c`,
+`p6/dual-status-docs`, `p6/intake-form-amounts` and `p6/ai-log`.
 
 **What the AI helped with**
 - The #41 Docker run-through and its fixes (#47); the real-Intake eval cases (#48).
@@ -861,6 +862,14 @@ and `p1/telemetry-dashboard`.
 - Rewrote `demo/eval_case_1.md` and `eval_case_2.md` as click-by-click steps in the real app (#66).
 - Resolved this log's merge conflict with #64; checked `main` against the assignment's deliverables
   list; drafted my report section (kept outside the repository, as the team decided).
+- Line 25c on the draft, a $0 tool-made line with its reason (#68), plus a draft-form test for it after
+  Sahana's review.
+- The dual-status alien wording in `docs/provenance.md` and `docs/policy.md` (#69).
+- Intake asks the SSA-1099, 1099-INT and 1099-DIV box amounts right after "yes" (#70, #27 step 2).
+  Testing it found that "not sure" for a form's main amount plus a typed 0 for another box counted the
+  form as read and dropped its income without a volunteer pause; the other boxes are now asked only
+  once the main amount is a number.
+- A fresh-clone run as a grader would do it, and the one real-AI check (`verify_chat_extraction`).
 
 **What I decided or checked myself**
 - Merged `main` into #55's branch myself so its CI tested it with #52; closed my duplicate #58 once
@@ -869,6 +878,12 @@ and `p1/telemetry-dashboard`.
   (purge) check to #60 itself rather than as a follow-up.
 - To take the old W-2 workbench out of Docker Compose once the chat and dashboard handled the photo,
   because it writes demo answers into any case ID it is given.
+- To change teammates' files only with their OK: line 25c in Sahana's Computation after she agreed;
+  #70 in Supriya's Intake for her to review and merge.
+- Corrected the AI's first dual-status wording: it said "not sure" to the residency question (Q23) stops
+  as out of scope, but running it showed `ANSWER_UNCERTAIN`, and its policy §3.3 citation was wrong
+  (§3.3 is about blindness). After review, the rule is attributed to the assignment (Assignment 7 §3.2).
+- Put my own Anthropic key in `.env` myself (never pasted into the chat) for the real-AI check.
 - Approved every push and PR; nothing was pushed to `main` directly.
 
 **How the AI's work was verified**
@@ -876,7 +891,11 @@ and `p1/telemetry-dashboard`.
   the same steps in CI's `compose` job.
 - New Review tests were run against the earlier Review to confirm they fail there.
 - The demo steps were checked by running both journeys through the chat and dashboard code with
-  Ji's offline reader. I did not use an API key, so a run with the real AI reader was not checked by me.
+  Ji's offline reader.
+- The real AI reader was checked once with my Anthropic key: `python -m scripts.verify_chat_extraction
+  --provider anthropic` read boxes 1 and 2 of `w2_01.jpg` correctly and ALL CHECKS PASSED (one paid call).
+  The OpenAI provider was not run.
+- Fresh clone (`main` at #69): 1369 passed; evals 15/0/0; the CLI cases, the app locally and in Docker.
 - On `main` at #64 (Oct 30): 1353 passed; evals 15 pass, 0 fail, 0 pending.
 
 **Limits I am aware of**
@@ -885,3 +904,28 @@ and `p1/telemetry-dashboard`.
 - A box a volunteer corrects still shows "Document Extraction" as its source on the draft, so Review
   cannot tell a corrected amount from a read one (the audit log has the decision).
 - In eval case 2 the deceased spouse's age is not asked, so only the taxpayer's 65+ box is counted.
+
+## Shruti Goel (Person 6) — Sat Oct 31, 2026 (deliverables, final checks)
+**Tool:** Claude Code (Claude Opus 5.5) in VS Code, on branches `p6/deliverables` and `p6/ai-log`.
+
+**What the AI helped with**
+- Checked `main` against the assignment's deliverables list again, with what was still missing.
+- `run.py` (one entry point for the app, the checks and the demo cases), copies of the two demo W-2s in
+  `demo/`, `docs/for-graders.md` with a "For graders" README section, and `docs/fresh-clone-test.md` (#74).
+- Found that a copy of the repository cloned inside the project folder made every test run twice and
+  `pytest` fail there; it was removed.
+- Resolved this log's merge conflict with #61.
+
+**What I decided or checked myself**
+- Rendered `docs/graph.png` myself from `docs/graph.mmd`; the AI was not allowed to send the diagram to
+  an online renderer.
+- To serve the app from `run.py` on this computer only, like Docker Compose, because the volunteer
+  dashboard and `/telemetry` have no login.
+- To keep the rules corpus at `docs/policy.md` (the assignment's layout says `data/policy.md`, but "does
+  not need to be exact"), since Review, the tests and the docs all use `docs/policy.md`.
+- Asked Francesca and Supriya to review #74.
+
+**How the AI's work was verified**
+- `python run.py check` on `main` plus #74: 1376 passed; evals 15 pass, 0 fail, 0 pending.
+- Every link in the two new docs points to an existing file; the README section was placed so it does
+  not overlap #72's changes.
