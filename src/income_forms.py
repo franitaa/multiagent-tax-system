@@ -126,14 +126,21 @@ def answered_yes(facts, *names):
     return any(fact_value(facts, n) in (True, "yes") for n in names)
 
 
-def forms_without_amounts(facts, extracted):
-    """Names of the income forms the taxpayer says they have, or uploaded, for which no amount is held.
-    The three forms Extraction does not read (see `unread_forms`), plus a W-2 or 1099-R the taxpayer
-    declared but never uploaded. A typed-in amount or a text amount counts as held. Fixed names only
-    (never document text), so the list is safe to show the orchestrator."""
-    names = [form["form"] for form in unread_forms(facts, extracted, read_text=True)]
+def missing_income_forms(facts, extracted):
+    """The income forms the taxpayer says they have, or uploaded, for which no amount is held, as
+    [{"form": "W-2", "lines": ["line_1a", "line_25a"]}]. The three forms Extraction does not read
+    (see `unread_forms`), plus a W-2 or 1099-R the taxpayer declared but never uploaded. A typed-in
+    amount or a text amount counts as held. Fixed names and lines only (never document text), so the
+    list is safe to show the orchestrator and on the draft."""
+    found = unread_forms(facts, extracted, read_text=True)
     if answered_yes(facts, "has_w2") and not document_amounts(extracted, [("w2", "box_1")], read_text=True):
-        names.insert(0, "W-2")
+        found.insert(0, {"form": "W-2", "lines": ["line_1a", "line_25a"]})
     if answered_yes(facts, "has_1099_r") and not any(document_kind(r).startswith("1099r") for r in extracted.values()):
-        names.append("1099-R")
-    return names
+        found.append({"form": "1099-R",
+                      "lines": [line for line, spec in DOC_LINES.items() if any(k.startswith("1099r") for k, _ in spec)]})
+    return found
+
+
+def forms_without_amounts(facts, extracted):
+    """Names of the forms in `missing_income_forms` (fixed names, safe to show the orchestrator)."""
+    return [form["form"] for form in missing_income_forms(facts, extracted)]
