@@ -13,6 +13,8 @@ Five business rules are enforced in code, not only in prompts:
 - **Always route the escalation cases to a human** through a LangGraph interrupt ([Human in the loop](#human-in-the-loop)).
 - **Handle only the in-scope return profile.** Anything else escalates. Only test SSNs (900–999) and fictional documents.
 
+The assignment makes one more a business rule: **six distinct agents, none merged** ([The six agents](#the-six-agents)).
+
 **Contents:** [Quick start](#quick-start) · [Team and focus areas](#team-and-focus-areas) ·
 [How it works](#how-it-works) · [The six agents](#the-six-agents) · [Human in the loop](#human-in-the-loop) ·
 [Provenance, security and privacy](#provenance-security-and-privacy) · [Memory and context](#memory-and-context) ·
@@ -48,7 +50,7 @@ Each person owned one agent and one focus area of the assignment.
 | Focus area | Person | Agent | What they built |
 |---|---|---|---|
 | Task division and management | Francesca Rondinella | Orchestrator (`src/orchestration/`, `src/graph.py`) | Hub-and-spoke graph, router, loop guard, human gate, runner with tracing and access policy, context strategy and metrics, handoff contract, scenarios, README diagram, integration of every agent, telemetry page |
-| Guardrails and ethics | Supriya Patil | Intake (`src/agents/intake_agent.py`) | Intake script and agent, plain-language explanations, go back / change answer, "not sure" and skip, volunteered-SSN handling, alarms for advice, a spouse who died, a third party and pressure, guardrail tests, the accessible taxpayer chat, volunteer dashboard and start page |
+| Guardrails and ethics | Supriya Patil | Intake (`src/agents/intake_agent.py`) | Intake script and agent, plain-language explanations, go back / change answer, "not sure" and skip, volunteered-SSN handling, alarms for advice, a spouse who died, a third party and pressure, guardrail tests, the accessible taxpayer chat (including the W-2 photo step), the volunteer dashboard (including the W-2 check) and the start page |
 | Agent memory | JiWon Park | Document Extraction (`silverfile_extraction/`, `src/p3/`) | W-2 reading with a vision model into typed records, identifier screening, per-document volunteer approval, SQLite checkpointer and case memory, synthetic W-2 fixtures, API-key handling |
 | Inter-agent communication | Matthew Suruadji | Eligibility & Rules (`src/agents/rules.py`) | `docs/policy.md` with numbered sections, eligibility, filing status, line 12d, scope screening, a citation on every decision, the Intake-to-Rules fact contract, decision-table tests |
 | Security | Sahana Jay | Computation (`src/agents/computation.py`) | Tax tools over MCP, provenance format, the draft 1040-SR with click-to-see sources, the 900-series SSN rule and redaction, prompt-injection containment, hash-chained audit log, retention and purge |
