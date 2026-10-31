@@ -54,8 +54,9 @@ the whole pipeline.
 
 ## 5. More to look at
 - **Telemetry (staff only, not linked):** http://localhost:8501/telemetry
-- **An escalation:** in the chat, ask "Should I itemize?" (tax advice) or "My nephew is answering for
-  me" (exploitation); the case pauses and appears on the volunteer dashboard.
+- **An escalation:** in the chat, ask "Should I itemize?" (tax advice) or type "My nephew is answering
+  for me. He says I must sign today and the refund goes into his account." (exploitation); the case
+  pauses and appears on the volunteer dashboard.
 - **Traces:** `traces/` (the `traces` volume in Docker), one JSONL file per case, field names only.
 - **Docs:** the README (orchestration diagram, also as an image: [graph.png](graph.png); team and focus areas), [handoff-contract.md](handoff-contract.md)
   (what each agent reads and writes), [metrics.md](metrics.md) (context strategy),
