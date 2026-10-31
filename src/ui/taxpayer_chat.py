@@ -183,9 +183,10 @@ def send(graph, case_id: str, text: str) -> None:
                 chat.send(graph, case_id, text)
         else:
             chat.send(graph, case_id, text)
-    except Exception:
+    except Exception as problem:
         if chat.screen(graph, case_id) != chat.READING_FAILED:
             raise  # not a reading problem: show it, do not hide it
+        chat.note_reading_failure(problem)
 
 
 def bubble(role: str, text: str, live: bool = False) -> None:
@@ -385,9 +386,10 @@ def chat_screen(service, case_id: str) -> None:
                 try:
                     with st.spinner(READING_TEXT):
                         chat.try_again(graph, case_id)
-                except Exception:
+                except Exception as problem:
                     if chat.screen(graph, case_id) != chat.READING_FAILED:
                         raise
+                    chat.note_reading_failure(problem)
                 st.rerun()
         return
     if screen in (chat.FINISHED, chat.STOPPED):

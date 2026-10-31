@@ -44,6 +44,7 @@ What is still missing:
     --expired` on a schedule.
 """
 import calendar
+import logging
 import re
 import secrets
 from contextlib import ExitStack
@@ -299,6 +300,13 @@ def add_w2(service, case_id: str, data: bytes | None, confirmed: bool) -> str | 
     except (SafeInputError, OSError, ValueError):
         return W2_NOT_ADDED
     return None
+
+
+def note_reading_failure(problem: Exception) -> None:
+    """The taxpayer sees the friendly "Try again" screen; the cause goes to the app's log (type and a
+    short message only: no traceback with local values, and a key is never in an error message)."""
+    logging.getLogger("silverfile.chat").warning("W-2 reading failed: %s: %s", type(problem).__name__,
+                                                 " ".join(str(problem).split())[:300])
 
 
 def try_again(graph, case_id: str) -> None:

@@ -206,3 +206,13 @@ def test_the_questions_wait_for_the_photo_only_until_one_is_chosen(service):
     assert chat.add_w2(service, CASE, W2_PHOTO, confirmed=True) is None
     assert not chat.waiting_for_w2(graph, CASE)  # a photo is in
     assert chat.show_w2_upload(graph, CASE)  # another W-2 can still be added
+
+
+def test_a_reading_failure_is_logged_with_its_cause_but_without_a_traceback(caplog):
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="silverfile.chat"):
+        chat.note_reading_failure(SafeInputError("The provider refused\nthe request " + "x" * 400))
+    [record] = caplog.records
+    assert "SafeInputError" in record.getMessage() and "\n" not in record.getMessage()
+    assert len(record.getMessage()) < 400 and record.exc_info is None
