@@ -110,35 +110,56 @@ Only Document Extraction calls a model; the other five are deterministic Python.
 and the handoff format: [docs/handoff-contract.md](docs/handoff-contract.md).
 
 ### Orchestrator (Francesca)
-Picks every next hop and owns the human gate (see "How it works" above). It never extracts, computes or talks to the
-taxpayer, and a case cannot end without a filing status and an eligibility verdict.
+Picks every next hop and owns the human gate (see "How it works" above).
+- **Only it decides:** agents return a handoff request; the orchestrator validates it and chooses the next hop.
+- **Never does the work:** it never extracts, computes or talks to the taxpayer.
+- **Safe ending:** a case cannot end without a filing status and an eligibility verdict (`ELIGIBILITY_UNDECIDED`).
 
 ### Intake (Supriya)
 The only agent that talks to the taxpayer ([docs/intake-script.md](docs/intake-script.md)).
-- One question at a time, in six parts, in plain language; questions that do not apply are skipped.
-- "I'm not sure", "skip for now" and "talk to a volunteer" are always accepted; "go back" or a correction
+- **One question at a time,** in six parts, in plain language; questions that do not apply are skipped.
+- **Uncertainty and corrections:** "I'm not sure", "skip for now" and "talk to a volunteer" are always accepted; "go back" or a correction
   ("actually I was married") re-asks a question and keeps the old answer in the history.
-- Dates are read back before they are saved; a date that could be read two ways is never guessed.
-- Asks the SSA-1099, 1099-INT and 1099-DIV amounts right after "yes" to the form, saved as `direct user input`.
-- Alarms: a request for tax advice, a spouse who died in 2025, someone else answering, or pressure about money or the
+- **Dates** are read back before they are saved; a date that could be read two ways is never guessed.
+- **Typed amounts:** asks the SSA-1099, 1099-INT and 1099-DIV amounts right after "yes" to the form, saved as `direct user input`.
+- **Alarms:** a request for tax advice, a spouse who died in 2025, someone else answering, or pressure about money or the
   refund. Only test SSNs are accepted; a real-looking one is refused and never saved.
-- An answer not understood after 3 tries is noted for a volunteer.
-- The chat page is built for older adults: large text (22px+), strong contrast, big buttons, a progress list with
+- **Stuck answers:** an answer not understood after 3 tries is noted for a volunteer.
+- **Accessibility:** the chat page is built for older adults: large text (22px+), strong contrast, big buttons, a progress list with
   "Change" buttons, and a saved session to come back to.
 
 ### Document Extraction (JiWon)
-Reads W-2 photos with a vision model (OpenAI or Anthropic) into typed records with source evidence; a volunteer checks
-every W-2 before it is used. Details in [Document extraction (P3)](#document-extraction-p3) below.
+Reads W-2 photos only, with a vision model (OpenAI or Anthropic, whichever key is in `.env`, OpenAI first).
+- **Volunteer check:** the taxpayer adds the photo in the chat, and a volunteer checks every amount on the dashboard
+  before it is used (`EXTRACTION_REVIEW`). Each document is approved separately; a correction updates the record and
+  keeps the original.
+- **Typed records with evidence:** the result uses `extracted[doc_id].fields.box_1` etc., with the team's five
+  provenance fields. Shared values are numeric; internal records keep decimal strings and source evidence.
+- **Wired into the graph:** `src/agents/extraction.py` calls a registered P3 tool, rather than returning a hard-coded
+  amount; one worker runs per document, in parallel.
+- **Shared service:** the chat and the dashboard share one extraction service and the saved sessions
+  (`src/ui/app_service.py`, `src/p3/shared_service.py`).
+- **Tokens:** the runner records the provider's actual token usage for image reading; other agents' counts are
+  labelled estimates.
+- **Offline tests:** deterministic synthetic text fixtures; no key needed.
+- **Privacy limits:** use **fictional test documents only**. The whole image is saved locally after your
+  confirmation, then sent to the provider. Identifier screening happens after the image is sent, so it is not
+  redaction and cannot guarantee a real identifier is blocked. Calls may be charged to your provider account; OpenAI
+  requests use `store=False`, which does not guarantee zero retention.
+- **Developer workbench:** the standalone W-2 workbench (`app.py`, started by `start.py` or `START_WINDOWS.cmd`) tests
+  the extraction component on its own. It is not part of the app and is not started by Docker; use it with a new case
+  ID and your own key in `.env`. Details: [P3_INTEGRATION.md](docs/P3_INTEGRATION.md),
+  [P3_CHANGED_FILES.md](docs/P3_CHANGED_FILES.md), [VALIDATION.md](docs/VALIDATION.md).
 
 ### Eligibility & Rules (Matthew)
 Decides from Intake's answers and the extracted documents, citing a numbered section of
 [docs/policy.md](docs/policy.md) for every decision.
-- 1040-SR eligibility: born before January 2, 1961 (on a joint return, one spouse is enough).
-- Filing status, and the line 12d box count (65 or older, blind, for each spouse).
-- Scope: anything out of scope stops the case for a volunteer; a 1099-R with box 2b checked always stops.
-- A missing or "not sure" answer is never guessed (`ANSWER_UNCERTAIN`); saying "no" to a form that was uploaded
+- **Eligibility:** born before January 2, 1961 (on a joint return, one spouse is enough).
+- **Filing status** and the **line 12d** box count (65 or older, blind, for each spouse).
+- **Scope:** anything out of scope stops the case for a volunteer, including a 1099-R with box 2b checked.
+- **Never guesses:** a missing or "not sure" answer is never guessed (`ANSWER_UNCERTAIN`); saying "no" to a form that was uploaded
   raises `SOURCE_CONFLICT`.
-- The fact names it reads from Intake: [docs/intake-rules-contract.md](docs/intake-rules-contract.md).
+- **Contract with Intake:** the fact names it reads are in [docs/intake-rules-contract.md](docs/intake-rules-contract.md).
 
 ### Computation (Sahana)
 Fills lines 1a–37 of the draft, in the order the lines depend on each other (income, taxable Social Security,
@@ -157,13 +178,13 @@ AGI, standard and senior deductions, tax, payments, then the refund or amount ow
   writes sample drafts to `demo/`.
 
 ### Review/Audit (Shruti)
-Tries to prove the draft wrong before a volunteer sees it, and never corrects it itself. Nine checks:
-- **scope** (an out-of-scope item on the draft raises an alarm), **provenance** (every amount has its record),
+Tries to prove the draft wrong before a volunteer sees it, and never corrects it itself.
+- **Nine checks:** **scope** (an out-of-scope item on the draft raises an alarm), **provenance** (every amount has its record),
   **typed amounts** (each matches the taxpayer's answer), **sources** (each line matches its document);
-- **recalculation** with the same tax tools, independently of Computation, and **totals**;
-- **contradictions**, **completeness**, and **citations** (every `docs/policy.md` section Rules cites must exist).
-
-Any error sends the draft back to Computation with the findings, at most 3 rounds; then a volunteer decides.
+  **recalculation** with the same tax tools, independently of Computation, and **totals**;
+  **contradictions**, **completeness**, and **citations** (every `docs/policy.md` section Rules cites must exist).
+- **Send-back:** any error sends the draft back to Computation with the findings, at most 3 rounds; then a
+  volunteer decides. Warnings are recorded but do not send it back.
 
 ## Human in the loop
 An agent raises a flag; the orchestrator sends the case to the human gate (`src/orchestration/human.py`), a
@@ -172,7 +193,7 @@ graph resumes with `Command(resume=...)`.
 
 | Condition | Raised by | The volunteer may |
 |---|---|---|
-| Out-of-scope item (Schedule A/C/D/E, 1099-NEC, digital assets, foreign income, amended, prior-year or state returns) | Rules, Extraction, Review (safety net) | Stop only |
+| Out-of-scope item (Schedule A/C/D/E, 1099-NEC, digital assets, foreign income, amended, prior-year or state returns) | Rules, Extraction, Computation, Review (safety net) | Stop only |
 | An answer contradicts a document (`SOURCE_CONFLICT`) | Rules | Continue with the right value, or stop |
 | 1099-R with box 2b checked | Extraction, Rules, Computation | Stop only |
 | Request for tax advice | Intake | Continue (question noted) or stop |
@@ -180,7 +201,7 @@ graph resumes with `Command(resume=...)`.
 | Signs of exploitation or third-party pressure | Intake | Stop only |
 | Also: an answer "not sure", a W-2 to check, income not read, the loop guard, the review bound | Rules, Extraction, Orchestrator | Depends on the condition |
 
-## Provenance, security and privacy (Sahana)
+## Provenance, security and privacy
 - **Provenance:** every amount has `value, formula, inputs, source, tool`, and the runner rejects an amount without
   one. Click any amount on the draft to see it ([docs/provenance.md](docs/provenance.md)).
 - **SSNs:** only test SSNs 900–999. A real-looking one is removed from every message as it enters the state, even if
@@ -194,13 +215,14 @@ graph resumes with `Command(resume=...)`.
   `AuditLog.verify()` detects an edited or removed entry.
 - **Retention:** a case idle 30 days expires and is deleted with `python -m scripts.purge_cases --expired`
   (schedule it); `--case <ID>` deletes one case everywhere.
-Details and limits: [docs/security.md](docs/security.md).
 - **Keys:** read only from `.env` (never committed; see `.env.example`); the app does not ask for a key on screen, and
   keys are never placed in state, traces or exported records.
 - **Local only:** the app is served on this computer only (`127.0.0.1`), because the dashboard and `/telemetry` have
   no login. Case IDs are not secrets.
 
-## Memory and context (JiWon, Francesca)
+Details and limits: [docs/security.md](docs/security.md).
+
+## Memory and context
 - **Saved sessions:** a SQLite checkpointer (`runtime/team_checkpoints.sqlite`) saves the whole case after every step;
   the case ID is the LangGraph thread ID, so a taxpayer can come back another day.
 - **Context strategy:** each agent gets a scoped view of state, Intake the last 6 messages plus the structured facts,
@@ -267,29 +289,6 @@ http://localhost:8501/telemetry. Spec: [docs/telemetry-dashboard-spec.md](docs/t
   containers, and a W-2 photo goes from the chat through the volunteer's check to the draft.
 - The fresh-clone run: [docs/fresh-clone-test.md](docs/fresh-clone-test.md).
 
-## Document extraction (P3)
-Extraction reads W-2 photos only. In the app, the taxpayer adds the photo in the chat and a volunteer checks every
-amount on the dashboard before it is used (`EXTRACTION_REVIEW`). Each document is approved separately; a correction
-updates the record and keeps the original. The chat and the dashboard share one extraction service and the saved
-sessions (`src/ui/app_service.py`, `src/p3/shared_service.py`).
-
-**What was connected**
-- `src/agents/extraction.py` calls a registered P3 tool, rather than returning a hard-coded amount.
-- The result uses `extracted[doc_id].fields.box_1` etc., with the team's five provenance fields. Shared field values are
-  numeric; internal extraction records preserve decimal strings and source evidence.
-- The runner records actual provider token usage for image extraction, keeping estimates labelled for other agents.
-- Deterministic synthetic text fixtures are used for offline tests.
-
-The standalone W-2 workbench (`app.py`, started by `start.py` or `START_WINDOWS.cmd`) is a developer tool for the
-extraction component on its own. It is not part of the app and is not started by Docker; use it with a new case ID
-and your own key in `.env`. Details: [P3_INTEGRATION.md](docs/P3_INTEGRATION.md),
-[P3_CHANGED_FILES.md](docs/P3_CHANGED_FILES.md) and [VALIDATION.md](docs/VALIDATION.md).
-
-**Privacy limits.** Use **fictional test documents only**. The whole image is saved locally after your confirmation,
-then sent to the provider (OpenAI or Anthropic, whichever key is in `.env`, OpenAI first). Identifier screening happens
-after the image is sent, so it is not redaction and cannot guarantee a real identifier is blocked. Calls may be charged
-to your provider account; OpenAI requests use `store=False`, which does not guarantee zero retention.
-
 ## Layout
 | Path | What |
 |---|---|
@@ -323,10 +322,15 @@ to your provider account; OpenAI requests use `store=False`, which does not guar
 | [STATUS.md](docs/STATUS.md) | Project status |
 
 ## Known limitations
-- A 1099-R always stops for a volunteer; its taxable amount is not computed.
+- A 1099-R stops for a volunteer when box 2b is checked or its taxable amount is not determined.
 - SSA-1099, 1099-INT and 1099-DIV are not read from photos; Intake asks their amounts.
-- Intake is rule-based: unusual wording can be missed (it re-asks, then notes it for a volunteer).
+- Someone who says they lived in the US all year but is dual-status for another reason is not detected.
+- The deceased spouse's age is not asked, so a joint return counts only the taxpayer's 65+ box.
+- Intake recognises phrasings by patterns, so some are only caught at a later question; after 3 tries a question is
+  noted for a volunteer.
+- A W-2 box a volunteer corrected still shows Document Extraction as its source; the change is in the audit log.
 - No login: the dashboard and telemetry are for this computer only, with test data.
+- The checkpoint database is not encrypted; redaction is regex-based and does not cover names or addresses.
 - The audit log's hash chain detects an edited entry, not deleted final entries.
 - Context metrics are estimates of prompt size, not billed tokens.
 
