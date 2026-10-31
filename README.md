@@ -45,6 +45,8 @@ Each person owned one agent and one focus area of the assignment.
 | Security | Sahana Jay | Computation (`src/agents/computation.py`) | Tax tools over MCP, provenance format, the draft 1040-SR with click-to-see sources, the 900-series SSN rule and redaction, prompt-injection containment, hash-chained audit log, retention and purge |
 | MLOps/DevOps | Shruti Goel | Review/Audit (`src/agents/review.py`) | Review agent (nine checks) and its send-back, CI, Dockerfile and Docker Compose, eval cases and runner, demo write-ups, `run.py`, the grader guide, the fresh-clone test, the implementation notes |
 
+All six focus areas in the brief have an owner.
+
 ## How it works
 Six agents, one hub. The **orchestrator** is the only thing that chooses the next hop and decides when to
 stop; it does not extract, compute, or talk to the user. The other five (Intake, Document Extraction,
@@ -137,7 +139,8 @@ graph resumes with `Command(resume=...)`.
 - **Security** ([docs/security.md](docs/security.md)): only test SSNs 900–999 (real-looking ones are removed from
   every message); traces hold field names, never values; document text is treated as data (prompt-injection
   containment); a hash-chained audit log per case; retention with `python -m scripts.purge_cases --expired`.
-- **Keys:** read only from `.env` (never committed; see `.env.example`), never placed in state, traces or records.
+- **Keys:** read only from `.env` (never committed; see `.env.example`); the app does not ask for a key on screen, and
+  keys are never placed in state, traces or exported records.
 - **Local only:** the app is served on this computer only (`127.0.0.1`), because the dashboard and `/telemetry` have
   no login. Case IDs are not secrets.
 
@@ -214,6 +217,13 @@ amount on the dashboard before it is used (`EXTRACTION_REVIEW`). Each document i
 updates the record and keeps the original. The chat and the dashboard share one extraction service and the saved
 sessions (`src/ui/app_service.py`, `src/p3/shared_service.py`).
 
+**What was connected**
+- `src/agents/extraction.py` calls a registered P3 tool, rather than returning a hard-coded amount.
+- The result uses `extracted[doc_id].fields.box_1` etc., with the team's five provenance fields. Shared field values are
+  numeric; internal extraction records preserve decimal strings and source evidence.
+- The runner records actual provider token usage for image extraction, keeping estimates labelled for other agents.
+- Deterministic synthetic text fixtures are used for offline tests.
+
 The standalone W-2 workbench (`app.py`, started by `start.py` or `START_WINDOWS.cmd`) is a developer tool for the
 extraction component on its own. It is not part of the app and is not started by Docker; use it with a new case ID
 and your own key in `.env`. Details: [P3_INTEGRATION.md](docs/P3_INTEGRATION.md),
@@ -231,7 +241,7 @@ to your provider account; OpenAI requests use `store=False`, which does not guar
 | `src/state.py` | The shared state contract (fields, reducers, escalation conditions) |
 | `src/graph.py` | The hub-and-spoke graph |
 | `src/orchestration/` | The Orchestrator: router, loop guard, human gate, runner and tracing, access policy, context views |
-| `src/agents/` | Intake, Document Extraction, Rules, Computation and Review |
+| `src/agents/` | Intake, Document Extraction, Rules, Computation and Review (with the Orchestrator, all six are real) |
 | `src/memory.py` | Saved sessions: checkpointer and resume summary |
 | `src/ui/` | Start page, taxpayer chat, volunteer dashboard, telemetry page |
 | `src/tax_math_mcp.py`, `src/mcp_client.py` | The tax tools' MCP server and client |
