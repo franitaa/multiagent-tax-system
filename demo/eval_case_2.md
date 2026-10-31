@@ -9,7 +9,7 @@ on, the W-2 photo is checked, and the draft is finished with the volunteer's fil
 | What | Value |
 |---|---|
 | Taxpayer | Pat Tester, born March 4, 1950, widowed during 2025, not blind, no dependents |
-| Document | W-2 photo [`data/fixtures/w2_02.jpg`](../data/fixtures/w2_02.jpg) |
+| Document | W-2 photo [`data/fixtures/w2_02.jpg`](../data/fixtures/w2_02.jpg) (the same image: [`demo/w2_image_2.jpg`](w2_image_2.jpg)) |
 | W-2 box 1 / box 2 | $31,234.00 / $2,087.00 ([`expected.json`](../data/fixtures/expected.json)) |
 | Volunteer's decision | Married filing jointly: a spouse who died during the year still counts as married for that year |
 
