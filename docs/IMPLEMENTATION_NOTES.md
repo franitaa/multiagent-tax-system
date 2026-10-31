@@ -76,7 +76,7 @@ The code mostly uses LangGraph's own building blocks (`StateGraph`, reducers, `S
 | Remote proxy | `mcp_registry()`: each tax tool is a local callable that calls the MCP server | Computation and Review do not know where the tools run |
 | Singleton (one per process) | `shared_client()` in `mcp_client.py` (lock-guarded); `get_service()` with `st.cache_resource` | One tool server and one service shared by every page |
 | Memoisation | `policy_sections()` in `review.py` (`lru_cache`) | `policy.md` is read once |
-| Mutex / atomic claim | `running()` in `chat_session.py`; locks in the runner, the audit log and the MCP client | A second tab cannot start a second run; parallel workers do not interleave a file |
+| Mutex / atomic claim | `running()` in `src/ui/chat_session.py`; locks in the runner, the audit log and the MCP client | A second tab cannot start a second run; parallel workers do not interleave a file |
 | Stub / test double | The one-question Intake stub (offline default); `FakeReader` in the tests | Tests and metrics are short, deterministic and need no key |
 | Read model (query side) | `src/telemetry.py` and `dashboard_data.py` read traces, the audit log and saved state; telemetry never writes | Dashboards cannot change a case except through the human gate |
 | Pipeline of checks (specification) | Review: scope, provenance, direct input, sources, recompute, totals, contradictions, completeness, citations | Each check is a small function returning findings; adding one does not touch the others |
@@ -125,7 +125,7 @@ and the audit log are the only consumers).
 - The fresh-clone run is recorded in [fresh-clone-test.md](fresh-clone-test.md).
 
 ## 5. Known limitations
-- **1099-R always stops** for a volunteer: its taxable amount is not computed.
+- **1099-R stops** for a volunteer when box 2b is checked or its taxable amount is not determined.
 - **Dual status:** Intake asks whether the taxpayer lived in the US all year (Q23); "no" stops the case
   and "not sure" pauses it. Someone who answers "yes" but is dual-status for another reason is not
   detected ([policy.md §2.4](policy.md)).
